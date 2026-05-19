@@ -1,0 +1,56 @@
+{
+  "schema_version": 3,
+  "record_id": "rec_a-realistic-articulated-2x3-chest-of-drawers-wit_20260519_093211_649393_00c3625c",
+  "created_at": "2026-05-19T09:32:11Z",
+  "updated_at": "2026-05-19T09:38:05Z",
+  "rating": null,
+  "secondary_rating": null,
+  "author": "brian",
+  "rated_by": "brian",
+  "secondary_rated_by": null,
+  "kind": "external_model",
+  "prompt_kind": "single_prompt",
+  "category_slug": "chest_of_drawers",
+  "source": {
+    "run_id": null,
+    "prompt_batch_id": null,
+    "batch_spec_id": null,
+    "row_id": null,
+    "prompt_index": null
+  },
+  "sdk_package": "sdk",
+  "provider": "anthropic",
+  "model_id": "claude-sonnet-4-7",
+  "display": {
+    "title": "a realistic articulated 2x3 chest of drawers with 6 pull-out drawers in a 2-column by 3-row configuration",
+    "prompt_preview": "a realistic articulated 2x3 chest of drawers with 6 pull-out drawers in a 2-column by 3-row configuration"
+  },
+  "artifacts": {
+    "prompt_txt": "revisions/rev_000001/prompt.txt",
+    "prompt_series_json": null,
+    "model_py": "revisions/rev_000001/model.py",
+    "provenance_json": "revisions/rev_000001/provenance.json",
+    "cost_json": null,
+    "inputs_dir": "revisions/rev_000001/inputs",
+    "traces_dir": null
+  },
+  "hashes": {
+    "prompt_sha256": "e6eecf123fa7d55d4d4a9a19ef27c30e277f0c5f93d03fdc8c15a74dd4db8983",
+    "model_py_sha256": "56a8b57101cccefee35058d71af9493b14e681076074b43e33eee69d0e1cfdfd"
+  },
+  "collections": [
+    "dataset"
+  ],
+  "active_revision_id": "rev_000001",
+  "lineage": {
+    "origin_record_id": "rec_a-realistic-articulated-2x3-chest-of-drawers-wit_20260519_093211_649393_00c3625c",
+    "parent_record_id": null,
+    "parent_revision_id": null,
+    "edit_mode": "root"
+  },
+  "creator": {
+    "mode": "external_agent",
+    "agent": "claude-code",
+    "trace_available": false
+  }
+}

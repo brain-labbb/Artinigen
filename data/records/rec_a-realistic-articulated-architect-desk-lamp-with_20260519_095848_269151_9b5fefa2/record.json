@@ -1,0 +1,56 @@
+{
+  "schema_version": 3,
+  "record_id": "rec_a-realistic-articulated-architect-desk-lamp-with_20260519_095848_269151_9b5fefa2",
+  "created_at": "2026-05-19T09:58:48Z",
+  "updated_at": "2026-05-19T10:06:13Z",
+  "rating": null,
+  "secondary_rating": null,
+  "author": "brian",
+  "rated_by": "brian",
+  "secondary_rated_by": null,
+  "kind": "external_model",
+  "prompt_kind": "single_prompt",
+  "category_slug": "articulated_task_lamp",
+  "source": {
+    "run_id": null,
+    "prompt_batch_id": null,
+    "batch_spec_id": null,
+    "row_id": null,
+    "prompt_index": null
+  },
+  "sdk_package": "sdk",
+  "provider": "anthropic",
+  "model_id": "gpt-5.5",
+  "display": {
+    "title": "a realistic articulated architect desk lamp with a weighted base, two angled arm segments, spring-tension details, and a",
+    "prompt_preview": "a realistic articulated architect desk lamp with a weighted base, two angled arm segments, spring-tension details, and a pivoting conical lamp head"
+  },
+  "artifacts": {
+    "prompt_txt": "revisions/rev_000001/prompt.txt",
+    "prompt_series_json": null,
+    "model_py": "revisions/rev_000001/model.py",
+    "provenance_json": "revisions/rev_000001/provenance.json",
+    "cost_json": null,
+    "inputs_dir": "revisions/rev_000001/inputs",
+    "traces_dir": null
+  },
+  "hashes": {
+    "prompt_sha256": "c494f0f83dc01765d8d6f81cb91fde686ac549fa779f10aa6f53c0486cbca61a",
+    "model_py_sha256": "2cf023c07165eae48d8643d5e687306ede9f53ec901948025509c4e31ac9d22f"
+  },
+  "collections": [
+    "dataset"
+  ],
+  "active_revision_id": "rev_000001",
+  "lineage": {
+    "origin_record_id": "rec_a-realistic-articulated-architect-desk-lamp-with_20260519_095848_269151_9b5fefa2",
+    "parent_record_id": null,
+    "parent_revision_id": null,
+    "edit_mode": "root"
+  },
+  "creator": {
+    "mode": "external_agent",
+    "agent": "claude-code",
+    "trace_available": false
+  }
+}

@@ -91,6 +91,7 @@ class OpenRouterLLM:
         self.model_id = model_id
         self.thinking_level = thinking_level
         self.reasoning = _reasoning_config_from_thinking_level(thinking_level)
+        self.base_url = OPENROUTER_BASE_URL
         self.max_tokens = _env_int(
             "OPENROUTER_MAX_TOKENS",
             _env_int("OPENROUTER_MAX_COMPLETION_TOKENS", DEFAULT_OPENROUTER_MAX_TOKENS),
@@ -119,9 +120,11 @@ class OpenRouterLLM:
                     "Set OPENROUTER_API_KEY or OPENROUTER_API_KEYS."
                 )
 
+            self.base_url = os.environ.get("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL).rstrip("/")
+
             client_kwargs: dict[str, Any] = {
                 "api_key": api_key,
-                "base_url": OPENROUTER_BASE_URL,
+                "base_url": self.base_url,
                 "max_retries": 0,
             }
             default_headers = _openrouter_default_headers()
@@ -161,7 +164,7 @@ class OpenRouterLLM:
             messages=messages,
             tools=tools,
         )
-        payload["base_url"] = OPENROUTER_BASE_URL
+        payload["base_url"] = self.base_url
         return payload
 
     def context_window_pressure(self, usage: dict[str, int]) -> ContextWindowPressure:
@@ -260,10 +263,13 @@ class OpenRouterLLM:
             chat_messages.append({"role": "system", "content": system_prompt})
         chat_messages.extend(_convert_chat_messages(messages))
 
+        extra_body: dict[str, Any] = {"reasoning": copy.deepcopy(self.reasoning)}
+        if "deepseek" in self.base_url.lower() and self.reasoning.get("enabled") is False:
+            extra_body["thinking"] = {"type": "disabled"}
         payload: dict[str, Any] = {
             "model": self.model_id,
             "messages": chat_messages,
-            "extra_body": {"reasoning": copy.deepcopy(self.reasoning)},
+            "extra_body": extra_body,
         }
         converted_tools = _convert_tools(tools)
         if converted_tools:
@@ -296,6 +302,7 @@ class OpenRouterLLM:
         tool_calls = _serialize_tool_calls(_get(message, "tool_calls"))
         reasoning = _get(message, "reasoning")
         reasoning_details = _serialize_json_value(_get(message, "reasoning_details"))
+        reasoning_content = _get(message, "reasoning_content")
         usage = _extract_usage(response)
 
         result: dict[str, Any] = {
@@ -305,13 +312,16 @@ class OpenRouterLLM:
         thought_summary = _reasoning_details_summary(reasoning_details)
         if not thought_summary and isinstance(reasoning, str):
             thought_summary = reasoning.strip()
+        if not thought_summary and isinstance(reasoning_content, str):
+            thought_summary = reasoning_content.strip()
         if thought_summary:
             result["thought_summary"] = thought_summary
-        if reasoning_details or reasoning:
+        if reasoning_details or reasoning or reasoning_content:
             result["extra_content"] = {
                 "openrouter": {
                     "reasoning": reasoning,
                     "reasoning_details": reasoning_details,
+                    "reasoning_content": reasoning_content,
                 }
             }
         if usage:
@@ -341,10 +351,13 @@ def _convert_chat_messages(messages: list[dict]) -> list[dict[str, Any]]:
                 if isinstance(openrouter, dict):
                     reasoning = openrouter.get("reasoning")
                     reasoning_details = openrouter.get("reasoning_details")
+                    reasoning_content = openrouter.get("reasoning_content")
                     if reasoning:
                         assistant["reasoning"] = reasoning
                     if reasoning_details:
                         assistant["reasoning_details"] = reasoning_details
+                    if reasoning_content:
+                        assistant["reasoning_content"] = reasoning_content
             converted.append(assistant)
             continue
         if role == "tool":
