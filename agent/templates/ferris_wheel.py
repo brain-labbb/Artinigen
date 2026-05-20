@@ -13,6 +13,7 @@ from sdk import (
     AssetContext,
     Box,
     Cylinder,
+    Mimic,
     MotionLimits,
     Origin,
     TestContext,
@@ -21,9 +22,19 @@ from sdk import (
     mesh_from_geometry,
 )
 
-GondolaStyle = Literal["box_cabin", "open_basket", "glass_capsule"]
-SupportStyle = Literal["a_frame", "truss_tower"]
-RimStyle = Literal["double_torus", "single_torus"]
+GondolaStyle = Literal[
+    "box_cabin",
+    "open_basket",
+    "glass_capsule",
+    "bucket_seat",
+    "rounded_pod",
+]
+SupportStyle = Literal["a_frame", "truss_tower", "inclined_legs"]
+RimStyle = Literal["double_torus", "single_torus", "twin_rings"]
+ScaleMode = Literal["compact", "normal", "landmark"]
+BaseStyle = Literal["platform"]
+HangerStyle = Literal["pivot_bar", "yoke_fork", "between_rims"]
+GondolaMotionMode = Literal["free_swing", "counter_rotate_mimic"]
 
 GONDOLA_WIDTH_Y = 0.132
 GONDOLA_LOWEST_POINT_BELOW_PIVOT = 0.249
@@ -36,6 +47,25 @@ DEFAULT_AXLE_Z = (
 )
 SEED_RIM_RADIUS_MIN = DEFAULT_RIM_RADIUS
 SEED_RIM_RADIUS_MAX = 1.10
+SEED_COMPACT_RIM_RADIUS_MIN = 0.66
+SEED_COMPACT_RIM_RADIUS_MAX = 0.90
+SEED_LANDMARK_RIM_RADIUS_MIN = 1.10
+SEED_LANDMARK_RIM_RADIUS_MAX = 1.65
+SCALE_MODE_SEED_RANGES: dict[ScaleMode, tuple[float, float]] = {
+    "compact": (SEED_COMPACT_RIM_RADIUS_MIN, SEED_COMPACT_RIM_RADIUS_MAX),
+    "normal": (SEED_RIM_RADIUS_MIN, SEED_RIM_RADIUS_MAX),
+    "landmark": (SEED_LANDMARK_RIM_RADIUS_MIN, SEED_LANDMARK_RIM_RADIUS_MAX),
+}
+SCALE_MODE_BASE_RIM_RADIUS: dict[ScaleMode, float] = {
+    "compact": 0.66,
+    "normal": DEFAULT_RIM_RADIUS,
+    "landmark": 1.10,
+}
+SCALE_MODE_WHEEL_HALF_WIDTH_RANGES: dict[ScaleMode, tuple[float, float]] = {
+    "compact": (0.090, 0.112),
+    "normal": (0.095, 0.125),
+    "landmark": (0.118, 0.155),
+}
 
 
 @dataclass(frozen=True)
@@ -48,6 +78,8 @@ GONDOLA_COLLISION_PROFILES: dict[GondolaStyle, GondolaCollisionProfile] = {
     "box_cabin": GondolaCollisionProfile(width_y=0.132, lowest_point_below_pivot=0.249),
     "open_basket": GondolaCollisionProfile(width_y=0.140, lowest_point_below_pivot=0.235),
     "glass_capsule": GondolaCollisionProfile(width_y=0.138, lowest_point_below_pivot=0.228),
+    "bucket_seat": GondolaCollisionProfile(width_y=0.152, lowest_point_below_pivot=0.265),
+    "rounded_pod": GondolaCollisionProfile(width_y=0.140, lowest_point_below_pivot=0.236),
 }
 
 
@@ -58,6 +90,11 @@ class FerrisWheelConfig:
     gondola_style: GondolaStyle = "box_cabin"
     support_style: SupportStyle = "a_frame"
     rim_style: RimStyle = "double_torus"
+    scale_mode: ScaleMode = "normal"
+    base_style: BaseStyle = "platform"
+    hanger_style: HangerStyle = "pivot_bar"
+    gondola_motion_mode: GondolaMotionMode = "free_swing"
+    railing_enabled: bool = True
     rim_radius: float | None = None
     inner_rim_radius: float | None = None
     wheel_half_width: float = DEFAULT_WHEEL_HALF_WIDTH
@@ -72,6 +109,11 @@ class ResolvedFerrisWheelConfig:
     gondola_style: GondolaStyle
     support_style: SupportStyle
     rim_style: RimStyle
+    scale_mode: ScaleMode
+    base_style: BaseStyle
+    hanger_style: HangerStyle
+    gondola_motion_mode: GondolaMotionMode
+    railing_enabled: bool
     rim_radius: float
     inner_rim_radius: float
     wheel_half_width: float
@@ -87,14 +129,35 @@ def config_from_seed(seed: int) -> FerrisWheelConfig:
     spoke_count = num_gondolas * spoke_multiplier
     if spoke_count % 2 != 0:
         spoke_count += 1
+    scale_mode = rng.choices(
+        ("compact", "normal", "landmark"),
+        weights=(0.25, 0.55, 0.20),
+        k=1,
+    )[0]
+    rim_min, rim_max = SCALE_MODE_SEED_RANGES[scale_mode]
+    width_min, width_max = SCALE_MODE_WHEEL_HALF_WIDTH_RANGES[scale_mode]
+    rim_style = rng.choice(("double_torus", "single_torus", "twin_rings"))
+    if rim_style == "twin_rings":
+        hanger_style: HangerStyle = rng.choice(("pivot_bar", "yoke_fork", "between_rims"))
+    else:
+        hanger_style = rng.choice(("pivot_bar", "yoke_fork"))
     return FerrisWheelConfig(
         num_gondolas=num_gondolas,
         spoke_count=spoke_count,
-        gondola_style=rng.choice(("box_cabin", "open_basket", "glass_capsule")),
-        support_style=rng.choice(("a_frame", "truss_tower")),
-        rim_style=rng.choice(("double_torus", "single_torus")),
-        rim_radius=round(rng.uniform(SEED_RIM_RADIUS_MIN, SEED_RIM_RADIUS_MAX), 3),
-        wheel_half_width=round(rng.uniform(0.095, 0.125), 3),
+        gondola_style=rng.choice(
+            ("box_cabin", "open_basket", "glass_capsule", "bucket_seat", "rounded_pod")
+        ),
+        support_style=rng.choice(("a_frame", "truss_tower", "inclined_legs")),
+        rim_style=rim_style,
+        scale_mode=scale_mode,
+        base_style="platform",
+        hanger_style=hanger_style,
+        gondola_motion_mode=rng.choices(
+            ("free_swing", "counter_rotate_mimic"), weights=(0.70, 0.30), k=1
+        )[0],
+        railing_enabled=(rng.random() > 0.20),
+        rim_radius=round(rng.uniform(rim_min, rim_max), 3),
+        wheel_half_width=round(rng.uniform(width_min, width_max), 3),
         name=f"seeded_ferris_wheel_{seed}",
     )
 
@@ -124,19 +187,30 @@ def resolve_config(config: FerrisWheelConfig) -> ResolvedFerrisWheelConfig:
         raise ValueError("spoke_count should be >= num_gondolas")
     if config.gondola_style not in GONDOLA_COLLISION_PROFILES:
         raise ValueError(f"Unsupported gondola_style: {config.gondola_style}")
-    if config.support_style not in {"a_frame", "truss_tower"}:
+    if config.support_style not in {"a_frame", "truss_tower", "inclined_legs"}:
         raise ValueError(f"Unsupported support_style: {config.support_style}")
-    if config.rim_style not in {"double_torus", "single_torus"}:
+    if config.rim_style not in {"double_torus", "single_torus", "twin_rings"}:
         raise ValueError(f"Unsupported rim_style: {config.rim_style}")
+    if config.scale_mode not in {"compact", "normal", "landmark"}:
+        raise ValueError(f"Unsupported scale_mode: {config.scale_mode}")
+    if config.base_style not in {"platform"}:
+        raise ValueError(f"Unsupported base_style: {config.base_style}")
+    if config.hanger_style not in {"pivot_bar", "yoke_fork", "between_rims"}:
+        raise ValueError(f"Unsupported hanger_style: {config.hanger_style}")
+    if config.gondola_motion_mode not in {"free_swing", "counter_rotate_mimic"}:
+        raise ValueError(f"Unsupported gondola_motion_mode: {config.gondola_motion_mode}")
+    if not isinstance(config.railing_enabled, bool):
+        raise ValueError("railing_enabled must be a bool")
+    if config.hanger_style == "between_rims" and config.rim_style != "twin_rings":
+        raise ValueError("between_rims hanger_style requires rim_style='twin_rings'")
 
     profile = gondola_collision_profile(config.gondola_style)
     min_spacing = max(profile.width_y + 0.018, profile.lowest_point_below_pivot + 0.050)
     required_radius = min_spacing / (2.0 * math.sin(math.pi / config.num_gondolas))
-    rim_radius = (
-        max(DEFAULT_RIM_RADIUS, required_radius)
-        if config.rim_radius is None
-        else max(config.rim_radius, required_radius)
-    )
+    if config.rim_radius is None:
+        rim_radius = max(SCALE_MODE_BASE_RIM_RADIUS[config.scale_mode], required_radius)
+    else:
+        rim_radius = max(config.rim_radius, required_radius)
     inner_rim_radius = (
         rim_radius * 0.74
         if config.inner_rim_radius is None
@@ -154,6 +228,11 @@ def resolve_config(config: FerrisWheelConfig) -> ResolvedFerrisWheelConfig:
         gondola_style=config.gondola_style,
         support_style=config.support_style,
         rim_style=config.rim_style,
+        scale_mode=config.scale_mode,
+        base_style=config.base_style,
+        hanger_style=config.hanger_style,
+        gondola_motion_mode=config.gondola_motion_mode,
+        railing_enabled=config.railing_enabled,
         rim_radius=rim_radius,
         inner_rim_radius=inner_rim_radius,
         wheel_half_width=config.wheel_half_width,
@@ -209,7 +288,9 @@ def _wheel_point(radius: float, angle: float, x: float = 0.0) -> tuple[float, fl
     return (x, radius * math.cos(angle), radius * math.sin(angle))
 
 
-def _add_platform_railings(base, *, material, scale: float) -> None:
+def _add_platform_railings(base, *, material, scale: float, enabled: bool) -> None:
+    if not enabled:
+        return
     post_positions: list[tuple[float, float]] = []
     for x in (-0.42, -0.24, 0.0, 0.24, 0.42):
         post_positions.append((x * scale, -0.34 * scale))
@@ -242,7 +323,7 @@ def _add_platform_railings(base, *, material, scale: float) -> None:
             )
 
 
-def _add_platform_base(support, *, material, scale: float) -> None:
+def _add_platform_base(support, *, material, scale: float, railing_enabled: bool) -> None:
     support.visual(
         Box((1.18 * scale, 0.82 * scale, 0.085)),
         origin=Origin(xyz=(0.0, 0.0, 0.0425 * scale)),
@@ -261,7 +342,21 @@ def _add_platform_base(support, *, material, scale: float) -> None:
         material=material,
         name="rear_curbstone",
     )
-    _add_platform_railings(support, material=material, scale=scale)
+    _add_platform_railings(support, material=material, scale=scale, enabled=railing_enabled)
+
+
+def _add_support_base(
+    support,
+    resolved: ResolvedFerrisWheelConfig,
+    *,
+    material,
+) -> None:
+    _add_platform_base(
+        support,
+        material=material,
+        scale=resolved.support_scale,
+        railing_enabled=resolved.railing_enabled,
+    )
 
 
 def _build_support_a_frame(
@@ -440,9 +535,99 @@ def _build_support_truss_tower(
     return (0.0, 0.0, resolved.axle_z), bearing_x
 
 
+def _build_support_inclined_legs(
+    support,
+    resolved: ResolvedFerrisWheelConfig,
+    *,
+    white,
+    dark,
+) -> tuple[tuple[float, float, float], float]:
+    scale = resolved.support_scale
+    bearing_x = 0.155 * scale
+    platform_top_z = 0.085
+    foot_y = 0.335 * scale
+    axle = (0.0, 0.0, resolved.axle_z)
+    shoulder_z = resolved.axle_z * 0.76
+
+    for x, side in ((-bearing_x, "left"), (bearing_x, "right")):
+        support.visual(
+            Box((0.038 * scale, 0.060 * scale, resolved.axle_z + 0.040 * scale)),
+            origin=Origin(xyz=(x, 0.0, resolved.axle_z / 2.0 + 0.020 * scale)),
+            material=white,
+            name=f"{side}_hidden_core",
+        )
+        support.visual(
+            Box((0.060 * scale, 0.070 * scale, 0.030 * scale)),
+            origin=Origin(xyz=(x, 0.0, resolved.axle_z - 0.055 * scale)),
+            material=white,
+            name=f"{side}_bearing_web",
+        )
+        front_foot = (x, foot_y, platform_top_z)
+        rear_foot = (x, -foot_y, platform_top_z)
+        top = (x, 0.0, resolved.axle_z)
+        shoulder_front = (x, foot_y * 0.36, shoulder_z)
+        shoulder_rear = (x, -foot_y * 0.36, shoulder_z)
+        _member(
+            support,
+            front_foot,
+            top,
+            radius=0.018 * scale,
+            material=white,
+            name=f"{side}_front_inclined_leg",
+        )
+        _member(
+            support,
+            rear_foot,
+            top,
+            radius=0.018 * scale,
+            material=white,
+            name=f"{side}_rear_inclined_leg",
+        )
+        _member(
+            support,
+            front_foot,
+            shoulder_rear,
+            radius=0.010 * scale,
+            material=white,
+            name=f"{side}_cross_diagonal_a",
+        )
+        _member(
+            support,
+            rear_foot,
+            shoulder_front,
+            radius=0.010 * scale,
+            material=white,
+            name=f"{side}_cross_diagonal_b",
+        )
+        _member(
+            support,
+            shoulder_front,
+            shoulder_rear,
+            radius=0.011 * scale,
+            material=white,
+            name=f"{side}_shoulder_spreader",
+        )
+        support.visual(
+            Box((0.082 * scale, 0.110 * scale, 0.092 * scale)),
+            origin=Origin(xyz=(x, 0.0, resolved.axle_z)),
+            material=dark,
+            name=f"{side}_bearing_block",
+        )
+    _member(
+        support,
+        (-bearing_x, 0.0, resolved.axle_z),
+        (bearing_x, 0.0, resolved.axle_z),
+        radius=0.020 * scale,
+        material=dark,
+        name="fixed_axle",
+    )
+    return axle, bearing_x
+
+
 SUPPORT_STYLE_BUILDERS = {
     "a_frame": _build_support_a_frame,
     "truss_tower": _build_support_truss_tower,
+    "inclined_legs": _build_support_inclined_legs,
 }
 
 
@@ -694,11 +879,232 @@ def add_gondola_glass_capsule(gondola, *, body_mat, trim_mat, glass_mat, index: 
         )
 
 
+def add_gondola_bucket_seat(gondola, *, body_mat, trim_mat, glass_mat, index: int) -> None:
+    """Open bucket seat adapted from high-quality fairground wheel samples."""
+    gondola.visual(
+        Cylinder(radius=0.010, length=0.145),
+        origin=Origin(rpy=(0.0, math.pi / 2.0, 0.0)),
+        material=trim_mat,
+        name="hanger_pin",
+    )
+    for x, label in ((-0.056, "rear"), (0.056, "front")):
+        gondola.visual(
+            Box((0.010, 0.012, 0.178)),
+            origin=Origin(xyz=(x, 0.0, -0.088)),
+            material=trim_mat,
+            name=f"hanger_{label}",
+        )
+    gondola.visual(
+        Box((0.156, 0.146, 0.024)),
+        origin=Origin(xyz=(0.0, 0.0, -0.250)),
+        material=body_mat,
+        name="bucket_floor",
+    )
+    gondola.visual(
+        Box((0.042, 0.140, 0.088)),
+        origin=Origin(xyz=(-0.074, 0.0, -0.206)),
+        material=body_mat,
+        name="bucket_back",
+    )
+    gondola.visual(
+        Box((0.038, 0.140, 0.070)),
+        origin=Origin(xyz=(0.074, 0.0, -0.214)),
+        material=body_mat,
+        name="bucket_front_lip",
+    )
+    for y, label in ((-0.068, "rear"), (0.068, "front")):
+        gondola.visual(
+            Box((0.136, 0.010, 0.062)),
+            origin=Origin(xyz=(0.0, y, -0.212)),
+            material=trim_mat,
+            name=f"{label}_bucket_side",
+        )
+    gondola.visual(
+        Box((0.122, 0.010, 0.014)),
+        origin=Origin(xyz=(0.0, 0.0, -0.168)),
+        material=trim_mat,
+        name="safety_bar",
+    )
+    for x, side in ((-0.030, "left"), (0.030, "right")):
+        gondola.visual(
+            Box((0.008, 0.012, 0.044)),
+            origin=Origin(xyz=(x, 0.0, -0.188)),
+            material=trim_mat,
+            name=f"{side}_safety_bar_stanchion",
+        )
+
+
+def add_gondola_rounded_pod(gondola, *, body_mat, trim_mat, glass_mat, index: int) -> None:
+    """Rounded pod inspired by robust capsule/pod wheel records."""
+    gondola.visual(
+        Cylinder(radius=0.010, length=0.145),
+        origin=Origin(rpy=(0.0, math.pi / 2.0, 0.0)),
+        material=trim_mat,
+        name="hanger_pin",
+    )
+    for x, label in ((-0.052, "rear"), (0.052, "front")):
+        gondola.visual(
+            Box((0.010, 0.012, 0.142)),
+            origin=Origin(xyz=(x, 0.0, -0.071)),
+            material=trim_mat,
+            name=f"hanger_{label}",
+        )
+    gondola.visual(
+        Cylinder(radius=0.060, length=0.114),
+        origin=Origin(xyz=(0.0, 0.0, -0.165), rpy=(0.0, math.pi / 2.0, 0.0)),
+        material=body_mat,
+        name="pod_shell",
+    )
+    gondola.visual(
+        Cylinder(radius=0.060, length=0.008),
+        origin=Origin(xyz=(-0.061, 0.0, -0.165), rpy=(0.0, math.pi / 2.0, 0.0)),
+        material=trim_mat,
+        name="rear_pod_endcap",
+    )
+    gondola.visual(
+        Cylinder(radius=0.060, length=0.008),
+        origin=Origin(xyz=(0.061, 0.0, -0.165), rpy=(0.0, math.pi / 2.0, 0.0)),
+        material=trim_mat,
+        name="front_pod_endcap",
+    )
+    gondola.visual(
+        Box((0.130, 0.116, 0.020)),
+        origin=Origin(xyz=(0.0, 0.0, -0.230)),
+        material=trim_mat,
+        name="pod_floor_ring",
+    )
+    for y, label in ((0.056, "front"), (-0.056, "rear")):
+        gondola.visual(
+            Box((0.120, 0.006, 0.060)),
+            origin=Origin(xyz=(0.0, y, -0.168)),
+            material=glass_mat,
+            name=f"{label}_pod_glass",
+        )
+    gondola.visual(
+        Box((0.084, 0.020, 0.018)),
+        origin=Origin(xyz=(0.0, 0.0, -0.206)),
+        material=body_mat,
+        name="pod_bench",
+    )
+
+
 GONDOLA_STYLE_BUILDERS = {
     "box_cabin": add_gondola_box_cabin,
     "open_basket": add_gondola_open_basket,
     "glass_capsule": add_gondola_glass_capsule,
+    "bucket_seat": add_gondola_bucket_seat,
+    "rounded_pod": add_gondola_rounded_pod,
 }
+
+
+def _add_twin_ring_rim(wheel, resolved: ResolvedFerrisWheelConfig, *, white) -> None:
+    segs = max(20, resolved.spoke_count)
+    inner_radius = max(resolved.rim_radius * 0.86, resolved.rim_radius - 0.12)
+    for i in range(segs):
+        a0 = 2.0 * math.pi * i / segs
+        a1 = 2.0 * math.pi * ((i + 1) % segs) / segs
+        for x, side in ((-resolved.wheel_half_width, "left"), (resolved.wheel_half_width, "right")):
+            _member(
+                wheel,
+                _wheel_point(resolved.rim_radius, a0, x),
+                _wheel_point(resolved.rim_radius, a1, x),
+                radius=0.012,
+                material=white,
+                name=f"{side}_outer_rim_segment_{i}",
+            )
+            _member(
+                wheel,
+                _wheel_point(inner_radius, a0, x),
+                _wheel_point(inner_radius, a1, x),
+                radius=0.0085,
+                material=white,
+                name=f"{side}_inner_rim_segment_{i}",
+            )
+    for i in range(resolved.num_gondolas):
+        angle = (2.0 * math.pi * i) / resolved.num_gondolas
+        p0 = _wheel_point(resolved.rim_radius, angle, -resolved.wheel_half_width)
+        p1 = _wheel_point(resolved.rim_radius, angle, resolved.wheel_half_width)
+        _member(
+            wheel,
+            p0,
+            p1,
+            radius=0.0075,
+            material=white,
+            name=f"rim_bridge_{i}",
+        )
+
+
+def _gondola_pivot_radius(resolved: ResolvedFerrisWheelConfig) -> float:
+    if resolved.hanger_style == "between_rims":
+        return max(resolved.rim_radius * 0.86, resolved.rim_radius - 0.12)
+    if resolved.hanger_style == "yoke_fork":
+        return resolved.rim_radius - 0.018
+    return resolved.rim_radius
+
+
+def _add_gondola_mounting(
+    wheel,
+    resolved: ResolvedFerrisWheelConfig,
+    *,
+    angle: float,
+    index: int,
+    white,
+    dark,
+) -> tuple[float, float, float]:
+    pivot_radius = _gondola_pivot_radius(resolved)
+    p0 = _wheel_point(pivot_radius, angle, -resolved.wheel_half_width)
+    p1 = _wheel_point(pivot_radius, angle, resolved.wheel_half_width)
+    anchor_name = f"gondola_pivot_bar_{index}"
+
+    if resolved.hanger_style == "pivot_bar":
+        _member(wheel, p0, p1, radius=0.008, material=white, name=anchor_name)
+    elif resolved.hanger_style == "yoke_fork":
+        _member(wheel, p0, p1, radius=0.0072, material=white, name=anchor_name)
+        for point, side in ((p0, "rear"), (p1, "front")):
+            wheel.visual(
+                Box((0.028, 0.014, 0.060)),
+                origin=Origin(
+                    xyz=(point[0], point[1] * 0.996, point[2] * 0.996),
+                    rpy=(0.0, 0.0, math.atan2(point[2], point[1])),
+                ),
+                material=dark,
+                name=f"{side}_fork_cheek_{index}",
+            )
+    else:
+        outer0 = _wheel_point(resolved.rim_radius, angle, -resolved.wheel_half_width)
+        outer1 = _wheel_point(resolved.rim_radius, angle, resolved.wheel_half_width)
+        _member(wheel, p0, p1, radius=0.0070, material=white, name=anchor_name)
+        _member(wheel, outer0, p0, radius=0.0060, material=white, name=f"rear_hanger_strut_{index}")
+        _member(
+            wheel,
+            outer1,
+            p1,
+            radius=0.0060,
+            material=white,
+            name=f"front_hanger_strut_{index}",
+        )
+        _member(
+            wheel,
+            outer0,
+            outer1,
+            radius=0.0058,
+            material=white,
+            name=f"rim_hanger_bridge_{index}",
+        )
+
+    wheel.visual(
+        Cylinder(radius=0.020, length=0.018),
+        origin=Origin(xyz=p0, rpy=(0.0, math.pi / 2.0, 0.0)),
+        material=dark,
+        name=f"rear_hanger_boss_{index}",
+    )
+    wheel.visual(
+        Cylinder(radius=0.020, length=0.018),
+        origin=Origin(xyz=p1, rpy=(0.0, math.pi / 2.0, 0.0)),
+        material=dark,
+        name=f"front_hanger_boss_{index}",
+    )
+    return _wheel_point(pivot_radius, angle, 0.0)
 
 
 def build_ferris_wheel(
@@ -717,14 +1123,19 @@ def build_ferris_wheel(
     trim_mat = model.material("cabin_white_trim", rgba=(0.96, 0.96, 0.92, 1.0))
     glass = model.material("smoky_window_glass", rgba=(0.55, 0.68, 0.72, 0.40))
 
-    rim_mesh = _mesh(
-        assets,
-        "large_outer_rim.obj",
-        TorusGeometry(
-            radius=resolved.rim_radius, tube=0.018, radial_segments=18, tubular_segments=144
-        ).rotate_y(math.pi / 2.0),
-    )
+    rim_mesh = None
     inner_rim_mesh = None
+    if resolved.rim_style in {"single_torus", "double_torus"}:
+        rim_mesh = _mesh(
+            assets,
+            "large_outer_rim.obj",
+            TorusGeometry(
+                radius=resolved.rim_radius,
+                tube=0.018,
+                radial_segments=18,
+                tubular_segments=144,
+            ).rotate_y(math.pi / 2.0),
+        )
     if resolved.rim_style == "double_torus":
         inner_rim_mesh = _mesh(
             assets,
@@ -738,7 +1149,11 @@ def build_ferris_wheel(
         )
 
     support = model.part("support_frame")
-    _add_platform_base(support, material=platform_mat, scale=resolved.support_scale)
+    _add_support_base(
+        support,
+        resolved,
+        material=platform_mat,
+    )
     support_builder = SUPPORT_STYLE_BUILDERS[resolved.support_style]
     axle, _bearing_x = support_builder(support, resolved, white=white, dark=dark)
 
@@ -748,17 +1163,26 @@ def build_ferris_wheel(
     hub_cap_length = 0.026 * (resolved.wheel_half_width / DEFAULT_WHEEL_HALF_WIDTH)
 
     wheel = model.part("wheel")
-    for x, label in ((-resolved.wheel_half_width, "left"), (resolved.wheel_half_width, "right")):
-        wheel.visual(
-            rim_mesh, origin=Origin(xyz=(x, 0.0, 0.0)), material=white, name=f"{label}_outer_rim"
-        )
-        if resolved.rim_style == "double_torus":
+    if resolved.rim_style == "twin_rings":
+        _add_twin_ring_rim(wheel, resolved, white=white)
+    else:
+        for x, label in (
+            (-resolved.wheel_half_width, "left"),
+            (resolved.wheel_half_width, "right"),
+        ):
             wheel.visual(
-                inner_rim_mesh,
+                rim_mesh,
                 origin=Origin(xyz=(x, 0.0, 0.0)),
                 material=white,
-                name=f"{label}_inner_rim",
+                name=f"{label}_outer_rim",
             )
+            if resolved.rim_style == "double_torus":
+                wheel.visual(
+                    inner_rim_mesh,
+                    origin=Origin(xyz=(x, 0.0, 0.0)),
+                    material=white,
+                    name=f"{label}_inner_rim",
+                )
     wheel.visual(
         Cylinder(radius=central_hub_radius, length=hub_length),
         origin=Origin(rpy=(0.0, math.pi / 2.0, 0.0)),
@@ -789,22 +1213,16 @@ def build_ferris_wheel(
                 material=white,
                 name=f"{side}_spoke_{i}",
             )
+    gondola_pivots: dict[int, tuple[float, float, float]] = {}
     for i in range(resolved.num_gondolas):
         angle = (2.0 * math.pi * i) / resolved.num_gondolas - math.pi / 2.0
-        p0 = _wheel_point(resolved.rim_radius, angle, -resolved.wheel_half_width)
-        p1 = _wheel_point(resolved.rim_radius, angle, resolved.wheel_half_width)
-        _member(wheel, p0, p1, radius=0.008, material=white, name=f"gondola_pivot_bar_{i + 1}")
-        wheel.visual(
-            Cylinder(radius=0.020, length=0.018),
-            origin=Origin(xyz=p0, rpy=(0.0, math.pi / 2.0, 0.0)),
-            material=dark,
-            name=f"rear_hanger_boss_{i + 1}",
-        )
-        wheel.visual(
-            Cylinder(radius=0.020, length=0.018),
-            origin=Origin(xyz=p1, rpy=(0.0, math.pi / 2.0, 0.0)),
-            material=dark,
-            name=f"front_hanger_boss_{i + 1}",
+        gondola_pivots[i + 1] = _add_gondola_mounting(
+            wheel,
+            resolved,
+            angle=angle,
+            index=i + 1,
+            white=white,
+            dark=dark,
         )
 
     model.articulation(
@@ -819,10 +1237,9 @@ def build_ferris_wheel(
 
     gondola_builder = GONDOLA_STYLE_BUILDERS[resolved.gondola_style]
     for i in range(1, resolved.num_gondolas + 1):
-        angle = (2.0 * math.pi * (i - 1)) / resolved.num_gondolas - math.pi / 2.0
         gondola = model.part(f"gondola_{i}")
         gondola_builder(gondola, body_mat=cabin_mat, trim_mat=trim_mat, glass_mat=glass, index=i)
-        pivot = _wheel_point(resolved.rim_radius, angle, 0.0)
+        pivot = gondola_pivots[i]
         model.articulation(
             f"gondola_pivot_{i}",
             ArticulationType.REVOLUTE,
@@ -831,6 +1248,11 @@ def build_ferris_wheel(
             origin=Origin(xyz=pivot),
             axis=(1.0, 0.0, 0.0),
             motion_limits=MotionLimits(effort=24.0, velocity=1.0, lower=-3.14, upper=3.14),
+            mimic=(
+                Mimic(joint="wheel_rotation", multiplier=-1.0, offset=0.0)
+                if resolved.gondola_motion_mode == "counter_rotate_mimic"
+                else None
+            ),
         )
     return model
 
@@ -925,6 +1347,15 @@ def run_ferris_wheel_tests(
             and abs(joint.motion_limits.lower + 3.14) < 1e-6
             and abs(joint.motion_limits.upper - 3.14) < 1e-6,
         )
+        if resolved.gondola_motion_mode == "counter_rotate_mimic":
+            ctx.check(
+                f"gondola_{i}_mimic",
+                joint.mimic is not None
+                and joint.mimic.joint == "wheel_rotation"
+                and abs((joint.mimic.multiplier or 0.0) + 1.0) < 1e-6,
+            )
+        else:
+            ctx.check(f"gondola_{i}_no_mimic", joint.mimic is None)
 
     ctx.check(
         "wheel_rotation_range",
@@ -957,11 +1388,18 @@ def run_ferris_wheel_tests(
     )
     with ctx.pose({wheel_joint: 3.14}):
         ctx.check("wheel_can_rotate_half_turn", ctx.part_world_position(wheel) is not None)
-    with ctx.pose({"gondola_pivot_1": 1.2}):
-        ctx.check(
-            "gondola_1_can_swing",
-            ctx.part_world_position(object_model.get_part("gondola_1")) is not None,
-        )
+    if resolved.gondola_motion_mode == "free_swing":
+        with ctx.pose({"gondola_pivot_1": 1.2}):
+            ctx.check(
+                "gondola_1_can_swing",
+                ctx.part_world_position(object_model.get_part("gondola_1")) is not None,
+            )
+    else:
+        with ctx.pose({"wheel_rotation": math.pi / 2.0}):
+            ctx.check(
+                "gondola_1_can_counter_rotate",
+                ctx.part_world_position(object_model.get_part("gondola_1")) is not None,
+            )
     return ctx.report()
 
 
