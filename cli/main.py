@@ -19,6 +19,7 @@ from cli import env as env_cli
 from cli import external as external_cli
 from cli import hooks as hooks_cli
 from cli import pre_commit as pre_commit_cli
+from cli import template as template_cli
 from cli import workbench as workbench_cli
 from cli.common import provider_for_record_image, refresh_dataset_manifest_if_member
 from storage.repo import StorageRepo
@@ -61,6 +62,13 @@ def _external(args: argparse.Namespace) -> int:
     if not external_args:
         external_args = ["--help"]
     return external_cli.main(["--repo-root", str(args.repo_root), *external_args])
+
+
+def _template(args: argparse.Namespace) -> int:
+    template_args = list(args.template_args)
+    if not template_args:
+        template_args = ["--help"]
+    return template_cli.main(["--repo-root", str(args.repo_root), *template_args])
 
 
 def _run_init(args: argparse.Namespace) -> int:
@@ -708,6 +716,11 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_repo_root(external)
     external.add_argument("external_args", nargs=argparse.REMAINDER)
     external.set_defaults(func=_external)
+
+    template = subparsers.add_parser("template", help="Procedural template batch commands.")
+    _add_repo_root(template)
+    template.add_argument("template_args", nargs=argparse.REMAINDER)
+    template.set_defaults(func=_template)
 
     dataset = subparsers.add_parser("dataset", help="Dataset commands.")
     dataset_sub = dataset.add_subparsers(dest="dataset_command", required=True)
