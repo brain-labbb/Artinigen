@@ -21,12 +21,30 @@ DEFAULT_PROVIDER_BY_AGENT = {
     "claude-code": "anthropic",
 }
 
-FERRIS_WHEEL_MODEL_TEMPLATE = """from __future__ import annotations
+# Registry of procedural templates available for batch generation.
+# Maps the template slug (module name under agent/templates/) to the function stem used
+# inside that module: the template MUST export `build_<stem>`, `config_from_seed`, and
+# `run_<stem>_tests`.
+TEMPLATE_REGISTRY: dict[str, str] = {
+    "ferris_wheel": "ferris_wheel",
+    "sliding_window": "sliding_window",
+    "tackle_box_with_simple_hinged_lid": "tackle_box",
+    "telescoping_boom": "telescoping_boom",
+    "standing_desk_with_synchronous_telescoping_legs_and_articulated_controls": "standing_desk",
+    "platform_cart": "platform_cart",
+    "rolling_toolbox_with_telescoping_handle": "rolling_toolbox",
+    "refrigerator_with_hinged_doors": "refrigerator",
+    "revolving_door": "revolving_door",
+    "simple_aframe_step_ladder": "simple_aframe_step_ladder",
+    "stand_mixer": "stand_mixer",
+}
 
-from agent.templates.ferris_wheel import (
-    build_ferris_wheel,
+GENERIC_MODEL_TEMPLATE = """from __future__ import annotations
+
+from agent.templates.{slug} import (
+    build_{stem},
     config_from_seed,
-    run_ferris_wheel_tests,
+    run_{stem}_tests,
 )
 from sdk import AssetContext
 
@@ -36,11 +54,11 @@ ASSETS = AssetContext.from_script(__file__)
 
 
 def build_object_model():
-    return build_ferris_wheel(CONFIG, assets=ASSETS)
+    return build_{stem}(CONFIG, assets=ASSETS)
 
 
 def run_tests():
-    return run_ferris_wheel_tests(object_model, CONFIG)
+    return run_{stem}_tests(object_model, CONFIG)
 
 
 object_model = build_object_model()
@@ -67,14 +85,17 @@ def parse_seed_spec(spec: str) -> list[int]:
     return seeds
 
 
-def _write_ferris_wheel_model(model_path: Path, *, seed: int) -> None:
+def _write_template_model(model_path: Path, *, slug: str, stem: str, seed: int) -> None:
     model_path.parent.mkdir(parents=True, exist_ok=True)
-    model_path.write_text(FERRIS_WHEEL_MODEL_TEMPLATE.format(seed=seed), encoding="utf-8")
+    body = GENERIC_MODEL_TEMPLATE.format(slug=slug, stem=stem, seed=seed)
+    model_path.write_text(body, encoding="utf-8")
 
 
-def batch_ferris_wheel(
+def batch_template(
     repo_root: Path,
     *,
+    slug: str,
+    stem: str,
     seeds: list[int],
     agent: str,
     category_slug: str | None,
@@ -82,7 +103,7 @@ def batch_ferris_wheel(
 ) -> int:
     if dry_run:
         for seed in seeds:
-            prompt = f"seeded ferris wheel {seed}"
+            prompt = f"seeded {slug} {seed}"
             print(f"[seed={seed}] dry-run: would create record for prompt={prompt!r}")
         print(f"batch dry-run completed for {len(seeds)} seed(s)")
         return 0
@@ -93,7 +114,7 @@ def batch_ferris_wheel(
     failures: list[str] = []
 
     for seed in seeds:
-        prompt = f"seeded ferris wheel {seed}"
+        prompt = f"seeded {slug} {seed}"
         print(f"[seed={seed}] starting")
         try:
             record_dir = create_workbench_draft_record(
@@ -103,8 +124,8 @@ def batch_ferris_wheel(
                 model_id=None,
                 thinking_level=None,
                 sdk_package="sdk",
-                label=f"ferris_seed_{seed}",
-                tags=["template_batch", "ferris_wheel"],
+                label=f"{stem}_seed_{seed}",
+                tags=["template_batch", slug],
                 record_id=None,
                 external_agent=agent,
             )
@@ -113,10 +134,10 @@ def batch_ferris_wheel(
             continue
 
         record_id = record_dir.name
-        model_path = active_model_path(record_dir)
-        _write_ferris_wheel_model(model_path, seed=seed)
+        model_path = active_model_path(repo, record_id)
+        _write_template_model(model_path, slug=slug, stem=stem, seed=seed)
 
-        status = _compile_record(repo_root, record_dir, target="full", validate=True)
+        status = _compile_record(repo_root, record_dir, target="visual", validate=True)
         if status != 0:
             failures.append(f"seed={seed}: compile/check failed for {record_id}")
             continue
@@ -184,23 +205,25 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     batch_sub = batch.add_subparsers(dest="template_name", required=True)
 
-    ferris = batch_sub.add_parser("ferris_wheel", help="Batch-generate seeded ferris wheels.")
-    ferris.add_argument(
-        "--seeds",
-        required=True,
-        help="Seed list/ranges, e.g. '1-20' or '1,3,5-8'.",
-    )
-    ferris.add_argument("--agent", default="codex", choices=ALLOWED_EXTERNAL_AGENTS)
-    ferris.add_argument(
-        "--category-slug",
-        default=None,
-        help="Optional dataset category slug. When set, records are finalized and promoted.",
-    )
-    ferris.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the planned batch without creating records.",
-    )
+    for slug in TEMPLATE_REGISTRY:
+        sp = batch_sub.add_parser(slug, help=f"Batch-generate seeded {slug} records.")
+        sp.add_argument(
+            "--seeds",
+            required=True,
+            help="Seed list/ranges, e.g. '1-20' or '1,3,5-8'.",
+        )
+        sp.add_argument("--agent", default="codex", choices=ALLOWED_EXTERNAL_AGENTS)
+        sp.add_argument(
+            "--category-slug",
+            default=None,
+            help="Optional dataset category slug. When set, records are finalized and promoted.",
+        )
+        sp.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Print the planned batch without creating records.",
+        )
+
     return parser
 
 
@@ -208,7 +231,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    if args.command != "batch" or args.template_name != "ferris_wheel":
+    if args.command != "batch" or args.template_name not in TEMPLATE_REGISTRY:
         parser.error("Unsupported template command")
 
     try:
@@ -220,8 +243,10 @@ def main(argv: list[str] | None = None) -> int:
     if not args.dry_run:
         warn_if_post_commit_hook_missing(args.repo_root)
 
-    return batch_ferris_wheel(
+    return batch_template(
         args.repo_root,
+        slug=args.template_name,
+        stem=TEMPLATE_REGISTRY[args.template_name],
         seeds=seeds,
         agent=args.agent,
         category_slug=str(args.category_slug or "").strip() or None,
