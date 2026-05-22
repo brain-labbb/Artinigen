@@ -1,0 +1,56 @@
+{
+  "schema_version": 3,
+  "record_id": "rec_seeded-tackle-box-with-simple-hinged-lid-1_20260522_100510_258052_d43691c7",
+  "created_at": "2026-05-22T10:05:10Z",
+  "updated_at": "2026-05-22T10:05:14Z",
+  "rating": null,
+  "secondary_rating": null,
+  "author": "brian",
+  "rated_by": "brian",
+  "secondary_rated_by": null,
+  "kind": "external_model",
+  "prompt_kind": "single_prompt",
+  "category_slug": "tackle_box_with_simple_hinged_lid",
+  "source": {
+    "run_id": null,
+    "prompt_batch_id": null,
+    "batch_spec_id": null,
+    "row_id": null,
+    "prompt_index": null
+  },
+  "sdk_package": "sdk",
+  "provider": "openai",
+  "model_id": null,
+  "display": {
+    "title": "tackle_box_seed_1",
+    "prompt_preview": "seeded tackle_box_with_simple_hinged_lid 1"
+  },
+  "artifacts": {
+    "prompt_txt": "revisions/rev_000001/prompt.txt",
+    "prompt_series_json": null,
+    "model_py": "revisions/rev_000001/model.py",
+    "provenance_json": "revisions/rev_000001/provenance.json",
+    "cost_json": null,
+    "inputs_dir": "revisions/rev_000001/inputs",
+    "traces_dir": null
+  },
+  "hashes": {
+    "prompt_sha256": "15a99df3f96ea97b8c30e123cecfb866e6ee3ac53989ce03a5ce1da95a81af12",
+    "model_py_sha256": "5b815505ff4baf8c7cf2a0b9ece52b318e2ba27aa821b2ba47ffb7cae6861722"
+  },
+  "collections": [
+    "dataset"
+  ],
+  "active_revision_id": "rev_000001",
+  "lineage": {
+    "origin_record_id": "rec_seeded-tackle-box-with-simple-hinged-lid-1_20260522_100510_258052_d43691c7",
+    "parent_record_id": null,
+    "parent_revision_id": null,
+    "edit_mode": "root"
+  },
+  "creator": {
+    "mode": "external_agent",
+    "agent": "codex",
+    "trace_available": false
+  }
+}
