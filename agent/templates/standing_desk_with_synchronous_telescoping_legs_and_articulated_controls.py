@@ -19,17 +19,17 @@ Implementation notes
   a ``desktop.visual(...)`` and creates **no** crossbar part/joint.  The
   other styles attach a ``crossbar`` part FIXED to the primary leg's
   innermost stage so it tracks the desktop.
-* Buttons are prismatic, parented on ``control_panel`` (which is FIXED to
-  the desktop).  Axis direction follows the panel mounting orientation so
-  positive ``q`` always presses the button into the panel.
+* The control panel is FIXED to the desktop.  Buttons are drawn as decorative
+  visuals on the panel (no separate parts, no button articulations) — this
+  matches the 5-star ground-truth distribution where most records have no
+  articulated buttons.
 * All decorative sub-parts (foot pads, cable management, screen badges,
-  apron crossbar) are attached via ``parent.visual(...)``, never separate
-  parts and never separate FIXED articulations.
+  apron crossbar, button markings) are attached via ``parent.visual(...)``,
+  never separate parts and never separate FIXED articulations.
 """
 
 from __future__ import annotations
 
-import math
 import random
 import tempfile
 from dataclasses import dataclass, replace
@@ -53,13 +53,33 @@ from sdk import (
 # Discrete parameter literals
 # ---------------------------------------------------------------------------
 
-DesktopShape = Literal["rectangle", "rounded", "L_shape"]
+DesktopShape = Literal[
+    "rectangle",
+    "rounded",
+    "rounded_corner_rect",
+]
+DesktopEdgeTreatment = Literal[
+    "plain",
+    "edge_banded",
+    "front_lip",
+    "beveled_front",
+    "stepped_riser",
+]
 DesktopSize = Literal["small", "medium", "large"]
 LegCrossSection = Literal["rectangular", "round", "oval"]
 CrossbarStyle = Literal["front", "rear", "double", "integrated_into_desktop_apron"]
 FootStyle = Literal["T_foot", "rectangular", "wide"]
 ControlPanelPosition = Literal["left", "right", "center", "front_underside"]
-MaterialStyle = Literal["wood_metal", "black", "white"]
+MaterialStyle = Literal[
+    "warm_oak_black",
+    "walnut_graphite",
+    "pale_birch_white",
+    "matte_black",
+    "satin_white",
+    "industrial_steel",
+    "charcoal_aluminum",
+    "warm_oak_steel",
+]
 
 # ---------------------------------------------------------------------------
 # Spine ranges (per bucket).  Continuous values are sampled from these.
@@ -95,34 +115,89 @@ SINGLE_STAGE_TRAVEL_RANGE = (0.22, 0.34)
 # Base / foot constants (the "feet" are visuals on the base part).
 BASE_PLATE_THICKNESS = 0.022
 
-# Materials (outer_leg, inner_leg, accent, desktop_top, button, panel).
+# Materials.  Each palette is a coherent finish picked to match a real
+# office-desk colourway found in the 5-star ground-truth set.  Keys:
+#   outer_leg   — visible outer column tubes
+#   inner_leg   — the inner telescoping stage tubes (slightly lighter)
+#   accent      — dark trim: aprons, mount plates, button/keypad caps' base
+#   desktop_top — the work-surface board
+#   panel       — control-panel housing
+#   button      — keypad markings on the panel face
 MATERIAL_PALETTES: dict[
     MaterialStyle,
     dict[str, tuple[float, float, float, float]],
 ] = {
-    "wood_metal": {
-        "outer_leg": (0.30, 0.32, 0.34, 1.0),
-        "inner_leg": (0.60, 0.62, 0.64, 1.0),
-        "accent": (0.18, 0.19, 0.21, 1.0),
-        "desktop_top": (0.63, 0.49, 0.30, 1.0),
-        "panel": (0.18, 0.18, 0.20, 1.0),
+    # Warm oak top, satin-black powder-coated frame (most common in samples).
+    "warm_oak_black": {
+        "outer_leg": (0.12, 0.13, 0.14, 1.0),
+        "inner_leg": (0.42, 0.43, 0.45, 1.0),
+        "accent": (0.07, 0.08, 0.09, 1.0),
+        "desktop_top": (0.66, 0.49, 0.30, 1.0),
+        "panel": (0.10, 0.10, 0.11, 1.0),
         "button": (0.78, 0.79, 0.80, 1.0),
     },
-    "black": {
-        "outer_leg": (0.10, 0.10, 0.11, 1.0),
-        "inner_leg": (0.18, 0.18, 0.20, 1.0),
-        "accent": (0.07, 0.07, 0.08, 1.0),
-        "desktop_top": (0.13, 0.13, 0.14, 1.0),
-        "panel": (0.06, 0.06, 0.07, 1.0),
-        "button": (0.56, 0.57, 0.60, 1.0),
+    # Walnut-stained wood top, graphite-grey frame.
+    "walnut_graphite": {
+        "outer_leg": (0.26, 0.27, 0.29, 1.0),
+        "inner_leg": (0.55, 0.56, 0.58, 1.0),
+        "accent": (0.18, 0.19, 0.21, 1.0),
+        "desktop_top": (0.36, 0.22, 0.13, 1.0),
+        "panel": (0.16, 0.17, 0.19, 1.0),
+        "button": (0.70, 0.72, 0.74, 1.0),
     },
-    "white": {
-        "outer_leg": (0.94, 0.94, 0.93, 1.0),
-        "inner_leg": (0.86, 0.86, 0.85, 1.0),
-        "accent": (0.70, 0.70, 0.72, 1.0),
-        "desktop_top": (0.97, 0.95, 0.92, 1.0),
-        "panel": (0.84, 0.84, 0.86, 1.0),
-        "button": (0.34, 0.34, 0.36, 1.0),
+    # Pale birch / Scandinavian: light wood top, almost-white frame.
+    "pale_birch_white": {
+        "outer_leg": (0.93, 0.93, 0.92, 1.0),
+        "inner_leg": (0.85, 0.85, 0.84, 1.0),
+        "accent": (0.65, 0.66, 0.67, 1.0),
+        "desktop_top": (0.87, 0.78, 0.62, 1.0),
+        "panel": (0.82, 0.83, 0.85, 1.0),
+        "button": (0.32, 0.32, 0.34, 1.0),
+    },
+    # All-matte-black office desk.
+    "matte_black": {
+        "outer_leg": (0.06, 0.06, 0.07, 1.0),
+        "inner_leg": (0.15, 0.15, 0.17, 1.0),
+        "accent": (0.04, 0.04, 0.05, 1.0),
+        "desktop_top": (0.10, 0.10, 0.11, 1.0),
+        "panel": (0.05, 0.05, 0.06, 1.0),
+        "button": (0.50, 0.52, 0.55, 1.0),
+    },
+    # All-satin-white minimalist.
+    "satin_white": {
+        "outer_leg": (0.96, 0.96, 0.95, 1.0),
+        "inner_leg": (0.92, 0.92, 0.91, 1.0),
+        "accent": (0.76, 0.76, 0.78, 1.0),
+        "desktop_top": (0.97, 0.96, 0.94, 1.0),
+        "panel": (0.88, 0.88, 0.90, 1.0),
+        "button": (0.40, 0.40, 0.42, 1.0),
+    },
+    # Industrial steel: brushed-stainless tube, dark grey desk top.
+    "industrial_steel": {
+        "outer_leg": (0.62, 0.64, 0.66, 1.0),
+        "inner_leg": (0.78, 0.79, 0.80, 1.0),
+        "accent": (0.30, 0.31, 0.33, 1.0),
+        "desktop_top": (0.32, 0.33, 0.34, 1.0),
+        "panel": (0.22, 0.22, 0.24, 1.0),
+        "button": (0.82, 0.83, 0.84, 1.0),
+    },
+    # Charcoal + brushed aluminum: dark top, lighter metallic columns.
+    "charcoal_aluminum": {
+        "outer_leg": (0.70, 0.71, 0.72, 1.0),
+        "inner_leg": (0.84, 0.84, 0.85, 1.0),
+        "accent": (0.22, 0.22, 0.24, 1.0),
+        "desktop_top": (0.22, 0.23, 0.25, 1.0),
+        "panel": (0.16, 0.16, 0.18, 1.0),
+        "button": (0.88, 0.89, 0.90, 1.0),
+    },
+    # Warm oak top with industrial steel base (mixed-material premium feel).
+    "warm_oak_steel": {
+        "outer_leg": (0.55, 0.57, 0.59, 1.0),
+        "inner_leg": (0.74, 0.75, 0.76, 1.0),
+        "accent": (0.28, 0.29, 0.31, 1.0),
+        "desktop_top": (0.70, 0.55, 0.36, 1.0),
+        "panel": (0.20, 0.20, 0.22, 1.0),
+        "button": (0.80, 0.81, 0.83, 1.0),
     },
 }
 
@@ -137,13 +212,13 @@ class StandingDeskConfig:
     leg_count: int = 2
     stage_count_per_leg: int = 2
     desktop_shape: DesktopShape = "rectangle"
+    desktop_edge_treatment: DesktopEdgeTreatment = "plain"
     desktop_size: DesktopSize = "medium"
     leg_cross_section: LegCrossSection = "rectangular"
     crossbar_style: CrossbarStyle = "front"
     foot_style: FootStyle = "T_foot"
     control_panel_position: ControlPanelPosition = "right"
-    button_count: int = 4
-    material_style: MaterialStyle = "wood_metal"
+    material_style: MaterialStyle = "warm_oak_black"
 
     # Spine values - if None they are filled in resolve_config from bucket defaults.
     desktop_length: float | None = None
@@ -161,12 +236,12 @@ class ResolvedStandingDeskConfig:
     leg_count: int
     stage_count_per_leg: int
     desktop_shape: DesktopShape
+    desktop_edge_treatment: DesktopEdgeTreatment
     desktop_size: DesktopSize
     leg_cross_section: LegCrossSection
     crossbar_style: CrossbarStyle
     foot_style: FootStyle
     control_panel_position: ControlPanelPosition
-    button_count: int
     material_style: MaterialStyle
     # Derived geometry.
     desktop_length: float
@@ -190,10 +265,22 @@ class ResolvedStandingDeskConfig:
 
 def config_from_seed(seed: int) -> StandingDeskConfig:
     rng = random.Random(seed)
-    leg_count = rng.choices((2, 3), weights=(0.65, 0.35), k=1)[0]
     stage_count_per_leg = rng.choices((2, 3), weights=(0.60, 0.40), k=1)[0]
     desktop_shape: DesktopShape = rng.choices(
-        ("rectangle", "rounded", "L_shape"), weights=(0.55, 0.30, 0.15), k=1
+        ("rectangle", "rounded", "rounded_corner_rect"),
+        weights=(0.50, 0.25, 0.25),
+        k=1,
+    )[0]
+    # Three leg layouts are supported:
+    #   1-leg — single central pedestal under the desktop centre (cafe-style)
+    #   2-leg — twin columns near the desk ends (standard sit/stand)
+    #   3-leg — twin end columns + a central support (bench desks)
+    # Weights: 25 / 50 / 25 per the user spec.
+    leg_count = rng.choices((1, 2, 3), weights=(0.25, 0.50, 0.25), k=1)[0]
+    desktop_edge_treatment: DesktopEdgeTreatment = rng.choices(
+        ("plain", "edge_banded", "front_lip", "beveled_front", "stepped_riser"),
+        weights=(0.35, 0.20, 0.15, 0.15, 0.15),
+        k=1,
     )[0]
     desktop_size: DesktopSize = rng.choices(
         ("small", "medium", "large"), weights=(0.30, 0.45, 0.25), k=1
@@ -214,9 +301,19 @@ def config_from_seed(seed: int) -> StandingDeskConfig:
         weights=(0.25, 0.30, 0.20, 0.25),
         k=1,
     )[0]
-    button_count = rng.choices((2, 4, 6), weights=(0.30, 0.45, 0.25), k=1)[0]
     material_style: MaterialStyle = rng.choices(
-        ("wood_metal", "black", "white"), weights=(0.45, 0.30, 0.25), k=1
+        (
+            "warm_oak_black",
+            "walnut_graphite",
+            "pale_birch_white",
+            "matte_black",
+            "satin_white",
+            "industrial_steel",
+            "charcoal_aluminum",
+            "warm_oak_steel",
+        ),
+        weights=(0.22, 0.14, 0.12, 0.12, 0.10, 0.08, 0.10, 0.12),
+        k=1,
     )[0]
 
     length_range, width_range = DESKTOP_SIZE_RANGES[desktop_size]
@@ -231,12 +328,12 @@ def config_from_seed(seed: int) -> StandingDeskConfig:
         leg_count=leg_count,
         stage_count_per_leg=stage_count_per_leg,
         desktop_shape=desktop_shape,
+        desktop_edge_treatment=desktop_edge_treatment,
         desktop_size=desktop_size,
         leg_cross_section=leg_cross_section,
         crossbar_style=crossbar_style,
         foot_style=foot_style,
         control_panel_position=control_panel_position,
-        button_count=button_count,
         material_style=material_style,
         desktop_length=desktop_length,
         desktop_width=desktop_width,
@@ -254,14 +351,26 @@ def config_from_seed(seed: int) -> StandingDeskConfig:
 
 
 def resolve_config(config: StandingDeskConfig) -> ResolvedStandingDeskConfig:
-    if config.leg_count not in {2, 3}:
-        raise ValueError(f"leg_count must be in {{2, 3}}, got {config.leg_count}")
+    if config.leg_count not in {1, 2, 3}:
+        raise ValueError(f"leg_count must be in {{1, 2, 3}}, got {config.leg_count}")
     if config.stage_count_per_leg not in {2, 3}:
         raise ValueError(
             f"stage_count_per_leg must be in {{2, 3}}, got {config.stage_count_per_leg}"
         )
-    if config.desktop_shape not in {"rectangle", "rounded", "L_shape"}:
+    if config.desktop_shape not in {
+        "rectangle",
+        "rounded",
+        "rounded_corner_rect",
+    }:
         raise ValueError(f"Unsupported desktop_shape: {config.desktop_shape}")
+    if config.desktop_edge_treatment not in {
+        "plain",
+        "edge_banded",
+        "front_lip",
+        "beveled_front",
+        "stepped_riser",
+    }:
+        raise ValueError(f"Unsupported desktop_edge_treatment: {config.desktop_edge_treatment}")
     if config.desktop_size not in DESKTOP_SIZE_RANGES:
         raise ValueError(f"Unsupported desktop_size: {config.desktop_size}")
     if config.leg_cross_section not in {"rectangular", "round", "oval"}:
@@ -277,8 +386,6 @@ def resolve_config(config: StandingDeskConfig) -> ResolvedStandingDeskConfig:
         raise ValueError(f"Unsupported foot_style: {config.foot_style}")
     if config.control_panel_position not in {"left", "right", "center", "front_underside"}:
         raise ValueError(f"Unsupported control_panel_position: {config.control_panel_position}")
-    if config.button_count not in {2, 4, 6}:
-        raise ValueError(f"button_count must be in {{2, 4, 6}}, got {config.button_count}")
     if config.material_style not in MATERIAL_PALETTES:
         raise ValueError(f"Unsupported material_style: {config.material_style}")
 
@@ -346,7 +453,11 @@ def resolve_config(config: StandingDeskConfig) -> ResolvedStandingDeskConfig:
     if half_span < 0.15:
         # Too small a desk; clamp.
         half_span = 0.15
-    if config.leg_count == 2:
+    if config.leg_count == 1:
+        # Single central pedestal — sits under the desktop centre.
+        leg_x_positions = (0.0,)
+        primary_leg_index = 0
+    elif config.leg_count == 2:
         leg_x_positions = (-half_span, half_span)
         primary_leg_index = 0
     else:
@@ -357,12 +468,12 @@ def resolve_config(config: StandingDeskConfig) -> ResolvedStandingDeskConfig:
         leg_count=config.leg_count,
         stage_count_per_leg=config.stage_count_per_leg,
         desktop_shape=config.desktop_shape,
+        desktop_edge_treatment=config.desktop_edge_treatment,
         desktop_size=config.desktop_size,
         leg_cross_section=config.leg_cross_section,
         crossbar_style=config.crossbar_style,
         foot_style=config.foot_style,
         control_panel_position=config.control_panel_position,
-        button_count=config.button_count,
         material_style=config.material_style,
         desktop_length=desktop_length,
         desktop_width=desktop_width,
@@ -422,16 +533,19 @@ def _build_leg_stage_visual(
             material=material,
             name=f"{prefix}_tube",
         )
-        # Small accent caps to read more like an oval cap.
+        # Small side-fillets that read as an oval profile.  Radius is sized to
+        # stay inside the box's Y half-extent so the fillets do not extend
+        # outside the leg envelope.
+        fillet_radius = min(dim_y * 0.45, dim_y * 0.5 - 0.002)
+        fillet_x_offset = max(0.0, dim_x * 0.5 - fillet_radius)
         for sx, label in ((-1, "left"), (1, "right")):
             part.visual(
-                Cylinder(radius=dim_y * 0.45, length=0.012),
+                Cylinder(radius=fillet_radius, length=length_z),
                 origin=Origin(
-                    xyz=(sx * dim_x * 0.45, 0.0, z_centre + length_z * 0.5 - 0.008),
-                    rpy=(math.pi / 2.0, 0.0, 0.0),
+                    xyz=(sx * fillet_x_offset, 0.0, z_centre),
                 ),
                 material=material,
-                name=f"{prefix}_oval_cap_{label}",
+                name=f"{prefix}_oval_fillet_{label}",
             )
 
 
@@ -493,6 +607,298 @@ def _add_foot_visual(
         )
 
 
+def _add_desktop_edge_treatment(
+    desktop,
+    resolved: ResolvedStandingDeskConfig,
+    *,
+    top_material,
+    accent_material,
+) -> None:
+    """Apply the decorative edge treatment on top of the base desktop shape.
+
+    All visuals are anchored at the desktop's local frame, where z=0 is the
+    underside and z=DESKTOP_THICKNESS is the top surface.  Treatments that
+    rise above the top surface stay shallow (≤ 0.04 m) so the desktop's Z
+    extent remains the smallest of (x, y, z) — preserving the "desktop is
+    level / flat" validator constraint.
+    """
+    L = resolved.desktop_length
+    W = resolved.desktop_width
+    top_thickness = DESKTOP_THICKNESS
+    treatment = resolved.desktop_edge_treatment
+
+    if treatment == "plain":
+        return
+
+    if treatment == "edge_banded":
+        # Contrasting wood/metal trim around the perimeter of the main board,
+        # sitting flush with the top.
+        if resolved.desktop_shape == "rounded":
+            band_L = L * 0.86
+        elif resolved.desktop_shape == "rounded_corner_rect":
+            band_L = L * 0.96
+        else:
+            band_L = L * 0.98
+        band_W = W * 0.98
+        band_thickness = 0.014
+        band_height = top_thickness + 0.004
+        band_z_centre = band_height * 0.5
+        # Front + rear strips, full length along X
+        for sy, name in ((-1.0, "front"), (1.0, "rear")):
+            desktop.visual(
+                Box((band_L, band_thickness, band_height)),
+                origin=Origin(
+                    xyz=(0.0, sy * (band_W * 0.5 - band_thickness * 0.5), band_z_centre),
+                ),
+                material=accent_material,
+                name=f"edge_band_{name}",
+            )
+        # Left + right strips, inset within front/rear strips
+        side_band_y = band_W - band_thickness * 2.0
+        if side_band_y > 0.05:
+            for sx, name in ((-1.0, "left"), (1.0, "right")):
+                desktop.visual(
+                    Box((band_thickness, side_band_y, band_height)),
+                    origin=Origin(
+                        xyz=(
+                            sx * (band_L * 0.5 - band_thickness * 0.5),
+                            0.0,
+                            band_z_centre,
+                        ),
+                    ),
+                    material=accent_material,
+                    name=f"edge_band_{name}",
+                )
+        return
+
+    if treatment == "front_lip":
+        # A raised reading rail along the front edge — sits proud above the
+        # top surface and uses the accent material so it reads as a metal
+        # strip.  Spans most of the front edge.
+        if resolved.desktop_shape == "rounded":
+            lip_L = L * 0.82
+        elif resolved.desktop_shape == "rounded_corner_rect":
+            lip_L = L * 0.90
+        else:
+            lip_L = L * 0.94
+        lip_height = 0.022
+        lip_thickness = 0.016
+        # Y position: just inside the front apron (y = -W*0.42)
+        front_y = -W * 0.5 + lip_thickness * 0.5 + 0.006
+        desktop.visual(
+            Box((lip_L, lip_thickness, lip_height)),
+            origin=Origin(
+                xyz=(0.0, front_y, top_thickness + lip_height * 0.5),
+            ),
+            material=accent_material,
+            name="front_lip",
+        )
+        return
+
+    if treatment == "beveled_front":
+        # Beveled profile: a wider, slightly thicker sub-board just below the
+        # front edge, sticking out a couple of mm forward of the main top so
+        # the front reads as a chamfered profile.  Sits at z just below the
+        # top surface (and just below the front apron interior so it does not
+        # collide with the apron).
+        if resolved.desktop_shape == "rounded":
+            bevel_L = L * 0.84
+        elif resolved.desktop_shape == "rounded_corner_rect":
+            bevel_L = L * 0.92
+        else:
+            bevel_L = L * 0.96
+        bevel_thickness = 0.028
+        bevel_height = 0.012
+        bevel_y = -W * 0.5 + bevel_thickness * 0.5 - 0.006  # 6 mm proud of edge
+        desktop.visual(
+            Box((bevel_L, bevel_thickness, bevel_height)),
+            origin=Origin(
+                xyz=(0.0, bevel_y, top_thickness - bevel_height * 0.5),
+            ),
+            material=top_material,
+            name="front_bevel_profile",
+        )
+        return
+
+    if treatment == "stepped_riser":
+        # A small raised platform on the rear half of the desktop — reads as a
+        # monitor riser.
+        if resolved.desktop_shape == "rounded":
+            riser_L = L * 0.55
+        elif resolved.desktop_shape == "rounded_corner_rect":
+            riser_L = L * 0.60
+        else:
+            riser_L = L * 0.62
+        riser_W = W * 0.28
+        riser_height = 0.022
+        riser_y = W * 0.5 - riser_W * 0.5 - 0.030
+        desktop.visual(
+            Box((riser_L, riser_W, riser_height)),
+            origin=Origin(
+                xyz=(0.0, riser_y, top_thickness + riser_height * 0.5),
+            ),
+            material=top_material,
+            name="riser_platform",
+        )
+        # Riser front fascia (accent) so the step reads as a distinct piece.
+        desktop.visual(
+            Box((riser_L, 0.012, riser_height)),
+            origin=Origin(
+                xyz=(
+                    0.0,
+                    riser_y - riser_W * 0.5 + 0.006,
+                    top_thickness + riser_height * 0.5,
+                ),
+            ),
+            material=accent_material,
+            name="riser_fascia",
+        )
+        return
+
+
+def _build_desktop_outline(
+    desktop,
+    *,
+    L: float,
+    W: float,
+    top_thickness: float,
+    shape: DesktopShape,
+    top_material,
+) -> None:
+    """Render the desktop perimeter as one or more visuals on the desktop part.
+
+    All visuals sit at z ∈ [0, top_thickness] in the desktop's local frame
+    (desktop underside at z=0).  Convex outlines (rectangle / rounded /
+    rounded_corner_rect) build a single contiguous shape.  Concave outlines
+    (U / T) compose a few overlapping rectangles plus small Cylinders at the
+    inner/outer corners so the silhouette is not visibly stepped.
+    """
+    top_z = top_thickness * 0.5
+
+    if shape == "rectangle":
+        desktop.visual(
+            Box((L, W, top_thickness)),
+            origin=Origin(xyz=(0.0, 0.0, top_z)),
+            material=top_material,
+            name="top",
+        )
+        return
+
+    if shape == "rounded":
+        # Capsule: a slightly inset central box with full-radius end caps.
+        inner_L = L * 0.86
+        desktop.visual(
+            Box((inner_L, W, top_thickness)),
+            origin=Origin(xyz=(0.0, 0.0, top_z)),
+            material=top_material,
+            name="top",
+        )
+        cap_radius = W * 0.5
+        cap_x = inner_L * 0.5
+        desktop.visual(
+            Cylinder(radius=cap_radius, length=top_thickness),
+            origin=Origin(xyz=(cap_x, 0.0, top_z)),
+            material=top_material,
+            name="top_cap_right",
+        )
+        desktop.visual(
+            Cylinder(radius=cap_radius, length=top_thickness),
+            origin=Origin(xyz=(-cap_x, 0.0, top_z)),
+            material=top_material,
+            name="top_cap_left",
+        )
+        return
+
+    if shape == "rounded_corner_rect":
+        # Plain rectangle whose four corners are softened with small fillets.
+        # Constructed as: central plate + four edge strips (covering the
+        # straight edges) + four Cylinders at the corners.  The radius is
+        # sized to ~5–7% of the shorter side so it reads as a soft corner
+        # rather than a capsule.
+        r = min(L, W) * 0.06
+        desktop.visual(
+            Box((L - 2.0 * r, W, top_thickness)),
+            origin=Origin(xyz=(0.0, 0.0, top_z)),
+            material=top_material,
+            name="top",
+        )
+        desktop.visual(
+            Box((L, W - 2.0 * r, top_thickness)),
+            origin=Origin(xyz=(0.0, 0.0, top_z)),
+            material=top_material,
+            name="top_cross",
+        )
+        for sx, sy, label in (
+            (-1.0, -1.0, "front_left"),
+            (1.0, -1.0, "front_right"),
+            (-1.0, 1.0, "rear_left"),
+            (1.0, 1.0, "rear_right"),
+        ):
+            desktop.visual(
+                Cylinder(radius=r, length=top_thickness),
+                origin=Origin(
+                    xyz=(sx * (L * 0.5 - r), sy * (W * 0.5 - r), top_z),
+                ),
+                material=top_material,
+                name=f"top_corner_{label}",
+            )
+        return
+
+
+def _add_desktop_aprons(
+    desktop,
+    *,
+    L: float,
+    W: float,
+    shape: DesktopShape,
+    accent_material,
+) -> None:
+    """Author the under-desktop apron frame ring.
+
+    For convex shapes (rectangle / rounded / rounded_corner_rect) this is a
+    full perimeter skirt (front + rear + two sides).  For concave shapes
+    (U / T) the apron is broken up so it only sits under solid portions of
+    the top surface, never floating across the open mouth.
+    """
+    apron_height = 0.045
+    apron_thickness = 0.04
+    apron_z_centre = -apron_height * 0.5 - 0.001
+
+    if shape in ("rectangle", "rounded", "rounded_corner_rect"):
+        desktop.visual(
+            Box((L * 0.92, apron_thickness, apron_height)),
+            origin=Origin(xyz=(0.0, W * 0.42, apron_z_centre)),
+            material=accent_material,
+            name="rear_apron",
+        )
+        desktop.visual(
+            Box((L * 0.92, apron_thickness, apron_height)),
+            origin=Origin(xyz=(0.0, -W * 0.42, apron_z_centre)),
+            material=accent_material,
+            name="front_apron",
+        )
+        # Side rails close the frame so the apron reads as a continuous
+        # skirt.  Inset to stay inside the actual desktop X-extent.
+        if shape == "rounded":
+            side_rail_x = L * 0.40
+        elif shape == "rounded_corner_rect":
+            side_rail_x = L * 0.43
+        else:
+            side_rail_x = L * 0.44
+        side_rail_length_y = W * 0.84 - apron_thickness * 2.0
+        if side_rail_length_y > 0.05:
+            for sx, side in ((-1.0, "left"), (1.0, "right")):
+                desktop.visual(
+                    Box((apron_thickness, side_rail_length_y, apron_height)),
+                    origin=Origin(
+                        xyz=(sx * side_rail_x, 0.0, apron_z_centre),
+                    ),
+                    material=accent_material,
+                    name=f"side_apron_{side}",
+                )
+        return
+
+
 def _add_desktop_visuals(
     desktop,
     resolved: ResolvedStandingDeskConfig,
@@ -508,75 +914,34 @@ def _add_desktop_visuals(
     W = resolved.desktop_width
     top_thickness = DESKTOP_THICKNESS
 
-    if resolved.desktop_shape == "rectangle":
-        desktop.visual(
-            Box((L, W, top_thickness)),
-            origin=Origin(xyz=(0.0, 0.0, top_thickness * 0.5)),
-            material=top_material,
-            name="top",
-        )
-    elif resolved.desktop_shape == "rounded":
-        # Main top slightly inset on length, plus rounded end caps (cylinders).
-        inner_L = L * 0.86
-        desktop.visual(
-            Box((inner_L, W, top_thickness)),
-            origin=Origin(xyz=(0.0, 0.0, top_thickness * 0.5)),
-            material=top_material,
-            name="top",
-        )
-        # Rounded ends.
-        cap_radius = W * 0.5
-        cap_x = inner_L * 0.5
-        desktop.visual(
-            Cylinder(radius=cap_radius, length=top_thickness),
-            origin=Origin(xyz=(cap_x, 0.0, top_thickness * 0.5)),
-            material=top_material,
-            name="top_cap_right",
-        )
-        desktop.visual(
-            Cylinder(radius=cap_radius, length=top_thickness),
-            origin=Origin(xyz=(-cap_x, 0.0, top_thickness * 0.5)),
-            material=top_material,
-            name="top_cap_left",
-        )
-    else:  # L_shape
-        # Main board along +X, plus a wing along -Y at one end.
-        main_L = L * 0.80
-        wing_L = L * 0.40
-        wing_W = W * 0.60
-        desktop.visual(
-            Box((main_L, W, top_thickness)),
-            origin=Origin(xyz=(0.0, 0.0, top_thickness * 0.5)),
-            material=top_material,
-            name="top",
-        )
-        # Wing extends along -Y attached to the right (+X) end of main.
-        desktop.visual(
-            Box((wing_L, wing_W, top_thickness)),
-            origin=Origin(
-                xyz=(
-                    main_L * 0.5 - wing_L * 0.5,
-                    -W * 0.5 - wing_W * 0.5,
-                    top_thickness * 0.5,
-                ),
-            ),
-            material=top_material,
-            name="top_wing",
-        )
-
-    # Aprons / cable strip under the desktop.  These are visuals on the
-    # desktop, never separate parts.
-    desktop.visual(
-        Box((L * 0.92, 0.04, 0.045)),
-        origin=Origin(xyz=(0.0, W * 0.42, -0.023)),
-        material=accent_material,
-        name="rear_apron",
+    _build_desktop_outline(
+        desktop,
+        L=L,
+        W=W,
+        top_thickness=top_thickness,
+        shape=resolved.desktop_shape,
+        top_material=top_material,
     )
-    desktop.visual(
-        Box((L * 0.92, 0.04, 0.045)),
-        origin=Origin(xyz=(0.0, -W * 0.42, -0.023)),
-        material=accent_material,
-        name="front_apron",
+
+    # Decorative edge treatment layered on top of the base shape (banding /
+    # raised lip / bevel profile / stepped riser).  Choice is independent of
+    # desktop_shape so any of 3 shapes × 5 treatments can combine.
+    _add_desktop_edge_treatment(
+        desktop,
+        resolved,
+        top_material=top_material,
+        accent_material=accent_material,
+    )
+
+    # Aprons / cable strip under the desktop, shape-aware so the apron rails
+    # actually live *under* the top surface and never float in the air over
+    # the open mouth of a U or beside the stem of a T.
+    _add_desktop_aprons(
+        desktop,
+        L=L,
+        W=W,
+        shape=resolved.desktop_shape,
+        accent_material=accent_material,
     )
 
     if resolved.crossbar_style == "integrated_into_desktop_apron":
@@ -726,6 +1091,11 @@ def build_standing_desk(
             index=i,
         )
 
+    # 5-star reference samples never use a floor-level cross stretcher between
+    # the feet — each foot is an independent Y-stretched bar.  Any inter-leg
+    # bracing lives high up inside the desktop apron (see "desktop side rails"
+    # added in _add_desktop_visuals).
+
     # ----- legs (per leg: an outer part + inner stage parts) -----
     # For each leg create the outer part FIXED to base at its x_position.  Then
     # create stage_count_per_leg - 1 inner stages, each PRISMATIC to its
@@ -836,6 +1206,56 @@ def build_standing_desk(
             )
             prev_part = stage_part
 
+        # Top cap on the innermost stage: a slightly oversized plate sitting
+        # flush with the stage's top edge (z=0 in the stage frame).  The cap
+        # spans z ∈ [-cap_thickness, 0] so its top is flush with the desktop
+        # underside when this is the primary leg, and so it hides the open
+        # tube end on non-primary legs.  Cap size is bounded to stay strictly
+        # smaller than the outer leg footprint so the AABB-nesting validator
+        # still holds (the inner stage's AABB must fit inside the outer's).
+        innermost = prev_part
+        cap_thickness = 0.012
+        innermost_x, innermost_y = resolved.stage_dims_xy[stage_count - 1]
+        outer_x_dim, outer_y_dim = resolved.stage_dims_xy[0]
+        # Round/oval legs have circular cross-section, so the effective outer
+        # AABB extent on both axes is the cross-section diameter, not the
+        # nominal box dim.  Use min(x, y) to bound the cap conservatively for
+        # those cross-sections.
+        if resolved.leg_cross_section in ("round", "oval"):
+            # Round outer AABB is 2*radius = min(outer_x, outer_y).  Oval outer
+            # AABB Y extent is 2*radius (fillet) = 0.9 * outer_y, and X extent
+            # is outer_x * 1.05.  Use the cylinder/box derived extents directly
+            # so the cap stays strictly inside.
+            outer_x_extent = outer_x_dim * (1.05 if resolved.leg_cross_section == "oval" else 1.0)
+            outer_y_extent = outer_y_dim * (0.90 if resolved.leg_cross_section == "oval" else 1.0)
+            if resolved.leg_cross_section == "round":
+                outer_x_extent = min(outer_x_dim, outer_y_dim)
+                outer_y_extent = outer_x_extent
+        else:
+            outer_x_extent = outer_x_dim
+            outer_y_extent = outer_y_dim
+        cap_x = min(innermost_x * 1.45, outer_x_extent * 0.78)
+        cap_y = min(innermost_y * 1.45, outer_y_extent * 0.78)
+        innermost.visual(
+            Box((cap_x, cap_y, cap_thickness)),
+            origin=Origin(xyz=(0.0, 0.0, -cap_thickness * 0.5)),
+            material=accent_mat,
+            name=f"leg_{leg_index}_top_cap",
+        )
+        # Optional neck reinforcement just below the cap, smaller than the cap
+        # and bounded by the outer footprint extents derived above.
+        neck_thickness = 0.040
+        neck_x = min(innermost_x * 1.15, outer_x_extent * 0.65)
+        neck_y = min(innermost_y * 1.15, outer_y_extent * 0.65)
+        innermost.visual(
+            Box((neck_x, neck_y, neck_thickness)),
+            origin=Origin(
+                xyz=(0.0, 0.0, -cap_thickness - neck_thickness * 0.5),
+            ),
+            material=inner_leg_mat,
+            name=f"leg_{leg_index}_neck_reinforcement",
+        )
+
         leg_top_parts[leg_index] = prev_part
 
     # ----- desktop -----
@@ -846,6 +1266,21 @@ def build_standing_desk(
         top_material=top_mat,
         accent_material=accent_mat,
     )
+    # Mount plates under the desktop at each leg's X position, hiding the
+    # stage-top to desktop-underside interface.  The plates extend downward
+    # from the desktop underside (desk z=0) so they read as the leg-to-top
+    # bracket.  Stays inside the desktop X/Y footprint so it cannot stick out
+    # past the desktop edges.
+    plate_thickness = 0.018
+    plate_x = min(0.140, resolved.outer_leg_x * 1.30)
+    plate_y = min(0.110, resolved.outer_leg_y * 1.30)
+    for i, leg_x in enumerate(resolved.leg_x_positions):
+        desktop.visual(
+            Box((plate_x, plate_y, plate_thickness)),
+            origin=Origin(xyz=(leg_x, 0.0, -plate_thickness * 0.5)),
+            material=accent_mat,
+            name=f"mount_plate_{i}",
+        )
     # FIXED to the primary leg's innermost (top) stage.  The desktop's local
     # origin is on the desktop underside; the primary stage's "top" in its
     # local frame is at z=0 (by the negative-centre convention).  So
@@ -879,15 +1314,51 @@ def build_standing_desk(
             origin=Origin(xyz=(0.0, 0.0, 0.0)),
         )
 
-    # ----- control panel + buttons -----
+    # ----- control panel -----
+    # The panel is FIXED to the desktop.  Buttons are drawn as decorative
+    # visuals on the panel face (no separate parts, no articulations) — this
+    # tracks the 5-star ground-truth distribution where most records have no
+    # articulated buttons.
     panel = model.part("control_panel")
-    panel_size = (max(0.14, 0.022 * resolved.button_count + 0.10), 0.08)
+    panel_size = (0.16, 0.08)
     _add_control_panel_visuals(
         panel,
         material=panel_mat,
         accent_material=accent_mat,
         panel_size_xy=panel_size,
     )
+    # Decorative keypad face flush with the panel bezel underside.  The bezel
+    # spans z ∈ [-0.028, -0.022] in the panel frame; we place a thin keypad
+    # plate so its TOP is co-planar with the bezel bottom (z=-0.028) and the
+    # plate itself extends only ~2 mm below.  This avoids any visible gap
+    # between the panel and its button face.
+    keypad_z_top = -0.028
+    keypad_thickness = 0.0025
+    panel.visual(
+        Box((panel_size[0] * 0.78, panel_size[1] * 0.62, keypad_thickness)),
+        origin=Origin(
+            xyz=(0.0, 0.0, keypad_z_top - keypad_thickness * 0.5),
+        ),
+        material=accent_mat,
+        name="keypad_face",
+    )
+    # Up / down button caps painted on the keypad face.  These are very thin
+    # tiles sitting on top of the keypad face so they look painted on rather
+    # than dangling.
+    cap_thickness = 0.0015
+    for sx, label in ((-1.0, "left"), (1.0, "right")):
+        panel.visual(
+            Box((panel_size[0] * 0.18, panel_size[1] * 0.32, cap_thickness)),
+            origin=Origin(
+                xyz=(
+                    sx * panel_size[0] * 0.22,
+                    0.0,
+                    keypad_z_top - keypad_thickness - cap_thickness * 0.5,
+                ),
+            ),
+            material=button_mat,
+            name=f"button_marking_{label}",
+        )
 
     # Determine panel mounting xyz relative to desktop underside.
     # Desktop underside is at z=0 (in desktop part frame), since top centre is
@@ -909,53 +1380,6 @@ def build_standing_desk(
         child=panel,
         origin=Origin(xyz=(panel_xy[0], panel_xy[1], -0.005)),
     )
-
-    # Buttons: equally spaced along panel local +X, prismatic into panel
-    # along the panel local -Z axis (so positive q presses into panel).
-    button_travel = 0.005
-    if resolved.button_count == 2:
-        button_xs = (-panel_size[0] * 0.22, panel_size[0] * 0.22)
-    elif resolved.button_count == 4:
-        button_xs = (
-            -panel_size[0] * 0.30,
-            -panel_size[0] * 0.10,
-            panel_size[0] * 0.10,
-            panel_size[0] * 0.30,
-        )
-    else:  # 6
-        button_xs = (
-            -panel_size[0] * 0.36,
-            -panel_size[0] * 0.22,
-            -panel_size[0] * 0.08,
-            panel_size[0] * 0.08,
-            panel_size[0] * 0.22,
-            panel_size[0] * 0.36,
-        )
-
-    for i, bx in enumerate(button_xs):
-        button = model.part(f"button_{i}")
-        button.visual(
-            Box((0.022, 0.022, 0.010)),
-            origin=Origin(xyz=(0.0, 0.0, -0.005)),
-            material=button_mat,
-            name="cap",
-        )
-        model.articulation(
-            f"button_joint_{i}",
-            ArticulationType.PRISMATIC,
-            parent=panel,
-            child=button,
-            origin=Origin(xyz=(bx, 0.0, -0.028)),
-            # Press into the panel: panel underside is at -0.028; pressing
-            # *up* (+Z) buries the button into the panel face.
-            axis=(0.0, 0.0, 1.0),
-            motion_limits=MotionLimits(
-                effort=4.0,
-                velocity=0.05,
-                lower=0.0,
-                upper=button_travel,
-            ),
-        )
 
     return model
 
@@ -1006,21 +1430,11 @@ def run_standing_desk_tests(
         except Exception:
             crossbar = None
 
-    # Allow button -> panel overlap (button cap sits flush against the panel).
-    for i in range(resolved.button_count):
-        button = object_model.get_part(f"button_{i}")
-        ctx.allow_overlap(
-            panel,
-            button,
-            reason="Button cap retracts into the panel proxy when pressed.",
-        )
-
-    # --- 1. At least one prismatic lift joint and at least one button joint.
+    # --- 1. At least one prismatic lift joint.
     prismatic_joints = [
         j for j in object_model.articulations if j.articulation_type == ArticulationType.PRISMATIC
     ]
     lift_joints = [j for j in prismatic_joints if "lift_joint" in j.name]
-    button_joints = [j for j in prismatic_joints if j.name.startswith("button_joint_")]
     ctx.check(
         "at_least_one_prismatic_lift_joint",
         len(lift_joints) >= 1,
@@ -1034,11 +1448,6 @@ def run_standing_desk_tests(
             f"got {len(lift_joints)}, expected "
             f"{resolved.leg_count}*({stage_count}-1)={expected_lift_joint_count}"
         ),
-    )
-    ctx.check(
-        "button_joint_count_matches",
-        len(button_joints) == resolved.button_count,
-        details=f"got {len(button_joints)}, expected {resolved.button_count}",
     )
 
     # --- 2. Every lift joint has axis (0, 0, 1) and parallel.
@@ -1204,16 +1613,7 @@ def run_standing_desk_tests(
             details=f"panel_z={panel_pos[2]}, desktop_z={desktop_pos[2]}",
         )
 
-    # --- 10. Buttons attach to control panel (parent == panel name).
-    for i in range(resolved.button_count):
-        joint = object_model.get_articulation(f"button_joint_{i}")
-        ctx.check(
-            f"button_{i}_parented_to_control_panel",
-            joint.parent == panel.name,
-            details=f"parent={joint.parent}",
-        )
-
-    # --- 11. Identity: desktop has a 'top' visual; every leg has an outer
+    # --- 10. Identity: desktop has a 'top' visual; every leg has an outer
     #         tube; control panel has a 'body' visual.
     desktop_visual_names = {v.name for v in desktop.visuals if v.name is not None}
     ctx.check(
@@ -1235,27 +1635,6 @@ def run_standing_desk_tests(
             f"leg_{leg_index}_outer_tube" in outer_visual_names,
             details=f"visuals={sorted(outer_visual_names)}",
         )
-
-    # --- 12. One button actually presses in: drive button_0 to upper limit.
-    if resolved.button_count >= 1:
-        button_0_joint = object_model.get_articulation("button_joint_0")
-        button_upper = (
-            button_0_joint.motion_limits.upper if button_0_joint.motion_limits is not None else 0.0
-        )
-        button_0 = object_model.get_part("button_0")
-        rest_button_pos = ctx.part_world_position(button_0)
-        with ctx.pose({button_0_joint: button_upper}):
-            pressed_button_pos = ctx.part_world_position(button_0)
-        if rest_button_pos is not None and pressed_button_pos is not None:
-            travel_z = pressed_button_pos[2] - rest_button_pos[2]
-            ctx.check(
-                "button_0_translates_into_panel",
-                abs(travel_z) > button_upper * 0.5,
-                details=(
-                    f"rest_z={rest_button_pos[2]:.4f}, pressed_z={pressed_button_pos[2]:.4f}, "
-                    f"upper={button_upper}"
-                ),
-            )
 
     return ctx.report()
 

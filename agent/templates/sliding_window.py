@@ -25,6 +25,46 @@ HandleStyle = Literal["tab", "bar", "recessed"]
 GlassOpacityStyle = Literal["clear", "frosted", "tinted"]
 LockStyle = Literal["none", "small_latch", "central_lock"]
 MaterialStyle = Literal["aluminum", "pvc", "wood", "black_metal"]
+SillProfile = Literal["flush", "nose"]
+
+FRAME_DEPTH_MIN = 0.06
+FRAME_DEPTH_MAX = 0.11
+PERIMETER_MIN = 0.045
+PERIMETER_MAX = 0.075
+SASH_DEPTH = 0.022
+SASH_STILE = 0.048
+SASH_RAIL = 0.048
+GLASS_DEPTH = 0.006
+GUIDE_LIP_DEPTH = 0.008
+GUIDE_LIP_HEIGHT = 0.034
+SASH_GAP = 0.010  # axial gap between adjacent sashes along slide axis
+
+# Sill/Head differentiation: sill is thicker than head in the cross-axis direction
+# (Z for horizontal windows, X for vertical), giving a chunkier base. The 'nose'
+# profile additionally extrudes outward along -Y (exterior side) as a drip cap.
+SILL_THICKNESS_BOOST = 1.45  # multiplier on perimeter for sill cross-axis size
+SILL_NOSE_DEPTH = 0.030  # how far the nose extrudes along -Y beyond frame_depth
+SILL_NOSE_HEIGHT = 0.018  # cross-axis thickness of the nose strip
+
+# Track layering: replace single guide lip with a track floor + two lips +
+# wear strip. All members sit INSIDE the frame envelope (between the head and
+# sill), and stack along Y so adjacent sashes still clear.
+TRACK_FLOOR_HEIGHT = 0.008  # cross-axis thickness of the channel floor
+TRACK_LIP_HEIGHT = 0.022  # cross-axis height of each lip rising from floor
+TRACK_LIP_THICKNESS = 0.008  # depth (Y) of each lip
+WEAR_STRIP_HEIGHT = 0.004  # cross-axis thickness of wear strip on top of floor
+WEAR_STRIP_DEPTH = 0.024  # depth (Y) of wear strip
+
+# Open/closed stop pair: two pairs of stops per track (closed-side and open-side).
+STOP_BLOCK_DEPTH = 0.012  # axial size along slide direction
+STOP_BLOCK_HEIGHT = 0.060  # cross-axis height
+STOP_CLEARANCE = 0.006  # gap between stop face and sash face at the limit
+
+# Handle plate / standoff: every handle now sits on a thin backing plate; the
+# bar handle uses cylindrical standoffs connecting plate to bar.
+HANDLE_PLATE_DEPTH = 0.004
+HANDLE_STANDOFF_RADIUS = 0.008
+HANDLE_STANDOFF_LENGTH = 0.020
 
 # Aspect class continuous ranges (width range, height range), measured in meters
 # for the **outer** window envelope. Buckets nudge geometry but seed-time
@@ -40,17 +80,6 @@ ASPECT_HEIGHT_RANGES: dict[FrameAspectClass, tuple[float, float]] = {
     "tall": (1.20, 1.60),
 }
 
-FRAME_DEPTH_MIN = 0.06
-FRAME_DEPTH_MAX = 0.11
-PERIMETER_MIN = 0.045
-PERIMETER_MAX = 0.075
-SASH_DEPTH = 0.022
-SASH_STILE = 0.048
-SASH_RAIL = 0.048
-GLASS_DEPTH = 0.006
-GUIDE_LIP_DEPTH = 0.008
-GUIDE_LIP_HEIGHT = 0.034
-SASH_GAP = 0.010  # axial gap between adjacent sashes along slide axis
 
 MATERIAL_PALETTES: dict[
     MaterialStyle, tuple[tuple[float, float, float, float], tuple[float, float, float, float]]
@@ -68,6 +97,9 @@ GLASS_PALETTES: dict[GlassOpacityStyle, tuple[float, float, float, float]] = {
     "tinted": (0.32, 0.48, 0.40, 0.40),
 }
 
+# Black nylon wear strip — uniform across material styles.
+WEAR_STRIP_RGBA: tuple[float, float, float, float] = (0.10, 0.10, 0.11, 1.0)
+
 
 @dataclass(frozen=True)
 class SlidingWindowConfig:
@@ -81,6 +113,7 @@ class SlidingWindowConfig:
     glass_opacity: GlassOpacityStyle = "clear"
     lock_style: LockStyle = "small_latch"
     material_style: MaterialStyle = "aluminum"
+    sill_profile: SillProfile = "nose"
     outer_width: float | None = None
     outer_height: float | None = None
     frame_depth: float | None = None
@@ -100,14 +133,17 @@ class ResolvedSlidingWindowConfig:
     glass_opacity: GlassOpacityStyle
     lock_style: LockStyle
     material_style: MaterialStyle
+    sill_profile: SillProfile
     outer_width: float
     outer_height: float
     frame_depth: float
     perimeter: float
+    sill_thickness: float  # cross-axis size of the sill (>= perimeter)
     inner_width: float
     inner_height: float
     sash_axial_length: float  # along slide axis (X for horizontal, Z for vertical)
     sash_cross_length: float  # cross axis
+    travel: float  # prismatic upper limit (per slider)
     name: str
 
 
@@ -117,7 +153,7 @@ def config_from_seed(seed: int) -> SlidingWindowConfig:
         ("horizontal", "vertical"), weights=(0.65, 0.35), k=1
     )[0]
     sash_count = rng.choices((2, 3, 4), weights=(0.50, 0.32, 0.18), k=1)[0]
-    sliding_sash_count = rng.choices((1, 2), weights=(0.70, 0.30), k=1)[0]
+    sliding_sash_count = rng.choices((1, 2), weights=(0.30, 0.70), k=1)[0]
     # auto-clamp at config_from_seed too; resolve_config also clamps
     sliding_sash_count = min(sliding_sash_count, sash_count)
     aspect: FrameAspectClass = rng.choices(
@@ -145,6 +181,7 @@ def config_from_seed(seed: int) -> SlidingWindowConfig:
         weights=(0.36, 0.24, 0.20, 0.20),
         k=1,
     )[0]
+    sill_profile: SillProfile = rng.choices(("flush", "nose"), weights=(0.35, 0.65), k=1)[0]
     return SlidingWindowConfig(
         window_orientation=orientation,
         sash_count=sash_count,
@@ -156,6 +193,7 @@ def config_from_seed(seed: int) -> SlidingWindowConfig:
         glass_opacity=glass_opacity,
         lock_style=lock_style,
         material_style=material_style,
+        sill_profile=sill_profile,
         outer_width=outer_width,
         outer_height=outer_height,
         frame_depth=frame_depth,
@@ -185,6 +223,8 @@ def resolve_config(config: SlidingWindowConfig) -> ResolvedSlidingWindowConfig:
         raise ValueError(f"Unsupported lock_style: {config.lock_style}")
     if config.material_style not in MATERIAL_PALETTES:
         raise ValueError(f"Unsupported material_style: {config.material_style}")
+    if config.sill_profile not in {"flush", "nose"}:
+        raise ValueError(f"Unsupported sill_profile: {config.sill_profile}")
 
     sliding_sash_count = min(config.sliding_sash_count, config.sash_count)
 
@@ -204,14 +244,22 @@ def resolve_config(config: SlidingWindowConfig) -> ResolvedSlidingWindowConfig:
     perimeter = config.perimeter if config.perimeter is not None else 0.055
     perimeter = max(PERIMETER_MIN, min(PERIMETER_MAX, perimeter))
 
-    inner_width = outer_width - 2.0 * perimeter
-    inner_height = outer_height - 2.0 * perimeter
+    # Sill is the bottom member for horizontal windows (extra Z thickness) and
+    # the left jamb for vertical windows (extra X thickness). The opposite
+    # head/right-jamb stays at `perimeter` width, so the inner aperture loses
+    # only the sill's extra thickness on one side.
+    sill_thickness = perimeter * SILL_THICKNESS_BOOST
+    if config.window_orientation == "horizontal":
+        inner_width = outer_width - 2.0 * perimeter
+        inner_height = outer_height - perimeter - sill_thickness
+    else:
+        inner_width = outer_width - perimeter - sill_thickness
+        inner_height = outer_height - 2.0 * perimeter
     if inner_width <= 0.30 or inner_height <= 0.30:
         raise ValueError(
             "inner aperture too small after applying perimeter; "
             f"inner_width={inner_width:.3f}, inner_height={inner_height:.3f}"
         )
-
     # Sashes overlap by SASH_GAP along the slide axis when the slider closes
     # against its neighbor.  Each sash spans (inner_axial - (n-1)*SASH_GAP) / n.
     if config.window_orientation == "horizontal":
@@ -233,6 +281,14 @@ def resolve_config(config: SlidingWindowConfig) -> ResolvedSlidingWindowConfig:
         raise ValueError(
             f"derived sash axial length too small even at sash_count=2: {sash_axial_length:.3f}m"
         )
+    sash_cross_length = inner_height if config.window_orientation == "horizontal" else inner_width
+
+    # Travel budget: conservative bound used by both the joint and the
+    # open/closed stop pair, so they always agree.
+    inner_axial = inner_width if config.window_orientation == "horizontal" else inner_height
+    base_travel = sash_axial_length - 0.02 if final_sliding == 1 else sash_axial_length * 0.95
+    max_safe_travel = inner_axial - sash_axial_length - 0.02
+    travel = max(0.05, min(base_travel, max_safe_travel))
 
     return ResolvedSlidingWindowConfig(
         window_orientation=config.window_orientation,
@@ -245,14 +301,17 @@ def resolve_config(config: SlidingWindowConfig) -> ResolvedSlidingWindowConfig:
         glass_opacity=config.glass_opacity,
         lock_style=config.lock_style,
         material_style=config.material_style,
+        sill_profile=config.sill_profile,
         outer_width=outer_width,
         outer_height=outer_height,
         frame_depth=frame_depth,
         perimeter=perimeter,
+        sill_thickness=sill_thickness,
         inner_width=inner_width,
         inner_height=inner_height,
         sash_axial_length=sash_axial_length,
         sash_cross_length=sash_cross_length,
+        travel=travel,
         name=config.name,
     )
 
@@ -292,6 +351,7 @@ def _build_window_frame(
     *,
     frame_mat,
     accent_mat,
+    wear_mat,
 ) -> None:
     ow = resolved.outer_width
     oh = resolved.outer_height
@@ -299,120 +359,233 @@ def _build_window_frame(
     p = resolved.perimeter
     iw = resolved.inner_width
     ih = resolved.inner_height
+    st = resolved.sill_thickness
+    horizontal = resolved.window_orientation == "horizontal"
 
-    # Four perimeter members
-    frame_part.visual(
-        Box((p, fd, oh)),
-        origin=Origin(xyz=(-ow / 2.0 + p / 2.0, 0.0, 0.0)),
-        material=frame_mat,
-        name="left_jamb",
-    )
-    frame_part.visual(
-        Box((p, fd, oh)),
-        origin=Origin(xyz=(ow / 2.0 - p / 2.0, 0.0, 0.0)),
-        material=frame_mat,
-        name="right_jamb",
-    )
-    frame_part.visual(
-        Box((iw, fd, p)),
-        origin=Origin(xyz=(0.0, 0.0, oh / 2.0 - p / 2.0)),
-        material=frame_mat,
-        name="top_rail",
-    )
-    frame_part.visual(
-        Box((iw, fd, p)),
-        origin=Origin(xyz=(0.0, 0.0, -oh / 2.0 + p / 2.0)),
-        material=frame_mat,
-        name="bottom_rail",
-    )
-
-    # Rail / guide channel decoration -- always present, geometry depends on style.
-    rail_style = resolved.rail_style
-    if resolved.window_orientation == "horizontal":
-        # Long lips run left-right inside the top and bottom of the frame.
-        if rail_style == "single":
-            lip_pairs = ((0.0, "center"),)
-        elif rail_style == "double":
-            lip_pairs = ((-0.014, "rear"), (0.014, "front"))
-        else:  # recessed
-            lip_pairs = ((-0.020, "rear"), (0.020, "front"))
-        for y_off, side in lip_pairs:
-            for z, label in (
-                (ih / 2.0 - GUIDE_LIP_HEIGHT / 2.0, "top"),
-                (-ih / 2.0 + GUIDE_LIP_HEIGHT / 2.0, "bottom"),
-            ):
-                frame_part.visual(
-                    Box((iw, GUIDE_LIP_DEPTH, GUIDE_LIP_HEIGHT)),
-                    origin=Origin(xyz=(0.0, y_off, z)),
-                    material=accent_mat,
-                    name=f"{label}_{side}_track_lip",
-                )
-    else:
-        # Vertical orientation: lips run top-bottom along left and right jambs.
-        if rail_style == "single":
-            lip_pairs = ((0.0, "center"),)
-        elif rail_style == "double":
-            lip_pairs = ((-0.014, "rear"), (0.014, "front"))
-        else:
-            lip_pairs = ((-0.020, "rear"), (0.020, "front"))
-        for y_off, side in lip_pairs:
-            for x, label in (
-                (iw / 2.0 - GUIDE_LIP_HEIGHT / 2.0, "right"),
-                (-iw / 2.0 + GUIDE_LIP_HEIGHT / 2.0, "left"),
-            ):
-                frame_part.visual(
-                    Box((GUIDE_LIP_HEIGHT, GUIDE_LIP_DEPTH, ih)),
-                    origin=Origin(xyz=(x, y_off, 0.0)),
-                    material=accent_mat,
-                    name=f"{label}_{side}_track_lip",
-                )
-
-    # Travel stops / keeper block decoration on the frame at the two ends of
-    # the slide axis.
-    if resolved.window_orientation == "horizontal":
-        for x, label in (
-            (-ow / 2.0 + p + 0.012, "left"),
-            (ow / 2.0 - p - 0.012, "right"),
-        ):
-            frame_part.visual(
-                Box((0.010, fd * 0.55, 0.060)),
-                origin=Origin(xyz=(x, 0.0, -ih / 2.0 + 0.060)),
-                material=accent_mat,
-                name=f"{label}_travel_stop",
-            )
-    else:
-        for z, label in (
-            (-oh / 2.0 + p + 0.012, "lower"),
-            (oh / 2.0 - p - 0.012, "upper"),
-        ):
-            frame_part.visual(
-                Box((0.060, fd * 0.55, 0.010)),
-                origin=Origin(xyz=(-iw / 2.0 + 0.060, 0.0, z)),
-                material=accent_mat,
-                name=f"{label}_travel_stop",
-            )
-
-    # Optional frame-level lock keeper (parent visual, non-articulated child).
-    if resolved.lock_style != "none":
-        if resolved.window_orientation == "horizontal":
-            keeper_origin = Origin(xyz=(0.0, fd * 0.5 + 0.003, 0.0))
-        else:
-            keeper_origin = Origin(xyz=(-iw / 2.0 + 0.030, fd * 0.5 + 0.003, 0.0))
-        size = (
-            (0.040, 0.012, 0.060)
-            if resolved.lock_style == "small_latch"
-            else (
-                0.090,
-                0.014,
-                0.060,
-            )
+    # ----- Perimeter members -----
+    # For horizontal windows the sill (bottom rail) is thicker than the head
+    # (top rail). For vertical windows the sill is the left jamb. The two
+    # perpendicular members shrink so they fit between head and sill without
+    # overlap, keeping the outer envelope at ow x oh.
+    if horizontal:
+        head_z = oh / 2.0 - p / 2.0
+        sill_z = -oh / 2.0 + st / 2.0
+        # head + sill span the full outer width
+        frame_part.visual(
+            Box((ow, fd, p)),
+            origin=Origin(xyz=(0.0, 0.0, head_z)),
+            material=frame_mat,
+            name="head",
         )
         frame_part.visual(
-            Box(size),
-            origin=keeper_origin,
-            material=accent_mat,
-            name="lock_keeper_mount",
+            Box((ow, fd, st)),
+            origin=Origin(xyz=(0.0, 0.0, sill_z)),
+            material=frame_mat,
+            name="sill",
         )
+        # jambs span just the inner_height between head and sill so they don't
+        # collide with head/sill volumes
+        jamb_height = oh - p - st
+        jamb_center_z = (head_z - p / 2.0 + sill_z + st / 2.0) / 2.0
+        frame_part.visual(
+            Box((p, fd, jamb_height)),
+            origin=Origin(xyz=(-ow / 2.0 + p / 2.0, 0.0, jamb_center_z)),
+            material=frame_mat,
+            name="left_jamb",
+        )
+        frame_part.visual(
+            Box((p, fd, jamb_height)),
+            origin=Origin(xyz=(ow / 2.0 - p / 2.0, 0.0, jamb_center_z)),
+            material=frame_mat,
+            name="right_jamb",
+        )
+    else:
+        # Vertical orientation: the "sill" is the left jamb (thicker), head
+        # role goes to the right jamb. Top/bottom rails span between them.
+        sill_x = -ow / 2.0 + st / 2.0
+        head_x = ow / 2.0 - p / 2.0
+        frame_part.visual(
+            Box((st, fd, oh)),
+            origin=Origin(xyz=(sill_x, 0.0, 0.0)),
+            material=frame_mat,
+            name="sill",
+        )
+        frame_part.visual(
+            Box((p, fd, oh)),
+            origin=Origin(xyz=(head_x, 0.0, 0.0)),
+            material=frame_mat,
+            name="head",
+        )
+        rail_length = ow - p - st
+        rail_center_x = (head_x - p / 2.0 + sill_x + st / 2.0) / 2.0
+        frame_part.visual(
+            Box((rail_length, fd, p)),
+            origin=Origin(xyz=(rail_center_x, 0.0, oh / 2.0 - p / 2.0)),
+            material=frame_mat,
+            name="top_rail",
+        )
+        frame_part.visual(
+            Box((rail_length, fd, p)),
+            origin=Origin(xyz=(rail_center_x, 0.0, -oh / 2.0 + p / 2.0)),
+            material=frame_mat,
+            name="bottom_rail",
+        )
+
+    # ----- Optional sill nose (drip cap) on the exterior face (-Y) -----
+    # Sits OUTSIDE the frame_depth envelope along -Y, so it can never collide
+    # with sashes (which sit within ±SASH_DEPTH around Y=0 and only stretch to
+    # ±fd/2 worth of depth-stacked offsets, all of which are smaller than fd/2).
+    if resolved.sill_profile == "nose":
+        nose_y = -fd / 2.0 - SILL_NOSE_DEPTH / 2.0
+        if horizontal:
+            frame_part.visual(
+                Box((ow, SILL_NOSE_DEPTH, SILL_NOSE_HEIGHT)),
+                origin=Origin(xyz=(0.0, nose_y, -oh / 2.0 + SILL_NOSE_HEIGHT / 2.0)),
+                material=accent_mat,
+                name="sill_nose",
+            )
+        else:
+            frame_part.visual(
+                Box((SILL_NOSE_HEIGHT, SILL_NOSE_DEPTH, oh)),
+                origin=Origin(xyz=(-ow / 2.0 + SILL_NOSE_HEIGHT / 2.0, nose_y, 0.0)),
+                material=accent_mat,
+                name="sill_nose",
+            )
+
+    # ----- Track layering: floor + front lip + rear lip + wear strip -----
+    # The track sits on the interior face of the head/sill (horizontal) or
+    # the two jambs (vertical). Lips and wear strips stack toward the inner
+    # aperture along the cross axis; their Y placement matches the previous
+    # guide_lip scheme so existing sash depth offsets still clear.
+    rail_style = resolved.rail_style
+    if rail_style == "single":
+        lip_pairs = ((0.0, "center"),)
+    elif rail_style == "double":
+        lip_pairs = ((-0.014, "rear"), (0.014, "front"))
+    else:  # recessed -- lips sit further apart, floor recesses (no extra Y move needed)
+        lip_pairs = ((-0.020, "rear"), (0.020, "front"))
+
+    if horizontal:
+        # Two channels: top (under head) and bottom (above sill). The channel
+        # floor is flush with the inner face of the head/sill.
+        channels = (
+            ("top", ih / 2.0 - TRACK_FLOOR_HEIGHT / 2.0, -1.0),  # sign: lips/wear go -Z
+            ("bottom", -ih / 2.0 + TRACK_FLOOR_HEIGHT / 2.0, 1.0),  # lips/wear go +Z
+        )
+        for label, floor_z, growth_sign in channels:
+            frame_part.visual(
+                Box((iw, fd * 0.6, TRACK_FLOOR_HEIGHT)),
+                origin=Origin(xyz=(0.0, 0.0, floor_z)),
+                material=accent_mat,
+                name=f"{label}_track_floor",
+            )
+            # Wear strip stuck to the inner face of the floor.
+            wear_z = floor_z + growth_sign * (TRACK_FLOOR_HEIGHT / 2.0 + WEAR_STRIP_HEIGHT / 2.0)
+            frame_part.visual(
+                Box((iw, WEAR_STRIP_DEPTH, WEAR_STRIP_HEIGHT)),
+                origin=Origin(xyz=(0.0, 0.0, wear_z)),
+                material=wear_mat,
+                name=f"{label}_wear_strip",
+            )
+            # Lips rise from the floor toward the inner aperture.
+            lip_z = floor_z + growth_sign * (TRACK_FLOOR_HEIGHT / 2.0 + TRACK_LIP_HEIGHT / 2.0)
+            for y_off, side in lip_pairs:
+                frame_part.visual(
+                    Box((iw, TRACK_LIP_THICKNESS, TRACK_LIP_HEIGHT)),
+                    origin=Origin(xyz=(0.0, y_off, lip_z)),
+                    material=accent_mat,
+                    name=f"{label}_{side}_track_lip",
+                )
+    else:
+        channels = (
+            ("right", iw / 2.0 - TRACK_FLOOR_HEIGHT / 2.0, -1.0),  # lips/wear go -X
+            ("left", -iw / 2.0 + TRACK_FLOOR_HEIGHT / 2.0, 1.0),  # lips/wear go +X
+        )
+        for label, floor_x, growth_sign in channels:
+            frame_part.visual(
+                Box((TRACK_FLOOR_HEIGHT, fd * 0.6, ih)),
+                origin=Origin(xyz=(floor_x, 0.0, 0.0)),
+                material=accent_mat,
+                name=f"{label}_track_floor",
+            )
+            wear_x = floor_x + growth_sign * (TRACK_FLOOR_HEIGHT / 2.0 + WEAR_STRIP_HEIGHT / 2.0)
+            frame_part.visual(
+                Box((WEAR_STRIP_HEIGHT, WEAR_STRIP_DEPTH, ih)),
+                origin=Origin(xyz=(wear_x, 0.0, 0.0)),
+                material=wear_mat,
+                name=f"{label}_wear_strip",
+            )
+            lip_x = floor_x + growth_sign * (TRACK_FLOOR_HEIGHT / 2.0 + TRACK_LIP_HEIGHT / 2.0)
+            for y_off, side in lip_pairs:
+                frame_part.visual(
+                    Box((TRACK_LIP_HEIGHT, TRACK_LIP_THICKNESS, ih)),
+                    origin=Origin(xyz=(lip_x, y_off, 0.0)),
+                    material=accent_mat,
+                    name=f"{label}_{side}_track_lip",
+                )
+
+    # ----- Open / closed stop pairs -----
+    # Stops are bumper blocks bolted to the jamb interior faces at the two
+    # extreme positions a slider can reach. Slot-0 slider rests with its
+    # outer edge at -inner/2 (closed) and opens until its leading edge sits
+    # at -inner/2 + L + travel (open).
+    #
+    # In XZ projection the stop bumpers overlap the slider's travel envelope,
+    # so to avoid visual clipping we place them in the REAR Y band (negative
+    # Y, where the fixed-sash slot lives) -- sliders occupy the front Y band
+    # per `_depth_offsets_for_sashes`. Stops still appear inside the frame
+    # bbox so sash containment checks remain satisfied.
+    L = resolved.sash_axial_length
+    travel = resolved.travel
+    inner_axial = iw if horizontal else ih
+    half_inner = inner_axial / 2.0
+    # Closed-side stop centre: just inside the jamb at -half_inner.
+    closed_stop_center = -half_inner + STOP_BLOCK_DEPTH / 2.0 + STOP_CLEARANCE
+    # Open-side stop centre: just past where the slider's leading edge lands
+    # at full travel, clamped to stay inside the opposite jamb.
+    open_edge = -half_inner + L + travel
+    open_stop_center = min(
+        open_edge + STOP_CLEARANCE + STOP_BLOCK_DEPTH / 2.0,
+        half_inner - STOP_BLOCK_DEPTH / 2.0 - STOP_CLEARANCE,
+    )
+    # Push stops into the rear Y band so they sit behind sliders. The rearmost
+    # depth slot used by sashes is roughly -(sash_count - sliding_sash_count)
+    # * (SASH_DEPTH + 0.006); we just sit at the deepest safe point inside fd.
+    stop_y = -fd / 2.0 + STOP_BLOCK_DEPTH / 2.0 + 0.002
+    if horizontal:
+        # Pair stops on lower and upper tracks so both head and sill channels
+        # have visible end-of-travel bumpers.
+        stop_cross_positions = (
+            (-ih / 2.0 + TRACK_FLOOR_HEIGHT + STOP_BLOCK_HEIGHT / 2.0, "lower"),
+            (ih / 2.0 - TRACK_FLOOR_HEIGHT - STOP_BLOCK_HEIGHT / 2.0, "upper"),
+        )
+        for cross_z, band in stop_cross_positions:
+            for x_center, kind in (
+                (closed_stop_center, "closed"),
+                (open_stop_center, "open"),
+            ):
+                frame_part.visual(
+                    Box((STOP_BLOCK_DEPTH, STOP_BLOCK_DEPTH, STOP_BLOCK_HEIGHT)),
+                    origin=Origin(xyz=(x_center, stop_y, cross_z)),
+                    material=accent_mat,
+                    name=f"{kind}_stop_{band}",
+                )
+    else:
+        stop_cross_positions = (
+            (-iw / 2.0 + TRACK_FLOOR_HEIGHT + STOP_BLOCK_HEIGHT / 2.0, "left"),
+            (iw / 2.0 - TRACK_FLOOR_HEIGHT - STOP_BLOCK_HEIGHT / 2.0, "right"),
+        )
+        for cross_x, band in stop_cross_positions:
+            for z_center, kind in (
+                (closed_stop_center, "closed"),
+                (open_stop_center, "open"),
+            ):
+                frame_part.visual(
+                    Box((STOP_BLOCK_HEIGHT, STOP_BLOCK_DEPTH, STOP_BLOCK_DEPTH)),
+                    origin=Origin(xyz=(cross_x, stop_y, z_center)),
+                    material=accent_mat,
+                    name=f"{kind}_stop_{band}",
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -532,37 +705,75 @@ def _build_sash(
             )
 
         if handle == "tab":
+            # Plate sits flush against sash front face; knob mounts on the
+            # plate. Plate width is larger than knob so it visibly "backs" it.
+            plate_size = (0.060, HANDLE_PLATE_DEPTH, 0.065)
+            plate_y = front_y + HANDLE_PLATE_DEPTH / 2.0
+            sash_part.visual(
+                Box(plate_size),
+                origin=Origin(xyz=(handle_x_offset, plate_y, handle_z)),
+                material=accent_mat,
+                name="handle_plate",
+            )
+            knob_y = plate_y + HANDLE_PLATE_DEPTH / 2.0 + 0.012 / 2.0
             sash_part.visual(
                 Box((0.040, 0.012, 0.045)),
-                origin=Origin(xyz=(handle_x_offset, front_y + 0.006, handle_z)),
+                origin=Origin(xyz=(handle_x_offset, knob_y, handle_z)),
                 material=accent_mat,
                 name="handle",
             )
         elif handle == "bar":
+            # Plate flush against front face, then two cylindrical standoffs
+            # in Y, then a bar running along the cross axis.
+            plate_y = front_y + HANDLE_PLATE_DEPTH / 2.0
+            standoff_y = plate_y + HANDLE_PLATE_DEPTH / 2.0 + HANDLE_STANDOFF_LENGTH / 2.0
+            bar_y = standoff_y + HANDLE_STANDOFF_LENGTH / 2.0 + HANDLE_STANDOFF_RADIUS
             if resolved.window_orientation == "horizontal":
+                # bar runs along Z (cross axis is vertical here)
                 sash_part.visual(
-                    Box((0.022, 0.010, 0.130)),
-                    origin=Origin(xyz=(handle_x_offset, front_y + 0.005, handle_z)),
+                    Box((0.030, HANDLE_PLATE_DEPTH, 0.150)),
+                    origin=Origin(xyz=(handle_x_offset, plate_y, handle_z)),
                     material=accent_mat,
                     name="handle_plate",
                 )
+                for z_off, label in ((0.055, "upper"), (-0.055, "lower")):
+                    sash_part.visual(
+                        Cylinder(radius=HANDLE_STANDOFF_RADIUS, length=HANDLE_STANDOFF_LENGTH),
+                        origin=Origin(
+                            xyz=(handle_x_offset, standoff_y, handle_z + z_off),
+                            rpy=(1.5707963, 0.0, 0.0),
+                        ),
+                        material=accent_mat,
+                        name=f"handle_standoff_{label}",
+                    )
                 sash_part.visual(
-                    Cylinder(radius=0.010, length=0.150),
-                    origin=Origin(xyz=(handle_x_offset, front_y + 0.022, handle_z)),
+                    Cylinder(radius=HANDLE_STANDOFF_RADIUS, length=0.150),
+                    origin=Origin(xyz=(handle_x_offset, bar_y, handle_z)),
                     material=accent_mat,
                     name="handle",
                 )
             else:
+                # vertical window: bar runs along X (cross axis is horizontal)
                 sash_part.visual(
-                    Box((0.130, 0.010, 0.022)),
-                    origin=Origin(xyz=(handle_x_offset, front_y + 0.005, handle_z)),
+                    Box((0.150, HANDLE_PLATE_DEPTH, 0.030)),
+                    origin=Origin(xyz=(handle_x_offset, plate_y, handle_z)),
                     material=accent_mat,
                     name="handle_plate",
                 )
+                for x_off, label in ((0.055, "right"), (-0.055, "left")):
+                    sash_part.visual(
+                        Cylinder(radius=HANDLE_STANDOFF_RADIUS, length=HANDLE_STANDOFF_LENGTH),
+                        origin=Origin(
+                            xyz=(handle_x_offset + x_off, standoff_y, handle_z),
+                            rpy=(1.5707963, 0.0, 0.0),
+                        ),
+                        material=accent_mat,
+                        name=f"handle_standoff_{label}",
+                    )
                 sash_part.visual(
-                    Cylinder(radius=0.010, length=0.150),
+                    Cylinder(radius=HANDLE_STANDOFF_RADIUS, length=0.150),
                     origin=Origin(
-                        xyz=(handle_x_offset, front_y + 0.022, handle_z),
+                        xyz=(handle_x_offset, bar_y, handle_z),
                         rpy=(0.0, 1.5707963, 0.0),
                     ),
                     material=accent_mat,
@@ -661,6 +872,7 @@ def build_sliding_window(
     glass_mat = model.material(
         f"glass_{resolved.glass_opacity}", rgba=GLASS_PALETTES[resolved.glass_opacity]
     )
+    wear_mat = model.material("track_wear_strip", rgba=WEAR_STRIP_RGBA)
 
     window_frame = model.part("window_frame")
     _build_window_frame(
@@ -668,6 +880,7 @@ def build_sliding_window(
         resolved,
         frame_mat=frame_mat,
         accent_mat=accent_mat,
+        wear_mat=wear_mat,
     )
 
     depth_offsets = _depth_offsets_for_sashes(
@@ -703,23 +916,9 @@ def build_sliding_window(
             slot_to_logical[slot] = next_fixed
             next_fixed += 1
 
-    # Travel budget: each slider can move along the slide axis until it would
-    # leave the frame envelope.  Conservative upper bound:
-    travel = max(
-        0.05,
-        resolved.sash_axial_length - 0.02 if s == 1 else (resolved.sash_axial_length * 0.95),
-    )
-    # But travel must not let the slider exit the inner aperture.  Each slider
-    # starts at slot k; in the slide direction (toward the centre / opposite
-    # end), at most it can move ``(inner_axial / 2) - (sash_axial / 2)`` if the
-    # other sashes are fixed.  Use the conservative formula:
-    inner_axial = (
-        resolved.inner_width
-        if resolved.window_orientation == "horizontal"
-        else resolved.inner_height
-    )
-    max_safe_travel = inner_axial - resolved.sash_axial_length - 0.02
-    travel = max(0.05, min(travel, max_safe_travel))
+    # Travel is computed once in resolve_config so that frame-side stops and
+    # the prismatic joint always agree.
+    travel = resolved.travel
 
     # Build sashes
     for spatial_slot in range(n):

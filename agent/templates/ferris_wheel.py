@@ -30,11 +30,15 @@ GondolaStyle = Literal[
     "rounded_pod",
 ]
 SupportStyle = Literal["a_frame", "truss_tower", "inclined_legs"]
-RimStyle = Literal["double_torus", "single_torus", "twin_rings"]
+RimStyle = Literal["double_torus", "single_torus", "twin_rings", "concentric_double"]
 ScaleMode = Literal["compact", "normal", "landmark"]
 BaseStyle = Literal["platform"]
-HangerStyle = Literal["pivot_bar", "yoke_fork", "between_rims"]
+HangerStyle = Literal["pivot_bar", "yoke_fork", "between_rims", "leveling_arm"]
 GondolaMotionMode = Literal["free_swing", "counter_rotate_mimic"]
+
+LEVELING_ARM_LENGTH = 0.060
+LOADING_PLINTH_HEIGHT = 0.045
+PLATFORM_TOP_Z = 0.085
 
 GONDOLA_WIDTH_Y = 0.132
 GONDOLA_LOWEST_POINT_BELOW_PIVOT = 0.249
@@ -65,6 +69,147 @@ SCALE_MODE_WHEEL_HALF_WIDTH_RANGES: dict[ScaleMode, tuple[float, float]] = {
     "compact": (0.090, 0.112),
     "normal": (0.095, 0.125),
     "landmark": (0.118, 0.155),
+}
+
+
+FramePaletteName = Literal[
+    "painted_white",
+    "industrial_galvanized",
+    "candy_red",
+    "midnight_navy",
+    "deep_teal",
+    "sunset_orange",
+]
+CabinPaletteName = Literal[
+    "cream_and_white",
+    "red_and_cream",
+    "navy_and_cream",
+    "forest_and_cream",
+    "bronze_and_black",
+    "lavender_and_cream",
+    "mint_and_cream",
+    "retro_yellow_and_white",
+]
+GlassTintName = Literal["smoky_blue", "clear", "rose", "amber", "green_tinted"]
+GondolaPaletteName = Literal[
+    "none",
+    "rainbow_six",
+    "warm_four",
+    "cool_four",
+    "pastel_six",
+    "primary_three",
+]
+
+
+@dataclass(frozen=True)
+class FramePalette:
+    """Colors for the structural metalwork shared across leg/hub/rim and platform."""
+
+    frame: tuple[float, float, float, float]
+    accent: tuple[float, float, float, float]
+    platform: tuple[float, float, float, float]
+
+
+FRAME_PALETTES: dict[FramePaletteName, FramePalette] = {
+    "painted_white": FramePalette(
+        frame=(0.90, 0.90, 0.86, 1.0),
+        accent=(0.32, 0.33, 0.34, 1.0),
+        platform=(0.76, 0.75, 0.70, 1.0),
+    ),
+    "industrial_galvanized": FramePalette(
+        frame=(0.72, 0.74, 0.76, 1.0),
+        accent=(0.28, 0.30, 0.33, 1.0),
+        platform=(0.55, 0.55, 0.57, 1.0),
+    ),
+    "candy_red": FramePalette(
+        frame=(0.82, 0.16, 0.18, 1.0),
+        accent=(0.25, 0.10, 0.12, 1.0),
+        platform=(0.78, 0.74, 0.68, 1.0),
+    ),
+    "midnight_navy": FramePalette(
+        frame=(0.14, 0.20, 0.40, 1.0),
+        accent=(0.85, 0.83, 0.78, 1.0),
+        platform=(0.68, 0.66, 0.62, 1.0),
+    ),
+    "deep_teal": FramePalette(
+        frame=(0.08, 0.42, 0.46, 1.0),
+        accent=(0.92, 0.90, 0.84, 1.0),
+        platform=(0.70, 0.68, 0.64, 1.0),
+    ),
+    "sunset_orange": FramePalette(
+        frame=(0.90, 0.48, 0.18, 1.0),
+        accent=(0.22, 0.20, 0.22, 1.0),
+        platform=(0.80, 0.75, 0.66, 1.0),
+    ),
+}
+
+
+@dataclass(frozen=True)
+class CabinPalette:
+    body: tuple[float, float, float, float]
+    trim: tuple[float, float, float, float]
+
+
+CABIN_PALETTES: dict[CabinPaletteName, CabinPalette] = {
+    "cream_and_white": CabinPalette(body=(0.92, 0.88, 0.78, 1.0), trim=(0.96, 0.96, 0.92, 1.0)),
+    "red_and_cream": CabinPalette(body=(0.78, 0.20, 0.22, 1.0), trim=(0.96, 0.94, 0.88, 1.0)),
+    "navy_and_cream": CabinPalette(body=(0.18, 0.26, 0.48, 1.0), trim=(0.95, 0.93, 0.86, 1.0)),
+    "forest_and_cream": CabinPalette(body=(0.16, 0.42, 0.26, 1.0), trim=(0.94, 0.92, 0.84, 1.0)),
+    "bronze_and_black": CabinPalette(body=(0.62, 0.42, 0.22, 1.0), trim=(0.18, 0.16, 0.16, 1.0)),
+    "lavender_and_cream": CabinPalette(body=(0.62, 0.55, 0.78, 1.0), trim=(0.96, 0.94, 0.90, 1.0)),
+    "mint_and_cream": CabinPalette(body=(0.50, 0.78, 0.66, 1.0), trim=(0.96, 0.94, 0.88, 1.0)),
+    "retro_yellow_and_white": CabinPalette(
+        body=(0.94, 0.78, 0.22, 1.0), trim=(0.97, 0.96, 0.92, 1.0)
+    ),
+}
+
+
+GLASS_TINTS: dict[GlassTintName, tuple[float, float, float, float]] = {
+    "smoky_blue": (0.55, 0.68, 0.72, 0.40),
+    "clear": (0.85, 0.90, 0.94, 0.35),
+    "rose": (0.78, 0.55, 0.62, 0.42),
+    "amber": (0.82, 0.66, 0.34, 0.45),
+    "green_tinted": (0.50, 0.72, 0.58, 0.40),
+}
+
+
+# Per-gondola color rotations. The cycle is applied modulo len(palette), so each
+# gondola around the wheel gets its own RGB while sharing the chosen trim color.
+GONDOLA_PALETTES: dict[GondolaPaletteName, tuple[tuple[float, float, float, float], ...]] = {
+    "none": (),
+    "rainbow_six": (
+        (0.85, 0.22, 0.22, 1.0),  # red
+        (0.94, 0.62, 0.18, 1.0),  # orange
+        (0.94, 0.86, 0.30, 1.0),  # yellow
+        (0.30, 0.70, 0.36, 1.0),  # green
+        (0.22, 0.46, 0.82, 1.0),  # blue
+        (0.58, 0.34, 0.78, 1.0),  # violet
+    ),
+    "warm_four": (
+        (0.82, 0.22, 0.22, 1.0),
+        (0.92, 0.58, 0.20, 1.0),
+        (0.95, 0.82, 0.30, 1.0),
+        (0.74, 0.34, 0.18, 1.0),
+    ),
+    "cool_four": (
+        (0.22, 0.46, 0.78, 1.0),
+        (0.32, 0.70, 0.78, 1.0),
+        (0.30, 0.55, 0.42, 1.0),
+        (0.46, 0.34, 0.74, 1.0),
+    ),
+    "pastel_six": (
+        (0.96, 0.74, 0.74, 1.0),
+        (0.96, 0.86, 0.68, 1.0),
+        (0.94, 0.94, 0.74, 1.0),
+        (0.76, 0.92, 0.78, 1.0),
+        (0.72, 0.84, 0.94, 1.0),
+        (0.86, 0.78, 0.94, 1.0),
+    ),
+    "primary_three": (
+        (0.85, 0.18, 0.18, 1.0),
+        (0.94, 0.82, 0.24, 1.0),
+        (0.18, 0.40, 0.82, 1.0),
+    ),
 }
 
 
@@ -99,6 +244,15 @@ class FerrisWheelConfig:
     inner_rim_radius: float | None = None
     wheel_half_width: float = DEFAULT_WHEEL_HALF_WIDTH
     axle_z: float | None = None
+    boarding_bridge_enabled: bool = False
+    loading_plinth_enabled: bool = False
+    operator_booth_enabled: bool = False
+    drive_house_enabled: bool = False
+    service_deck_enabled: bool = False
+    frame_palette: FramePaletteName = "painted_white"
+    cabin_palette: CabinPaletteName = "cream_and_white"
+    glass_tint: GlassTintName = "smoky_blue"
+    gondola_palette: GondolaPaletteName = "none"
     name: str = "reference_ferris_wheel"
 
 
@@ -119,6 +273,15 @@ class ResolvedFerrisWheelConfig:
     wheel_half_width: float
     axle_z: float
     support_scale: float
+    boarding_bridge_enabled: bool
+    loading_plinth_enabled: bool
+    operator_booth_enabled: bool
+    drive_house_enabled: bool
+    service_deck_enabled: bool
+    frame_palette: FramePaletteName
+    cabin_palette: CabinPaletteName
+    glass_tint: GlassTintName
+    gondola_palette: GondolaPaletteName
     name: str
 
 
@@ -136,11 +299,61 @@ def config_from_seed(seed: int) -> FerrisWheelConfig:
     )[0]
     rim_min, rim_max = SCALE_MODE_SEED_RANGES[scale_mode]
     width_min, width_max = SCALE_MODE_WHEEL_HALF_WIDTH_RANGES[scale_mode]
-    rim_style = rng.choice(("double_torus", "single_torus", "twin_rings"))
+    rim_style = rng.choices(
+        ("double_torus", "single_torus", "twin_rings", "concentric_double"),
+        weights=(0.34, 0.22, 0.22, 0.22),
+        k=1,
+    )[0]
     if rim_style == "twin_rings":
         hanger_style: HangerStyle = rng.choice(("pivot_bar", "yoke_fork", "between_rims"))
     else:
-        hanger_style = rng.choice(("pivot_bar", "yoke_fork"))
+        # leveling_arm is valid for non-twin rims (it hangs off the outer rim only)
+        hanger_style = rng.choice(("pivot_bar", "yoke_fork", "leveling_arm"))
+    base_style: BaseStyle = "platform"
+    # Platform extras: cluster of independent booleans, slightly biased toward off
+    # to keep most seeded wheels uncluttered.
+    boarding_bridge = rng.random() < 0.20
+    loading_plinth = rng.random() < 0.20
+    operator_booth = rng.random() < 0.20
+    drive_house = rng.random() < 0.20
+    service_deck = rng.random() < 0.15
+    # Palette diversity: weight defaults a bit higher but cycle the others in too.
+    frame_palette: FramePaletteName = rng.choices(
+        (
+            "painted_white",
+            "industrial_galvanized",
+            "candy_red",
+            "midnight_navy",
+            "deep_teal",
+            "sunset_orange",
+        ),
+        weights=(0.34, 0.18, 0.14, 0.12, 0.12, 0.10),
+        k=1,
+    )[0]
+    cabin_palette: CabinPaletteName = rng.choices(
+        (
+            "cream_and_white",
+            "red_and_cream",
+            "navy_and_cream",
+            "forest_and_cream",
+            "bronze_and_black",
+            "lavender_and_cream",
+            "mint_and_cream",
+            "retro_yellow_and_white",
+        ),
+        weights=(0.26, 0.14, 0.12, 0.10, 0.10, 0.10, 0.10, 0.08),
+        k=1,
+    )[0]
+    glass_tint: GlassTintName = rng.choices(
+        ("smoky_blue", "clear", "rose", "amber", "green_tinted"),
+        weights=(0.40, 0.22, 0.13, 0.13, 0.12),
+        k=1,
+    )[0]
+    gondola_palette: GondolaPaletteName = rng.choices(
+        ("none", "rainbow_six", "warm_four", "cool_four", "pastel_six", "primary_three"),
+        weights=(0.40, 0.15, 0.12, 0.12, 0.12, 0.09),
+        k=1,
+    )[0]
     return FerrisWheelConfig(
         num_gondolas=num_gondolas,
         spoke_count=spoke_count,
@@ -150,7 +363,7 @@ def config_from_seed(seed: int) -> FerrisWheelConfig:
         support_style=rng.choice(("a_frame", "truss_tower", "inclined_legs")),
         rim_style=rim_style,
         scale_mode=scale_mode,
-        base_style="platform",
+        base_style=base_style,
         hanger_style=hanger_style,
         gondola_motion_mode=rng.choices(
             ("free_swing", "counter_rotate_mimic"), weights=(0.70, 0.30), k=1
@@ -158,6 +371,15 @@ def config_from_seed(seed: int) -> FerrisWheelConfig:
         railing_enabled=(rng.random() > 0.20),
         rim_radius=round(rng.uniform(rim_min, rim_max), 3),
         wheel_half_width=round(rng.uniform(width_min, width_max), 3),
+        boarding_bridge_enabled=boarding_bridge,
+        loading_plinth_enabled=loading_plinth,
+        operator_booth_enabled=operator_booth,
+        drive_house_enabled=drive_house,
+        service_deck_enabled=service_deck,
+        frame_palette=frame_palette,
+        cabin_palette=cabin_palette,
+        glass_tint=glass_tint,
+        gondola_palette=gondola_palette,
         name=f"seeded_ferris_wheel_{seed}",
     )
 
@@ -189,23 +411,47 @@ def resolve_config(config: FerrisWheelConfig) -> ResolvedFerrisWheelConfig:
         raise ValueError(f"Unsupported gondola_style: {config.gondola_style}")
     if config.support_style not in {"a_frame", "truss_tower", "inclined_legs"}:
         raise ValueError(f"Unsupported support_style: {config.support_style}")
-    if config.rim_style not in {"double_torus", "single_torus", "twin_rings"}:
+    if config.rim_style not in {"double_torus", "single_torus", "twin_rings", "concentric_double"}:
         raise ValueError(f"Unsupported rim_style: {config.rim_style}")
     if config.scale_mode not in {"compact", "normal", "landmark"}:
         raise ValueError(f"Unsupported scale_mode: {config.scale_mode}")
     if config.base_style not in {"platform"}:
         raise ValueError(f"Unsupported base_style: {config.base_style}")
-    if config.hanger_style not in {"pivot_bar", "yoke_fork", "between_rims"}:
+    if config.hanger_style not in {"pivot_bar", "yoke_fork", "between_rims", "leveling_arm"}:
         raise ValueError(f"Unsupported hanger_style: {config.hanger_style}")
     if config.gondola_motion_mode not in {"free_swing", "counter_rotate_mimic"}:
         raise ValueError(f"Unsupported gondola_motion_mode: {config.gondola_motion_mode}")
     if not isinstance(config.railing_enabled, bool):
         raise ValueError("railing_enabled must be a bool")
+    for flag_name in (
+        "boarding_bridge_enabled",
+        "loading_plinth_enabled",
+        "operator_booth_enabled",
+        "drive_house_enabled",
+        "service_deck_enabled",
+    ):
+        if not isinstance(getattr(config, flag_name), bool):
+            raise ValueError(f"{flag_name} must be a bool")
     if config.hanger_style == "between_rims" and config.rim_style != "twin_rings":
         raise ValueError("between_rims hanger_style requires rim_style='twin_rings'")
+    if config.rim_style == "concentric_double" and config.hanger_style == "between_rims":
+        raise ValueError(
+            "concentric_double rim_style is incompatible with between_rims hanger_style"
+        )
+    if config.frame_palette not in FRAME_PALETTES:
+        raise ValueError(f"Unsupported frame_palette: {config.frame_palette}")
+    if config.cabin_palette not in CABIN_PALETTES:
+        raise ValueError(f"Unsupported cabin_palette: {config.cabin_palette}")
+    if config.glass_tint not in GLASS_TINTS:
+        raise ValueError(f"Unsupported glass_tint: {config.glass_tint}")
+    if config.gondola_palette not in GONDOLA_PALETTES:
+        raise ValueError(f"Unsupported gondola_palette: {config.gondola_palette}")
 
     profile = gondola_collision_profile(config.gondola_style)
-    min_spacing = max(profile.width_y + 0.018, profile.lowest_point_below_pivot + 0.050)
+    effective_drop = profile.lowest_point_below_pivot
+    if config.hanger_style == "leveling_arm":
+        effective_drop += LEVELING_ARM_LENGTH
+    min_spacing = max(profile.width_y + 0.018, effective_drop + 0.050)
     required_radius = min_spacing / (2.0 * math.sin(math.pi / config.num_gondolas))
     if config.rim_radius is None:
         rim_radius = max(SCALE_MODE_BASE_RIM_RADIUS[config.scale_mode], required_radius)
@@ -218,8 +464,13 @@ def resolve_config(config: FerrisWheelConfig) -> ResolvedFerrisWheelConfig:
     )
     scale = support_scale_for_radius(rim_radius)
     support_rail_top_z = SUPPORT_RAIL_TOP_Z * scale
+    plinth_clearance = 0.0
+    if config.loading_plinth_enabled:
+        # Plinth top sits at LOADING_PLINTH_TOP_Z above platform top; reserve room so the
+        # lowest gondola sweep stays above the plinth top.
+        plinth_clearance = LOADING_PLINTH_HEIGHT + 0.020
     required_axle_z = (
-        rim_radius + profile.lowest_point_below_pivot + support_rail_top_z + GROUND_CLEARANCE
+        rim_radius + effective_drop + support_rail_top_z + GROUND_CLEARANCE + plinth_clearance
     )
     axle_z = required_axle_z if config.axle_z is None else max(config.axle_z, required_axle_z)
     return ResolvedFerrisWheelConfig(
@@ -238,6 +489,15 @@ def resolve_config(config: FerrisWheelConfig) -> ResolvedFerrisWheelConfig:
         wheel_half_width=config.wheel_half_width,
         axle_z=axle_z,
         support_scale=scale,
+        boarding_bridge_enabled=config.boarding_bridge_enabled,
+        loading_plinth_enabled=config.loading_plinth_enabled,
+        operator_booth_enabled=config.operator_booth_enabled,
+        drive_house_enabled=config.drive_house_enabled,
+        service_deck_enabled=config.service_deck_enabled,
+        frame_palette=config.frame_palette,
+        cabin_palette=config.cabin_palette,
+        glass_tint=config.glass_tint,
+        gondola_palette=config.gondola_palette,
         name=config.name,
     )
 
@@ -345,17 +605,129 @@ def _add_platform_base(support, *, material, scale: float, railing_enabled: bool
     _add_platform_railings(support, material=material, scale=scale, enabled=railing_enabled)
 
 
+def _add_optional_platform_extras(
+    support, resolved: ResolvedFerrisWheelConfig, *, material, dark, white
+) -> None:
+    """Drive house / operator booth / boarding bridge / loading plinth / service deck.
+    All extras anchor to surfaces that already exist on the support frame so nothing
+    is left floating, and footprints are placed clear of the leg feet."""
+    scale = resolved.support_scale
+    deck_top_z = PLATFORM_TOP_Z
+    # Drive house: a sealed motor cabinet sitting on the deck off to one side, beyond
+    # the leg foot footprint (legs span y in [-foot_y, +foot_y] with foot_y >= 0.31*scale).
+    if resolved.drive_house_enabled:
+        dh_w = 0.22 * scale
+        dh_d = 0.22 * scale
+        dh_h = 0.20 * scale
+        support.visual(
+            Box((dh_w, dh_d, dh_h)),
+            origin=Origin(xyz=(0.40 * scale, -0.20 * scale, deck_top_z + dh_h / 2.0)),
+            material=dark,
+            name="drive_house",
+        )
+        support.visual(
+            Box((dh_w * 0.85, dh_d * 0.85, 0.014)),
+            origin=Origin(xyz=(0.40 * scale, -0.20 * scale, deck_top_z + dh_h + 0.007)),
+            material=white,
+            name="drive_house_roof",
+        )
+    # Operator booth: a taller ticket cabin opposite the drive house.
+    if resolved.operator_booth_enabled:
+        ob_w = 0.20 * scale
+        ob_d = 0.20 * scale
+        ob_h = 0.28 * scale
+        support.visual(
+            Box((ob_w, ob_d, ob_h)),
+            origin=Origin(xyz=(-0.40 * scale, 0.22 * scale, deck_top_z + ob_h / 2.0)),
+            material=white,
+            name="operator_booth",
+        )
+        support.visual(
+            Box((ob_w * 0.95, ob_d * 0.95, 0.018)),
+            origin=Origin(xyz=(-0.40 * scale, 0.22 * scale, deck_top_z + ob_h + 0.009)),
+            material=dark,
+            name="booth_roof",
+        )
+    # Boarding bridge: a short ramped deck that hangs off the front (+Y) edge of the
+    # platform. Its near-edge overlaps the platform slab so it isn't floating, and
+    # the far edge is supported by a stub leg that reaches the ground.
+    if resolved.boarding_bridge_enabled:
+        bridge_top_z = deck_top_z
+        bridge_length_y = 0.40 * scale
+        bridge_width_x = 0.60 * scale
+        bridge_center_y = (0.82 * scale) / 2.0 + bridge_length_y / 2.0 - 0.02
+        support.visual(
+            Box((bridge_width_x, bridge_length_y, 0.030)),
+            origin=Origin(xyz=(0.0, bridge_center_y, bridge_top_z - 0.015)),
+            material=material,
+            name="boarding_bridge",
+        )
+        # Two corner posts down to the ground prevent the bridge from cantilevering.
+        post_height = bridge_top_z - 0.030
+        for x_sign, side in ((-1.0, "left"), (1.0, "right")):
+            support.visual(
+                Cylinder(radius=0.014, length=post_height),
+                origin=Origin(
+                    xyz=(
+                        x_sign * (bridge_width_x / 2.0 - 0.030),
+                        bridge_center_y + bridge_length_y / 2.0 - 0.030,
+                        post_height / 2.0,
+                    )
+                ),
+                material=dark,
+                name=f"boarding_bridge_{side}_post",
+            )
+    # Loading plinth: a raised platform directly under the bottom-most gondola.
+    # We size its height conservatively (LOADING_PLINTH_HEIGHT) so the lowest gondola
+    # pose still clears it by GROUND_CLEARANCE -- the axle_z floor already reserved
+    # this height during resolve_config.
+    if resolved.loading_plinth_enabled:
+        plinth_w = 0.40 * scale
+        plinth_d = 0.26 * scale
+        plinth_h = LOADING_PLINTH_HEIGHT
+        support.visual(
+            Box((plinth_w, plinth_d, plinth_h)),
+            origin=Origin(xyz=(0.0, 0.0, deck_top_z + plinth_h / 2.0)),
+            material=material,
+            name="loading_plinth",
+        )
+    # Service deck: a narrow walkway hung underneath the axle for inspection.
+    # Sits well above the platform but well below the rim, so it won't collide with
+    # the rotating wheel as long as axle_z - rim_radius - 0.06 > service deck top.
+    if resolved.service_deck_enabled:
+        sd_w = 0.32 * scale
+        sd_d = 0.14 * scale
+        sd_h = 0.012
+        sd_z = max(deck_top_z + 0.40 * scale, resolved.axle_z - resolved.rim_radius - 0.10)
+        if sd_z + sd_h / 2.0 < resolved.axle_z - resolved.rim_radius - 0.020:
+            support.visual(
+                Box((sd_w, sd_d, sd_h)),
+                origin=Origin(xyz=(0.0, 0.0, sd_z + sd_h / 2.0)),
+                material=dark,
+                name="service_deck",
+            )
+
+
 def _add_support_base(
     support,
     resolved: ResolvedFerrisWheelConfig,
     *,
     material,
+    dark,
+    white,
 ) -> None:
     _add_platform_base(
         support,
         material=material,
         scale=resolved.support_scale,
         railing_enabled=resolved.railing_enabled,
+    )
+    _add_optional_platform_extras(
+        support,
+        resolved,
+        material=material,
+        dark=dark,
+        white=white,
     )
 
 
@@ -1039,6 +1411,10 @@ def _gondola_pivot_radius(resolved: ResolvedFerrisWheelConfig) -> float:
         return max(resolved.rim_radius * 0.86, resolved.rim_radius - 0.12)
     if resolved.hanger_style == "yoke_fork":
         return resolved.rim_radius - 0.018
+    if resolved.hanger_style == "leveling_arm":
+        # The actual swing pivot sits LEVELING_ARM_LENGTH outside the rim, dangled from a
+        # mount_pad on the outer rim. axle_z resolved with this drop reserved.
+        return resolved.rim_radius + LEVELING_ARM_LENGTH
     return resolved.rim_radius
 
 
@@ -1069,6 +1445,25 @@ def _add_gondola_mounting(
                 ),
                 material=dark,
                 name=f"{side}_fork_cheek_{index}",
+            )
+    elif resolved.hanger_style == "leveling_arm":
+        # Arm reaches from the outer rim outward to the pivot bar; the swing pivot
+        # therefore sits LEVELING_ARM_LENGTH past the rim. mount_pad anchors the arm
+        # to the rim so nothing hangs in mid-air.
+        rim0 = _wheel_point(resolved.rim_radius, angle, -resolved.wheel_half_width)
+        rim1 = _wheel_point(resolved.rim_radius, angle, resolved.wheel_half_width)
+        _member(wheel, p0, p1, radius=0.0078, material=white, name=anchor_name)
+        _member(wheel, rim0, p0, radius=0.0072, material=white, name=f"rear_arm_beam_{index}")
+        _member(wheel, rim1, p1, radius=0.0072, material=white, name=f"front_arm_beam_{index}")
+        for point, side in ((rim0, "rear"), (rim1, "front")):
+            wheel.visual(
+                Box((0.034, 0.014, 0.034)),
+                origin=Origin(
+                    xyz=(point[0], point[1] * 0.985, point[2] * 0.985),
+                    rpy=(0.0, 0.0, math.atan2(point[2], point[1])),
+                ),
+                material=dark,
+                name=f"{side}_mount_pad_{index}",
             )
     else:
         outer0 = _wheel_point(resolved.rim_radius, angle, -resolved.wheel_half_width)
@@ -1116,16 +1511,27 @@ def build_ferris_wheel(
         assets = AssetContext(Path(tempfile.mkdtemp(prefix="articraft-ferris-assets-")))
     model = ArticulatedObject(name=resolved.name, assets=assets)
 
-    white = model.material("painted_white_steel", rgba=(0.90, 0.90, 0.86, 1.0))
-    dark = model.material("dark_bearing_steel", rgba=(0.32, 0.33, 0.34, 1.0))
-    platform_mat = model.material("platform_panels", rgba=(0.76, 0.75, 0.70, 1.0))
-    cabin_mat = model.material("cream_cabin_panels", rgba=(0.92, 0.88, 0.78, 1.0))
-    trim_mat = model.material("cabin_white_trim", rgba=(0.96, 0.96, 0.92, 1.0))
-    glass = model.material("smoky_window_glass", rgba=(0.55, 0.68, 0.72, 0.40))
+    frame_pal = FRAME_PALETTES[resolved.frame_palette]
+    cabin_pal = CABIN_PALETTES[resolved.cabin_palette]
+    glass_rgba = GLASS_TINTS[resolved.glass_tint]
+    white = model.material(f"frame_main_{resolved.frame_palette}", rgba=frame_pal.frame)
+    dark = model.material(f"frame_accent_{resolved.frame_palette}", rgba=frame_pal.accent)
+    platform_mat = model.material(
+        f"platform_panels_{resolved.frame_palette}", rgba=frame_pal.platform
+    )
+    cabin_mat = model.material(f"cabin_body_{resolved.cabin_palette}", rgba=cabin_pal.body)
+    trim_mat = model.material(f"cabin_trim_{resolved.cabin_palette}", rgba=cabin_pal.trim)
+    glass = model.material(f"glass_{resolved.glass_tint}", rgba=glass_rgba)
+    gondola_palette_rgba = GONDOLA_PALETTES[resolved.gondola_palette]
+    gondola_palette_mats: list = []
+    for idx, rgba in enumerate(gondola_palette_rgba):
+        gondola_palette_mats.append(
+            model.material(f"gondola_palette_{resolved.gondola_palette}_{idx}", rgba=rgba)
+        )
 
     rim_mesh = None
     inner_rim_mesh = None
-    if resolved.rim_style in {"single_torus", "double_torus"}:
+    if resolved.rim_style in {"single_torus", "double_torus", "concentric_double"}:
         rim_mesh = _mesh(
             assets,
             "large_outer_rim.obj",
@@ -1136,7 +1542,7 @@ def build_ferris_wheel(
                 tubular_segments=144,
             ).rotate_y(math.pi / 2.0),
         )
-    if resolved.rim_style == "double_torus":
+    if resolved.rim_style in {"double_torus", "concentric_double"}:
         inner_rim_mesh = _mesh(
             assets,
             "inner_stiffening_rim.obj",
@@ -1153,6 +1559,8 @@ def build_ferris_wheel(
         support,
         resolved,
         material=platform_mat,
+        dark=dark,
+        white=white,
     )
     support_builder = SUPPORT_STYLE_BUILDERS[resolved.support_style]
     axle, _bearing_x = support_builder(support, resolved, white=white, dark=dark)
@@ -1176,13 +1584,30 @@ def build_ferris_wheel(
                 material=white,
                 name=f"{label}_outer_rim",
             )
-            if resolved.rim_style == "double_torus":
+            if resolved.rim_style in {"double_torus", "concentric_double"}:
                 wheel.visual(
                     inner_rim_mesh,
                     origin=Origin(xyz=(x, 0.0, 0.0)),
                     material=white,
                     name=f"{label}_inner_rim",
                 )
+        if resolved.rim_style == "concentric_double":
+            # Radial struts so the inner ring isn't floating relative to the outer rim.
+            strut_count = max(8, resolved.num_gondolas)
+            for i in range(strut_count):
+                a = 2.0 * math.pi * i / strut_count
+                for x, side in (
+                    (-resolved.wheel_half_width, "rear"),
+                    (resolved.wheel_half_width, "front"),
+                ):
+                    _member(
+                        wheel,
+                        _wheel_point(resolved.inner_rim_radius, a, x),
+                        _wheel_point(resolved.rim_radius, a, x),
+                        radius=0.0058,
+                        material=white,
+                        name=f"{side}_concentric_strut_{i}",
+                    )
     wheel.visual(
         Cylinder(radius=central_hub_radius, length=hub_length),
         origin=Origin(rpy=(0.0, math.pi / 2.0, 0.0)),
@@ -1238,7 +1663,13 @@ def build_ferris_wheel(
     gondola_builder = GONDOLA_STYLE_BUILDERS[resolved.gondola_style]
     for i in range(1, resolved.num_gondolas + 1):
         gondola = model.part(f"gondola_{i}")
-        gondola_builder(gondola, body_mat=cabin_mat, trim_mat=trim_mat, glass_mat=glass, index=i)
+        if gondola_palette_mats:
+            this_body_mat = gondola_palette_mats[(i - 1) % len(gondola_palette_mats)]
+        else:
+            this_body_mat = cabin_mat
+        gondola_builder(
+            gondola, body_mat=this_body_mat, trim_mat=trim_mat, glass_mat=glass, index=i
+        )
         pivot = gondola_pivots[i]
         model.articulation(
             f"gondola_pivot_{i}",

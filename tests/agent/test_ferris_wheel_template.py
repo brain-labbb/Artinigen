@@ -3,7 +3,12 @@ from __future__ import annotations
 import pytest
 
 from agent.templates.ferris_wheel import (
+    CABIN_PALETTES,
     DEFAULT_WHEEL_HALF_WIDTH,
+    FRAME_PALETTES,
+    GLASS_TINTS,
+    GONDOLA_PALETTES,
+    LEVELING_ARM_LENGTH,
     SCALE_MODE_SEED_RANGES,
     SEED_RIM_RADIUS_MAX,
     SEED_RIM_RADIUS_MIN,
@@ -13,6 +18,7 @@ from agent.templates.ferris_wheel import (
     gondola_collision_profile,
     hub_geometry,
     resolve_config,
+    run_ferris_wheel_tests,
     support_scale_for_radius,
 )
 
@@ -354,3 +360,178 @@ def test_gondola_styles_have_distinct_visual_contracts() -> None:
     assert "bucket_back" in bucket_visuals
     assert "pod_shell" in pod_visuals
     assert "front_pod_endcap" in pod_visuals
+
+
+def test_leveling_arm_extends_pivot_radius_and_axle_height() -> None:
+    base = resolve_config(
+        FerrisWheelConfig(num_gondolas=8, spoke_count=16, hanger_style="pivot_bar")
+    )
+    arm = resolve_config(
+        FerrisWheelConfig(num_gondolas=8, spoke_count=16, hanger_style="leveling_arm")
+    )
+    # The leveling arm reserves LEVELING_ARM_LENGTH of extra clearance under the rim.
+    assert arm.axle_z >= base.axle_z + LEVELING_ARM_LENGTH - 1e-6
+
+    model = build_ferris_wheel(
+        FerrisWheelConfig(num_gondolas=6, spoke_count=12, hanger_style="leveling_arm")
+    )
+    wheel_visuals = {v.name for v in model.get_part("wheel").visuals}
+    assert "rear_arm_beam_1" in wheel_visuals
+    assert "front_arm_beam_1" in wheel_visuals
+    assert "rear_mount_pad_1" in wheel_visuals
+    # The joint origin sits radially beyond the rim by LEVELING_ARM_LENGTH.
+    pivot_joint = model.get_articulation("gondola_pivot_1")
+    pivot_xyz = pivot_joint.origin.xyz
+    radial_offset = (pivot_xyz[1] ** 2 + pivot_xyz[2] ** 2) ** 0.5
+    resolved = resolve_config(
+        FerrisWheelConfig(num_gondolas=6, spoke_count=12, hanger_style="leveling_arm")
+    )
+    assert radial_offset == pytest.approx(resolved.rim_radius + LEVELING_ARM_LENGTH, abs=1e-6)
+
+
+def test_concentric_double_rim_has_struts_and_inner_ring() -> None:
+    model = build_ferris_wheel(
+        FerrisWheelConfig(num_gondolas=8, spoke_count=16, rim_style="concentric_double")
+    )
+    wheel_visuals = {v.name for v in model.get_part("wheel").visuals}
+    assert "left_outer_rim" in wheel_visuals
+    assert "left_inner_rim" in wheel_visuals
+    assert any(name.startswith("rear_concentric_strut_") for name in wheel_visuals)
+    assert any(name.startswith("front_concentric_strut_") for name in wheel_visuals)
+
+
+def test_concentric_double_rejected_with_between_rims_hanger() -> None:
+    # between_rims requires rim_style='twin_rings'; concentric_double is therefore
+    # rejected by the earlier hanger/rim compatibility check.
+    with pytest.raises(ValueError, match="twin_rings"):
+        resolve_config(
+            FerrisWheelConfig(
+                num_gondolas=8,
+                spoke_count=16,
+                rim_style="concentric_double",
+                hanger_style="between_rims",
+            )
+        )
+
+
+def test_optional_platform_extras_appear_when_enabled() -> None:
+    extras = build_ferris_wheel(
+        FerrisWheelConfig(
+            num_gondolas=8,
+            spoke_count=16,
+            boarding_bridge_enabled=True,
+            loading_plinth_enabled=True,
+            operator_booth_enabled=True,
+            drive_house_enabled=True,
+            service_deck_enabled=True,
+        )
+    )
+    visuals = {v.name for v in extras.get_part("support_frame").visuals}
+    assert "boarding_bridge" in visuals
+    assert "loading_plinth" in visuals
+    assert "operator_booth" in visuals
+    assert "drive_house" in visuals
+    assert "service_deck" in visuals
+
+    bare = build_ferris_wheel(FerrisWheelConfig(num_gondolas=8, spoke_count=16))
+    bare_visuals = {v.name for v in bare.get_part("support_frame").visuals}
+    for extra in (
+        "boarding_bridge",
+        "loading_plinth",
+        "operator_booth",
+        "drive_house",
+        "service_deck",
+    ):
+        assert extra not in bare_visuals
+
+
+def test_loading_plinth_raises_axle_height_to_clear_lowest_gondola() -> None:
+    base = resolve_config(FerrisWheelConfig(num_gondolas=8, spoke_count=16))
+    with_plinth = resolve_config(
+        FerrisWheelConfig(num_gondolas=8, spoke_count=16, loading_plinth_enabled=True)
+    )
+    assert with_plinth.axle_z > base.axle_z
+
+
+def test_new_seeded_configs_build_and_validate() -> None:
+    # Seeds exercise the new rim / hanger / base combinations introduced.
+    for seed in (101, 202, 303, 404, 505):
+        cfg = config_from_seed(seed)
+        model = build_ferris_wheel(cfg)
+        report = run_ferris_wheel_tests(model, cfg)
+        assert report.passed, report.failures
+
+
+def test_palette_selection_changes_materials() -> None:
+    candy = build_ferris_wheel(
+        FerrisWheelConfig(
+            num_gondolas=6,
+            spoke_count=12,
+            frame_palette="candy_red",
+            cabin_palette="navy_and_cream",
+            glass_tint="rose",
+        )
+    )
+    materials = {m.name for m in candy.materials}
+    assert "frame_main_candy_red" in materials
+    assert "frame_accent_candy_red" in materials
+    assert "platform_panels_candy_red" in materials
+    assert "cabin_body_navy_and_cream" in materials
+    assert "cabin_trim_navy_and_cream" in materials
+    assert "glass_rose" in materials
+
+
+def test_gondola_palette_cycles_body_color_per_index() -> None:
+    palette_name = "rainbow_six"
+    model = build_ferris_wheel(
+        FerrisWheelConfig(
+            num_gondolas=6,
+            spoke_count=12,
+            gondola_style="open_basket",
+            gondola_palette=palette_name,
+        )
+    )
+    palette = GONDOLA_PALETTES[palette_name]
+    assert palette  # sanity: rainbow_six is non-empty
+    materials = {m.name: m.rgba for m in model.materials}
+    for idx in range(len(palette)):
+        key = f"gondola_palette_{palette_name}_{idx}"
+        assert key in materials
+        assert materials[key] == palette[idx]
+
+
+def test_gondola_palette_none_falls_back_to_cabin_body_color() -> None:
+    model = build_ferris_wheel(
+        FerrisWheelConfig(
+            num_gondolas=4,
+            spoke_count=8,
+            gondola_style="box_cabin",
+            cabin_palette="bronze_and_black",
+            gondola_palette="none",
+        )
+    )
+    cabin_body = next(m for m in model.materials if m.name == "cabin_body_bronze_and_black")
+    gondola_1 = model.get_part("gondola_1")
+    body_visual = next(v for v in gondola_1.visuals if v.name == "cabin_body")
+    assert body_visual.material is cabin_body
+
+
+def test_invalid_palette_names_rejected() -> None:
+    with pytest.raises(ValueError, match="frame_palette"):
+        resolve_config(FerrisWheelConfig(frame_palette="not_a_palette"))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="cabin_palette"):
+        resolve_config(FerrisWheelConfig(cabin_palette="not_a_palette"))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="glass_tint"):
+        resolve_config(FerrisWheelConfig(glass_tint="not_a_tint"))  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="gondola_palette"):
+        resolve_config(FerrisWheelConfig(gondola_palette="not_a_palette"))  # type: ignore[arg-type]
+
+
+def test_palette_tables_define_expected_keys() -> None:
+    assert "painted_white" in FRAME_PALETTES
+    assert len(FRAME_PALETTES) >= 6
+    assert "cream_and_white" in CABIN_PALETTES
+    assert len(CABIN_PALETTES) >= 6
+    assert "smoky_blue" in GLASS_TINTS
+    assert "none" in GONDOLA_PALETTES
+    assert GONDOLA_PALETTES["none"] == ()

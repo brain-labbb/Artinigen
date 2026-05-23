@@ -11,13 +11,27 @@ from sdk import (
     ArticulatedObject,
     ArticulationType,
     AssetContext,
+    BoltPattern,
     Box,
     Cylinder,
     MotionLimits,
     Origin,
     TestContext,
     TestReport,
+    TireGeometry,
+    TireGroove,
+    TireShoulder,
+    TireSidewall,
+    TireTread,
+    WheelBore,
+    WheelFace,
+    WheelGeometry,
+    WheelHub,
+    WheelRim,
+    WheelSpokes,
+    mesh_from_geometry,
 )
+from sdk._core.v0.assets import AssetSession, activate_asset_session
 
 # ---------------------------------------------------------------------------
 # Type aliases for the discrete style knobs (from spec section 6).
@@ -30,12 +44,12 @@ HandleShape = Literal["U_shape", "twin_rod", "suitcase_style"]
 LidStyle = Literal["flat", "raised", "split"]
 FrontSupport = Literal["feet", "small_casters"]
 CornerGuard = Literal["none", "reinforced"]
-MaterialStyle = Literal["yellow_black", "red_black", "gray"]
+MaterialStyle = Literal["yellow_black", "red_black", "gray", "blue_black"]
+SleeveStyle = Literal["external_tubes", "rear_channel"]
+WheelStyle = Literal["simple_hub", "rim_hub", "treaded_lugs", "spoked_steel", "spoked_chunky"]
 
 # ---------------------------------------------------------------------------
 # Discrete bucket + per-bucket continuous ranges (Section 0 requirement).
-# Bucket is the spine class; continuous values inside each bucket break
-# "same-class clone" duplicates across seeds.
 # ---------------------------------------------------------------------------
 
 BOX_SIZE_WIDTH_RANGES: dict[BoxSize, tuple[float, float]] = {
@@ -65,7 +79,7 @@ WHEEL_SIZE_WIDTH_RANGES: dict[WheelSize, tuple[float, float]] = {
     "rugged_large": (0.052, 0.072),
 }
 
-# Material palettes for the three style buckets.
+# Material palettes for the four style buckets.
 MATERIAL_PALETTES: dict[MaterialStyle, dict[str, tuple[float, float, float, float]]] = {
     "yellow_black": {
         "body": (0.94, 0.74, 0.10, 1.0),
@@ -74,6 +88,7 @@ MATERIAL_PALETTES: dict[MaterialStyle, dict[str, tuple[float, float, float, floa
         "hardware": (0.55, 0.55, 0.56, 1.0),
         "rubber": (0.07, 0.07, 0.07, 1.0),
         "rim": (0.30, 0.30, 0.31, 1.0),
+        "grip": (0.09, 0.09, 0.09, 1.0),
     },
     "red_black": {
         "body": (0.78, 0.16, 0.13, 1.0),
@@ -82,6 +97,7 @@ MATERIAL_PALETTES: dict[MaterialStyle, dict[str, tuple[float, float, float, floa
         "hardware": (0.62, 0.62, 0.63, 1.0),
         "rubber": (0.06, 0.06, 0.06, 1.0),
         "rim": (0.28, 0.28, 0.29, 1.0),
+        "grip": (0.08, 0.08, 0.08, 1.0),
     },
     "gray": {
         "body": (0.45, 0.46, 0.48, 1.0),
@@ -90,22 +106,33 @@ MATERIAL_PALETTES: dict[MaterialStyle, dict[str, tuple[float, float, float, floa
         "hardware": (0.70, 0.70, 0.71, 1.0),
         "rubber": (0.09, 0.09, 0.10, 1.0),
         "rim": (0.30, 0.30, 0.31, 1.0),
+        "grip": (0.12, 0.12, 0.13, 1.0),
+    },
+    "blue_black": {
+        "body": (0.13, 0.30, 0.58, 1.0),
+        "trim": (0.08, 0.08, 0.09, 1.0),
+        "lid": (0.10, 0.10, 0.11, 1.0),
+        "hardware": (0.60, 0.60, 0.62, 1.0),
+        "rubber": (0.06, 0.06, 0.06, 1.0),
+        "rim": (0.26, 0.26, 0.27, 1.0),
+        "grip": (0.07, 0.07, 0.08, 1.0),
     },
 }
 
-# Geometry constants (proportions, not absolute dimensions).
 WALL_THICKNESS = 0.014
 LID_THICKNESS = 0.022
 RIM_HEIGHT = 0.008
-SLEEVE_OUTER_DIAMETER = 0.028
-SLEEVE_INNER_DIAMETER = 0.020
 HANDLE_BAR_THICKNESS = 0.018
 LATCH_PIVOT_RADIUS = 0.004
-HINGE_KNUCKLE_RADIUS = 0.0065
+HINGE_KNUCKLE_RADIUS = 0.012
 GROUND_CLEARANCE = 0.010
 
 # Backward tilt of the telescoping handle from vertical (≤ 15 degrees).
-HANDLE_BACK_TILT_DEG = 8.0
+HANDLE_BACK_TILT_DEG = 12.0
+
+# ---------------------------------------------------------------------------
+# Config dataclasses
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -120,8 +147,12 @@ class RollingToolboxConfig:
     front_support: FrontSupport = "feet"
     corner_guard: CornerGuard = "none"
     material_style: MaterialStyle = "yellow_black"
+    sleeve_style: SleeveStyle = "external_tubes"
+    rear_wheel_style: WheelStyle = "simple_hub"
+    front_wheel_style: WheelStyle = "simple_hub"
     has_drawer: bool = False
-    # Continuous bucket-derived values; resolved when None.
+    has_top_organizer: bool = False
+    interior_divider_count: int = 0
     box_width: float | None = None
     box_depth: float | None = None
     box_height: float | None = None
@@ -142,16 +173,21 @@ class ResolvedRollingToolboxConfig:
     front_support: FrontSupport
     corner_guard: CornerGuard
     material_style: MaterialStyle
+    sleeve_style: SleeveStyle
+    rear_wheel_style: WheelStyle
+    front_wheel_style: WheelStyle
     has_drawer: bool
+    has_top_organizer: bool
+    interior_divider_count: int
     box_width: float  # along Y (left-right)
     box_depth: float  # along X (front-back) -- front is +X
     box_height: float  # along Z
     wheel_radius: float
     wheel_width: float
-    handle_inner_length: float
-    handle_outer_sleeve_length: float
+    floor_z: float  # body-floor elevation above ground (so tall wheels clear)
     handle_grip_span: float
-    handle_travel: float
+    handle_stage_1_upper: float  # prismatic travel for stage 1
+    handle_stage_2_upper: float  # prismatic travel for stage 2 (0 if single-stage)
     name: str
 
 
@@ -175,14 +211,29 @@ def config_from_seed(seed: int) -> RollingToolboxConfig:
     wheel_width = round(rng.uniform(*WHEEL_SIZE_WIDTH_RANGES[wheel_size]), 3)
 
     wheel_tread = rng.choice(("smooth", "ribbed", "chunky"))
-    handle_stage_count = rng.choices((1, 2, 3), weights=(0.55, 0.30, 0.15), k=1)[0]
+    handle_stage_count = rng.choices((1, 2), weights=(0.55, 0.45), k=1)[0]
     handle_shape = rng.choice(("U_shape", "twin_rod", "suitcase_style"))
     latch_count = rng.choices((1, 2, 3), weights=(0.30, 0.50, 0.20), k=1)[0]
     lid_style = rng.choice(("flat", "raised", "split"))
-    front_support = rng.choices(("feet", "small_casters"), weights=(0.55, 0.45), k=1)[0]
+    # Big wheels + caster fronts is not a real-world combination. When the
+    # rear wheels are rugged_large the front must be static feet.
+    if wheel_size == "rugged_large":
+        front_support: FrontSupport = "feet"
+    else:
+        front_support = rng.choices(("feet", "small_casters"), weights=(0.55, 0.45), k=1)[0]
     corner_guard = rng.choices(("none", "reinforced"), weights=(0.55, 0.45), k=1)[0]
-    material_style = rng.choice(("yellow_black", "red_black", "gray"))
+    material_style = rng.choice(("yellow_black", "red_black", "gray", "blue_black"))
+    sleeve_style = rng.choices(("external_tubes", "rear_channel"), weights=(0.55, 0.45), k=1)[0]
+    rear_wheel_style = rng.choices(
+        ("simple_hub", "rim_hub", "treaded_lugs", "spoked_steel", "spoked_chunky"),
+        weights=(0.20, 0.20, 0.20, 0.20, 0.20),
+        k=1,
+    )[0]
+    # Front caster wheels are small and look best with the simple hub recipe.
+    front_wheel_style: WheelStyle = "simple_hub"
     has_drawer = rng.random() < 0.35
+    has_top_organizer = rng.random() < 0.45
+    interior_divider_count = rng.choices((0, 1, 2), weights=(0.45, 0.35, 0.20), k=1)[0]
 
     return RollingToolboxConfig(
         box_size=box_size,
@@ -195,7 +246,12 @@ def config_from_seed(seed: int) -> RollingToolboxConfig:
         front_support=front_support,
         corner_guard=corner_guard,
         material_style=material_style,
+        sleeve_style=sleeve_style,
+        rear_wheel_style=rear_wheel_style,
+        front_wheel_style=front_wheel_style,
         has_drawer=has_drawer,
+        has_top_organizer=has_top_organizer,
+        interior_divider_count=interior_divider_count,
         box_width=box_width,
         box_depth=box_depth,
         box_height=box_height,
@@ -212,8 +268,8 @@ def resolve_config(config: RollingToolboxConfig) -> ResolvedRollingToolboxConfig
         raise ValueError(f"Unsupported wheel_size: {config.wheel_size}")
     if config.wheel_tread not in {"smooth", "ribbed", "chunky"}:
         raise ValueError(f"Unsupported wheel_tread: {config.wheel_tread}")
-    if config.handle_stage_count not in (1, 2, 3):
-        raise ValueError("handle_stage_count must be 1, 2, or 3")
+    if config.handle_stage_count not in (1, 2):
+        raise ValueError("handle_stage_count must be 1 or 2")
     if config.handle_shape not in {"U_shape", "twin_rod", "suitcase_style"}:
         raise ValueError(f"Unsupported handle_shape: {config.handle_shape}")
     if config.latch_count not in (1, 2, 3):
@@ -226,6 +282,26 @@ def resolve_config(config: RollingToolboxConfig) -> ResolvedRollingToolboxConfig
         raise ValueError(f"Unsupported corner_guard: {config.corner_guard}")
     if config.material_style not in MATERIAL_PALETTES:
         raise ValueError(f"Unsupported material_style: {config.material_style}")
+    if config.sleeve_style not in {"external_tubes", "rear_channel"}:
+        raise ValueError(f"Unsupported sleeve_style: {config.sleeve_style}")
+    if config.rear_wheel_style not in {
+        "simple_hub",
+        "rim_hub",
+        "treaded_lugs",
+        "spoked_steel",
+        "spoked_chunky",
+    }:
+        raise ValueError(f"Unsupported rear_wheel_style: {config.rear_wheel_style}")
+    if config.front_wheel_style not in {
+        "simple_hub",
+        "rim_hub",
+        "treaded_lugs",
+        "spoked_steel",
+        "spoked_chunky",
+    }:
+        raise ValueError(f"Unsupported front_wheel_style: {config.front_wheel_style}")
+    if config.interior_divider_count not in (0, 1, 2):
+        raise ValueError("interior_divider_count must be 0, 1, or 2")
 
     box_width = (
         config.box_width
@@ -253,17 +329,23 @@ def resolve_config(config: RollingToolboxConfig) -> ResolvedRollingToolboxConfig
         if config.wheel_width is not None
         else sum(WHEEL_SIZE_WIDTH_RANGES[config.wheel_size]) / 2.0
     )
-    # Constrain wheel proportions against the envelope so wheels physically fit.
+    # Cap wheel radius to keep the wheel from intersecting the body floor.
     wheel_radius = min(wheel_radius, box_height * 0.40)
     wheel_radius = max(0.035, wheel_radius)
     wheel_width = min(wheel_width, box_depth * 0.30)
     wheel_width = max(0.018, wheel_width)
 
-    # Telescoping handle geometry derives from the box envelope (spine).
-    handle_outer_sleeve_length = max(0.32, box_height * 0.85)
-    handle_inner_length = handle_outer_sleeve_length * 1.10
-    handle_travel = handle_outer_sleeve_length * 0.70
-    handle_grip_span = box_width * 0.62
+    # Floor elevation: lift the body so big wheels fit cleanly beneath it.
+    # The body floor sits at z = floor_z. Wheels touch ground at z = 0.
+    floor_z = max(GROUND_CLEARANCE, wheel_radius * 0.10)
+
+    # Handle envelope. Stage_1 upper travel ≈ 0.55 × H (clamped to [0.18, 0.42]).
+    handle_stage_1_upper = max(0.18, min(0.42, box_height * 0.55))
+    if config.handle_stage_count >= 2:
+        handle_stage_2_upper = max(0.10, min(0.22, handle_stage_1_upper * 0.60))
+    else:
+        handle_stage_2_upper = 0.0
+    handle_grip_span = max(0.16, min(0.32, box_width * 0.60))
 
     return ResolvedRollingToolboxConfig(
         box_size=config.box_size,
@@ -276,54 +358,33 @@ def resolve_config(config: RollingToolboxConfig) -> ResolvedRollingToolboxConfig
         front_support=config.front_support,
         corner_guard=config.corner_guard,
         material_style=config.material_style,
+        sleeve_style=config.sleeve_style,
+        rear_wheel_style=config.rear_wheel_style,
+        front_wheel_style=config.front_wheel_style,
         has_drawer=config.has_drawer,
+        has_top_organizer=config.has_top_organizer,
+        interior_divider_count=config.interior_divider_count,
         box_width=box_width,
         box_depth=box_depth,
         box_height=box_height,
         wheel_radius=wheel_radius,
         wheel_width=wheel_width,
-        handle_inner_length=handle_inner_length,
-        handle_outer_sleeve_length=handle_outer_sleeve_length,
+        floor_z=floor_z,
         handle_grip_span=handle_grip_span,
-        handle_travel=handle_travel,
+        handle_stage_1_upper=handle_stage_1_upper,
+        handle_stage_2_upper=handle_stage_2_upper,
         name=config.name,
     )
 
 
 # ---------------------------------------------------------------------------
-# Coordinate convention notes
+# Coordinate convention
 # ---------------------------------------------------------------------------
-# - World/body frame: +X is FRONT of the toolbox (latches face here).
-#   -X is the REAR (handle and wheels live here).
-#   +Y is RIGHT, -Y is LEFT, +Z is UP.
-# - Box body origin is on the ground directly under the box center.
-# - The body floor sits at z = wheel_radius + GROUND_CLEARANCE so the wheels
-#   still kiss the ground (z=0).
+# +X = FRONT (latches face here), -X = REAR (handle + wheels), +Y = RIGHT,
+# +Z = UP. Body local origin sits on the ground plane directly under the box
+# centre. The body floor sits at z = resolved.floor_z so wheels (axle at
+# z = wheel_radius) fit beneath it.
 # ---------------------------------------------------------------------------
-
-
-def _member(part, a, b, *, radius: float, material, name: str) -> None:
-    """Add a Cylinder visual that spans from world point a to world point b."""
-    dx = b[0] - a[0]
-    dy = b[1] - a[1]
-    dz = b[2] - a[2]
-    length = math.sqrt(dx * dx + dy * dy + dz * dz)
-    if length < 1e-9:
-        return
-    yaw = math.atan2(dy, dx)
-    pitch = math.atan2(math.hypot(dx, dy), dz)
-    midpoint = ((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5, (a[2] + b[2]) * 0.5)
-    part.visual(
-        Cylinder(radius=radius, length=length),
-        origin=Origin(xyz=midpoint, rpy=(0.0, pitch, yaw)),
-        material=material,
-        name=name,
-    )
-
-
-def _floor_z(resolved: ResolvedRollingToolboxConfig) -> float:
-    """Bottom-of-body Z coordinate (top of wheel zone + ground clearance)."""
-    return resolved.wheel_radius + GROUND_CLEARANCE
 
 
 def _latch_y_positions(resolved: ResolvedRollingToolboxConfig) -> list[float]:
@@ -345,7 +406,7 @@ def _build_body_shell(body, resolved: ResolvedRollingToolboxConfig, *, body_mat,
     D = resolved.box_depth
     H = resolved.box_height
     wall = WALL_THICKNESS
-    floor_z = _floor_z(resolved)
+    floor_z = resolved.floor_z
 
     # Floor
     body.visual(
@@ -354,13 +415,47 @@ def _build_body_shell(body, resolved: ResolvedRollingToolboxConfig, *, body_mat,
         material=body_mat,
         name="body_floor",
     )
-    # Front wall (+X side)
-    body.visual(
-        Box((wall, W, H)),
-        origin=Origin(xyz=(D / 2.0 - wall / 2.0, 0.0, floor_z + H / 2.0)),
-        material=body_mat,
-        name="body_front_wall",
-    )
+    # Front wall (+X side). Split when a drawer is present.
+    if resolved.has_drawer:
+        drawer_height = H * 0.18
+        drawer_width = W * 0.84
+        skirt_h = max(0.020, H * 0.08)
+        body.visual(
+            Box((wall, W, skirt_h)),
+            origin=Origin(xyz=(D / 2.0 - wall / 2.0, 0.0, floor_z + skirt_h / 2.0)),
+            material=body_mat,
+            name="body_front_skirt",
+        )
+        opening_top_z = floor_z + skirt_h + drawer_height
+        band_h = max(0.010, (floor_z + H) - opening_top_z)
+        body.visual(
+            Box((wall, W, band_h)),
+            origin=Origin(xyz=(D / 2.0 - wall / 2.0, 0.0, opening_top_z + band_h / 2.0)),
+            material=body_mat,
+            name="body_front_top_band",
+        )
+        jamb_w = max(0.010, (W - drawer_width) / 2.0)
+        for sign, side in ((-1.0, "l"), (1.0, "r")):
+            jamb_y = sign * (W / 2.0 - jamb_w / 2.0)
+            body.visual(
+                Box((wall, jamb_w, drawer_height)),
+                origin=Origin(
+                    xyz=(
+                        D / 2.0 - wall / 2.0,
+                        jamb_y,
+                        floor_z + skirt_h + drawer_height / 2.0,
+                    )
+                ),
+                material=body_mat,
+                name=f"body_front_jamb_{side}",
+            )
+    else:
+        body.visual(
+            Box((wall, W, H)),
+            origin=Origin(xyz=(D / 2.0 - wall / 2.0, 0.0, floor_z + H / 2.0)),
+            material=body_mat,
+            name="body_front_wall",
+        )
     # Rear wall (-X side)
     body.visual(
         Box((wall, W, H)),
@@ -382,7 +477,7 @@ def _build_body_shell(body, resolved: ResolvedRollingToolboxConfig, *, body_mat,
         name="body_right_wall",
     )
 
-    # Decorative top rim (visual only on body part)
+    # Decorative top rim
     rim_z = floor_z + H + RIM_HEIGHT / 2.0
     body.visual(
         Box((D, wall, RIM_HEIGHT)),
@@ -409,7 +504,7 @@ def _build_body_shell(body, resolved: ResolvedRollingToolboxConfig, *, body_mat,
         name="rim_rear",
     )
 
-    # Side ribs (always present, attached as visuals on body) ----------------
+    # Side ribs
     rib_height = H * 0.40
     for x_frac, idx in ((-0.20, 0), (0.20, 1)):
         body.visual(
@@ -429,13 +524,32 @@ def _build_body_shell(body, resolved: ResolvedRollingToolboxConfig, *, body_mat,
             name=f"side_rib_left_{idx}",
         )
 
-    # Corner guards (visual only on body) ------------------------------------
+    # Interior dividers. Constrained to the rear half so they don't pierce the
+    # drawer envelope, and Y/Z extents stay inside the cavity proper.
+    if resolved.interior_divider_count > 0:
+        usable_d = D * 0.50
+        rear_x_max = -D / 2.0 + wall + usable_d
+        rear_x_min = -D / 2.0 + wall + 0.020
+        n = resolved.interior_divider_count
+        div_h = H * 0.65
+        div_y = W - 2.0 * wall - 0.040
+        div_z_center = floor_z + wall + div_h / 2.0 + 0.004
+        for i in range(n):
+            frac = (i + 1) / (n + 1)
+            x = rear_x_min + frac * (rear_x_max - rear_x_min)
+            body.visual(
+                Box((0.010, div_y, div_h)),
+                origin=Origin(xyz=(x, 0.0, div_z_center)),
+                material=trim_mat,
+                name=f"interior_divider_{i}",
+            )
+
+    # Corner guards
     if resolved.corner_guard == "reinforced":
         guard_thickness = 0.012
         guard_height = H * 0.30
         for sign_x in (-1.0, 1.0):
             for sign_y in (-1.0, 1.0):
-                # Vertical strip in X direction at this corner
                 body.visual(
                     Box((guard_thickness, wall + 0.006, guard_height)),
                     origin=Origin(
@@ -463,11 +577,7 @@ def _build_body_shell(body, resolved: ResolvedRollingToolboxConfig, *, body_mat,
 
 
 def _build_lid(lid, resolved: ResolvedRollingToolboxConfig, *, lid_mat, trim_mat) -> None:
-    """Lid local frame: origin sits at the rear hinge axis. Lid extends +X.
-
-    The lid panel is centered at +D/2 along local +X so that at q=0 the lid
-    sits flat over the body opening.
-    """
+    """Lid local frame: origin at the rear hinge axis. Lid panel extends +X."""
     W = resolved.box_width
     D = resolved.box_depth
 
@@ -486,7 +596,6 @@ def _build_lid(lid, resolved: ResolvedRollingToolboxConfig, *, lid_mat, trim_mat
             name="lid_raised_top",
         )
     elif resolved.lid_style == "split":
-        # Two visible halves separated by a center seam ridge.
         lid.visual(
             Box((D * 0.85, 0.010, 0.010)),
             origin=Origin(xyz=(D / 2.0, 0.0, LID_THICKNESS + 0.004)),
@@ -494,9 +603,42 @@ def _build_lid(lid, resolved: ResolvedRollingToolboxConfig, *, lid_mat, trim_mat
             name="lid_split_seam",
         )
 
-    # Hinge knuckles (visual only on lid part).
-    knuckle_length = W * 0.20
-    for idx, y in enumerate((-W * 0.30, W * 0.30)):
+    # Optional top organizer well (visual only). Shallow rectangular frame +
+    # 2 internal dividers, so the lid surface reads as a parts tray.
+    if resolved.has_top_organizer:
+        well_d = D * 0.62
+        well_w = W * 0.70
+        well_h = 0.010
+        well_cx = D / 2.0
+        wall_t = 0.006
+        z_top = LID_THICKNESS + well_h / 2.0
+        for x_sign, side in ((-1.0, "rear"), (1.0, "front")):
+            lid.visual(
+                Box((wall_t, well_w, well_h)),
+                origin=Origin(xyz=(well_cx + x_sign * well_d / 2.0, 0.0, z_top)),
+                material=trim_mat,
+                name=f"top_organizer_wall_{side}",
+            )
+        for y_sign, side in ((-1.0, "l"), (1.0, "r")):
+            lid.visual(
+                Box((well_d, wall_t, well_h)),
+                origin=Origin(xyz=(well_cx, y_sign * well_w / 2.0, z_top)),
+                material=trim_mat,
+                name=f"top_organizer_wall_side_{side}",
+            )
+        for i, frac in enumerate((-0.18, 0.18)):
+            lid.visual(
+                Box((well_d * 0.94, wall_t, well_h * 0.85)),
+                origin=Origin(xyz=(well_cx, frac * well_w, z_top)),
+                material=trim_mat,
+                name=f"top_organizer_divider_{i}",
+            )
+
+    # Hinge knuckles on the lid (visual only). Three short barrels along the
+    # hinge axis so the lid–body joint reads as a piano hinge instead of a
+    # floating connection.
+    knuckle_length = W * 0.22
+    for idx, y in enumerate((-W * 0.32, 0.0, W * 0.32)):
         lid.visual(
             Cylinder(radius=HINGE_KNUCKLE_RADIUS, length=knuckle_length),
             origin=Origin(xyz=(0.0, y, 0.0), rpy=(math.pi / 2.0, 0.0, 0.0)),
@@ -504,93 +646,133 @@ def _build_lid(lid, resolved: ResolvedRollingToolboxConfig, *, lid_mat, trim_mat
             name=f"lid_hinge_knuckle_{idx}",
         )
 
-    # Carry handle visual on top of the lid (front-center).
+    # Real U-shape carry handle on the lid: 2 posts + a bar spanning the top.
     handle_y_half = W * 0.18
-    grip_z = LID_THICKNESS + 0.026
+    post_w = 0.022
+    post_d = 0.018
+    post_h = 0.045
+    carry_x = D * 0.92 if resolved.has_top_organizer else D * 0.55
     for idx, y in enumerate((-handle_y_half, handle_y_half)):
         lid.visual(
-            Box((0.022, 0.014, 0.020)),
-            origin=Origin(xyz=(D * 0.55, y, LID_THICKNESS + 0.010)),
+            Box((post_d, post_w, post_h)),
+            origin=Origin(xyz=(carry_x, y, LID_THICKNESS + post_h / 2.0)),
             material=trim_mat,
             name=f"carry_handle_post_{idx}",
         )
+    bar_x = 0.080
+    bar_z = LID_THICKNESS + post_h + HANDLE_BAR_THICKNESS / 2.0
     lid.visual(
-        Box((0.090, 2.0 * handle_y_half + 0.020, HANDLE_BAR_THICKNESS)),
-        origin=Origin(xyz=(D * 0.55, 0.0, grip_z)),
+        Box((bar_x, 2.0 * handle_y_half + post_w, HANDLE_BAR_THICKNESS)),
+        origin=Origin(xyz=(carry_x, 0.0, bar_z)),
         material=trim_mat,
         name="carry_handle_bar",
     )
 
 
-def _build_lid_latch_strikes(lid, resolved: ResolvedRollingToolboxConfig, *, trim_mat) -> None:
-    D = resolved.box_depth
-    for i, y in enumerate(_latch_y_positions(resolved)):
-        lid.visual(
-            Box((0.012, 0.034, 0.014)),
-            origin=Origin(xyz=(D - 0.014, y, LID_THICKNESS / 2.0)),
-            material=trim_mat,
-            name=f"latch_strike_{i}",
-        )
-
-
 # ---------------------------------------------------------------------------
-# Handle (telescoping pull bar)
+# Telescoping handle
 # ---------------------------------------------------------------------------
 
 
-def _add_outer_sleeves(
+def _build_body_handle_guides(
     body,
     resolved: ResolvedRollingToolboxConfig,
     *,
-    sleeve_origin_xyz: tuple[float, float, float],
+    joint_origin_xyz: tuple[float, float, float],
     tilt: float,
     hardware_mat,
+    trim_mat,
 ) -> None:
-    """Attach the two handle outer sleeves as visuals on the body.
+    """Body-side guide structure that captures the handle stage_1 inner rods.
 
-    The sleeves are visual decorations on the body. The articulated inner part
-    moves inside them via prismatic motion along the tilted local +Z axis.
+    ``external_tubes``: two cylindrical sleeves bolted to the rear face.
+    ``rear_channel``: a single molded rectangular channel housing + cheek-guide
+    tabs. Either way the guide volume sits ALONG the joint axis (tilted with
+    ``tilt`` about +Y) and extends from the body top downward by ``guide_len``.
     """
-    L = resolved.handle_outer_sleeve_length
     half = resolved.handle_grip_span / 2.0
-    cos_t = math.cos(tilt)
+    base_x, base_y, base_z = joint_origin_xyz
     sin_t = math.sin(tilt)
-    # The sleeves rise upward and slightly backward from sleeve_origin_xyz.
-    # Up axis under tilt: (sin_t*-1 along X, 0, cos_t along Z) — back is -X.
+    cos_t = math.cos(tilt)
+    # The guide rises upward and slightly backward from base.
     up_dx = -sin_t
     up_dz = cos_t
-    base_x, base_y, base_z = sleeve_origin_xyz
-    for sign, side in ((-1.0, "l"), (1.0, "r")):
-        # Sleeve cylinder center at half-length along the up axis.
-        cx = base_x + 0.5 * L * up_dx
-        cz = base_z + 0.5 * L * up_dz
-        cy = base_y + sign * half
+    # Guide spans from the rim down into the body cavity.
+    guide_len = max(0.16, resolved.box_height * 0.45)
+    # Centre along the up axis, dropping half the guide length below the
+    # joint origin so it captures the inner rod at q=0.
+    cx = base_x - 0.5 * guide_len * up_dx
+    cz = base_z - 0.5 * guide_len * up_dz
+
+    if resolved.sleeve_style == "rear_channel":
+        channel_thickness = 0.020
+        channel_width = 2.0 * half + 0.060
         body.visual(
-            Cylinder(radius=SLEEVE_OUTER_DIAMETER / 2.0, length=L),
+            Box((channel_thickness, channel_width, guide_len)),
+            origin=Origin(xyz=(cx, base_y, cz), rpy=(0.0, -tilt, 0.0)),
+            material=trim_mat,
+            name="rear_handle_channel",
+        )
+        # Caps at top + bottom of the channel housing.
+        top_x = base_x
+        top_z = base_z
+        bottom_x = base_x - guide_len * up_dx
+        bottom_z = base_z - guide_len * up_dz
+        body.visual(
+            Box((channel_thickness + 0.006, channel_width + 0.006, 0.012)),
+            origin=Origin(xyz=(top_x, base_y, top_z), rpy=(0.0, -tilt, 0.0)),
+            material=hardware_mat,
+            name="rear_handle_channel_cap_top",
+        )
+        body.visual(
+            Box((channel_thickness + 0.006, channel_width + 0.006, 0.012)),
+            origin=Origin(xyz=(bottom_x, base_y, bottom_z), rpy=(0.0, -tilt, 0.0)),
+            material=hardware_mat,
+            name="rear_handle_channel_cap_base",
+        )
+        # Two cheek-guide tabs flanking each inner rod for realism.
+        tab_x = cx
+        tab_z = cz
+        for sign, side in ((-1.0, "l"), (1.0, "r")):
+            body.visual(
+                Box((0.008, 0.008, guide_len * 0.85)),
+                origin=Origin(
+                    xyz=(tab_x, base_y + sign * half, tab_z),
+                    rpy=(0.0, -tilt, 0.0),
+                ),
+                material=hardware_mat,
+                name=f"rear_handle_channel_guide_{side}",
+            )
+        return
+
+    # external_tubes: two solid cylinder sleeves the rods slide through.
+    sleeve_radius = 0.014
+    for sign, side in ((-1.0, "l"), (1.0, "r")):
+        body.visual(
+            Cylinder(radius=sleeve_radius, length=guide_len),
             origin=Origin(
-                xyz=(cx, cy, cz),
+                xyz=(cx, base_y + sign * half, cz),
                 rpy=(0.0, -tilt, 0.0),
             ),
             material=hardware_mat,
             name=f"handle_outer_sleeve_{side}",
         )
-        # Sleeve top collar
-        top_x = base_x + L * up_dx
-        top_z = base_z + L * up_dz
+        # Top + base collars.
         body.visual(
-            Cylinder(radius=SLEEVE_OUTER_DIAMETER / 2.0 + 0.004, length=0.012),
+            Cylinder(radius=sleeve_radius + 0.004, length=0.012),
             origin=Origin(
-                xyz=(top_x, cy, top_z),
+                xyz=(base_x, base_y + sign * half, base_z),
                 rpy=(0.0, -tilt, 0.0),
             ),
             material=hardware_mat,
             name=f"handle_sleeve_collar_top_{side}",
         )
-        # Sleeve base collar
+        bottom_x = base_x - guide_len * up_dx
+        bottom_z = base_z - guide_len * up_dz
         body.visual(
-            Cylinder(radius=SLEEVE_OUTER_DIAMETER / 2.0 + 0.004, length=0.012),
+            Cylinder(radius=sleeve_radius + 0.004, length=0.012),
             origin=Origin(
-                xyz=(base_x, cy, base_z),
+                xyz=(bottom_x, base_y + sign * half, bottom_z),
                 rpy=(0.0, -tilt, 0.0),
             ),
             material=hardware_mat,
@@ -598,81 +780,142 @@ def _add_outer_sleeves(
         )
 
 
-def _build_handle_inner(
+def _build_handle_stage_1(
     inner,
     resolved: ResolvedRollingToolboxConfig,
     *,
     hardware_mat,
     grip_mat,
 ) -> None:
-    """Inner handle local frame.
+    """Stage-1 handle. Local frame: +Z along the (tilted) joint axis.
 
-    Origin = at the entry plane of the sleeve. Local +Z points UP along the
-    sleeve (no tilt within this frame; the prismatic joint applies the
-    backward tilt via its origin.rpy).
+    Rod visuals are centred BELOW the part origin (at z ≈ -upper/2) so that at
+    q=0 most of the rod sits inside the body guides — at q=upper, the bottom
+    end of the rod still pokes ~0.10*upper below the origin, staying captured.
 
-    The two rods extend along local +Z. The grip cross-bar sits at the top.
+    When stage_count >= 2, the grip is built on stage 2 instead, and stage 1
+    presents a short upper "bridge + sleeves" assembly so stage 2 can nest.
     """
-    L = resolved.handle_inner_length
     half = resolved.handle_grip_span / 2.0
-    shape = resolved.handle_shape
-
-    # Two parallel rods (left and right) along local +Z. They start
-    # below z=0 so they remain captured in the sleeve at full extension.
-    rod_radius = SLEEVE_INNER_DIAMETER / 2.0
-    rod_center_z = (L / 2.0) - (L * 0.10)  # tail extends below origin
+    upper = resolved.handle_stage_1_upper
+    rod_radius = 0.011
+    rod_length = upper * 1.4
+    rod_center_z = -upper / 2.0  # rod hangs below origin into the guides
     for sign, side in ((-1.0, "l"), (1.0, "r")):
         inner.visual(
-            Cylinder(radius=rod_radius, length=L),
+            Cylinder(radius=rod_radius, length=rod_length),
             origin=Origin(xyz=(0.0, sign * half, rod_center_z)),
             material=hardware_mat,
             name=f"handle_inner_rod_{side}",
         )
 
-    grip_z = rod_center_z + L / 2.0 - 0.010
+    if resolved.handle_stage_count == 1:
+        _build_handle_grip(
+            inner, resolved, grip_top_z=0.040, hardware_mat=hardware_mat, grip_mat=grip_mat
+        )
+        return
+
+    # Two-stage path: stage 1 hosts a short pair of upper sleeves that stage 2
+    # rods will slide through.
+    upper_sleeve_len = max(0.045, resolved.handle_stage_2_upper * 0.55)
+    sleeve_radius_outer = 0.012
+    for sign, side in ((-1.0, "l"), (1.0, "r")):
+        inner.visual(
+            Cylinder(radius=sleeve_radius_outer, length=upper_sleeve_len),
+            origin=Origin(xyz=(0.0, sign * half, upper_sleeve_len / 2.0)),
+            material=hardware_mat,
+            name=f"handle_stage1_upper_sleeve_{side}",
+        )
+    # Bridge plate connecting the upper sleeves so stage 1 reads as a frame.
+    inner.visual(
+        Box((0.020, 2.0 * half + 0.030, 0.012)),
+        origin=Origin(xyz=(0.0, 0.0, upper_sleeve_len + 0.006)),
+        material=hardware_mat,
+        name="handle_stage1_bridge",
+    )
+
+
+def _build_handle_grip(
+    part,
+    resolved: ResolvedRollingToolboxConfig,
+    *,
+    grip_top_z: float,
+    hardware_mat,
+    grip_mat,
+) -> None:
+    """Add the user-facing grip on top of the rods. ``grip_top_z`` is the z in
+    the part's local frame where the grip should sit."""
+    half = resolved.handle_grip_span / 2.0
+    shape = resolved.handle_shape
 
     if shape == "U_shape":
-        # Cross-bar at the top spanning the rods.
-        inner.visual(
+        part.visual(
             Box((HANDLE_BAR_THICKNESS, 2.0 * half + 0.020, HANDLE_BAR_THICKNESS)),
-            origin=Origin(xyz=(0.0, 0.0, grip_z + 0.010)),
+            origin=Origin(xyz=(0.0, 0.0, grip_top_z + 0.010)),
             material=grip_mat,
             name="handle_grip_bar",
         )
     elif shape == "twin_rod":
-        # Twin separate grip caps on each rod.
         for sign, side in ((-1.0, "l"), (1.0, "r")):
-            inner.visual(
-                Cylinder(radius=rod_radius + 0.006, length=0.060),
-                origin=Origin(xyz=(0.0, sign * half, grip_z + 0.020)),
+            part.visual(
+                Cylinder(radius=0.014, length=0.060),
+                origin=Origin(xyz=(0.0, sign * half, grip_top_z + 0.020)),
                 material=grip_mat,
                 name=f"handle_grip_cap_{side}",
             )
     else:  # suitcase_style
-        # Wider rectangular grab plate connecting the two rods.
-        inner.visual(
+        part.visual(
             Box((0.040, 2.0 * half + 0.030, 0.030)),
-            origin=Origin(xyz=(0.0, 0.0, grip_z + 0.015)),
+            origin=Origin(xyz=(0.0, 0.0, grip_top_z + 0.015)),
             material=grip_mat,
             name="handle_grip_bar",
         )
-        # Plus the cross-bar so the shape is mechanically a U on the inside.
-        inner.visual(
+        part.visual(
             Box((HANDLE_BAR_THICKNESS, 2.0 * half + 0.020, HANDLE_BAR_THICKNESS)),
-            origin=Origin(xyz=(0.0, 0.0, grip_z - 0.004)),
+            origin=Origin(xyz=(0.0, 0.0, grip_top_z - 0.004)),
             material=grip_mat,
             name="handle_grip_undercrossbar",
         )
 
-    # Decorative ferrule at the cross-bar where rods join.
+    # Decorative ferrules where rods meet grip.
     if shape != "twin_rod":
         for sign, side in ((-1.0, "l"), (1.0, "r")):
-            inner.visual(
-                Cylinder(radius=rod_radius + 0.004, length=0.010),
-                origin=Origin(xyz=(0.0, sign * half, grip_z)),
+            part.visual(
+                Cylinder(radius=0.013, length=0.010),
+                origin=Origin(xyz=(0.0, sign * half, grip_top_z)),
                 material=hardware_mat,
                 name=f"handle_rod_ferrule_{side}",
             )
+
+
+def _build_handle_stage_2(
+    stage2,
+    resolved: ResolvedRollingToolboxConfig,
+    *,
+    hardware_mat,
+    grip_mat,
+) -> None:
+    """Stage-2 handle. Local frame: origin at top of stage_1's upper sleeves.
+
+    The rods extend DOWN below origin (z negative), so even at q = stage_2.upper
+    the rod tails remain captured inside stage_1's upper sleeves.
+    """
+    half = resolved.handle_grip_span / 2.0
+    upper = resolved.handle_stage_2_upper
+    upper_sleeve_len = max(0.045, upper * 0.55)
+    rod_radius = 0.008
+    rod_length = upper * 1.4 + upper_sleeve_len
+    rod_center_z = -(rod_length / 2.0) + upper_sleeve_len * 0.5
+    for sign, side in ((-1.0, "l"), (1.0, "r")):
+        stage2.visual(
+            Cylinder(radius=rod_radius, length=rod_length),
+            origin=Origin(xyz=(0.0, sign * half, rod_center_z)),
+            material=hardware_mat,
+            name=f"handle_stage2_rod_{side}",
+        )
+    _build_handle_grip(
+        stage2, resolved, grip_top_z=0.020, hardware_mat=hardware_mat, grip_mat=grip_mat
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -681,10 +924,8 @@ def _build_handle_inner(
 
 
 def _build_latch_visuals(latch, *, hardware_mat) -> None:
-    """Latch local frame.
-
-    Origin = pivot pin (Y axis). Closed pose hangs the latch plate toward -Z.
-    """
+    """Latch local frame: origin = pivot pin. Plate extends up from pivot;
+    hook curls back inboard to capture the lid-underside strike."""
     latch.visual(
         Cylinder(radius=LATCH_PIVOT_RADIUS, length=0.036),
         origin=Origin(rpy=(math.pi / 2.0, 0.0, 0.0)),
@@ -692,31 +933,30 @@ def _build_latch_visuals(latch, *, hardware_mat) -> None:
         name="latch_pivot_pin",
     )
     latch.visual(
-        Box((0.010, 0.034, 0.046)),
-        origin=Origin(xyz=(0.004, 0.0, -0.024)),
+        Box((0.010, 0.034, 0.030)),
+        origin=Origin(xyz=(0.000, 0.0, 0.012)),
         material=hardware_mat,
         name="latch_plate",
     )
     latch.visual(
         Box((0.018, 0.034, 0.008)),
-        origin=Origin(xyz=(0.005, 0.0, -0.050)),
+        origin=Origin(xyz=(-0.006, 0.0, 0.024)),
         material=hardware_mat,
         name="latch_hook",
     )
 
 
 # ---------------------------------------------------------------------------
-# Front support (feet or small_casters)
+# Front support and wheels
 # ---------------------------------------------------------------------------
 
 
 def _build_front_feet(body, resolved: ResolvedRollingToolboxConfig, *, hardware_mat) -> None:
-    """Static feet attached as visuals on the body (front side)."""
     D = resolved.box_depth
     W = resolved.box_width
-    floor_z = _floor_z(resolved)
-    foot_height = floor_z  # spans from the ground up to body floor
-    foot_radius = max(0.012, resolved.wheel_radius * 0.35)
+    floor_z = resolved.floor_z
+    foot_height = floor_z
+    foot_radius = max(0.012, resolved.wheel_radius * 0.30)
     foot_x = D / 2.0 - foot_radius - 0.010
     foot_y = W / 2.0 - foot_radius - 0.010
     for sign, label in ((-1.0, "l"), (1.0, "r")):
@@ -728,94 +968,292 @@ def _build_front_feet(body, resolved: ResolvedRollingToolboxConfig, *, hardware_
         )
 
 
+def _add_procedural_wheel(
+    wheel_part,
+    *,
+    radius: float,
+    width: float,
+    wheel_style: WheelStyle,
+    rubber_mat,
+    rim_mat,
+) -> None:
+    """SDK-procedural wheel/tire combo (S5/S8/S10 recipe). Builds two meshes:
+    a steel rim with 5 spokes + a treaded tire, then attaches them as visuals
+    rotated so the spin axle aligns with world +Y.
+
+    ``spoked_steel``: shallow tread (depth 0.005, 18 blocks) — looks like a
+    street/utility wheel.
+    ``spoked_chunky``: deeper tread (depth 0.008, 14 blocks) — looks like a
+    job-site / off-road wheel.
+    """
+    inner_r = radius * 0.66
+    flange_h = max(0.003, radius * 0.05)
+    flange_t = max(0.0025, radius * 0.04)
+    hub_r = max(0.012, radius * 0.27)
+    hub_w = max(0.020, width * 0.70)
+    bolt_circle = max(0.020, radius * 0.34)
+    bolt_d = max(0.0030, radius * 0.045)
+    bore_d = max(0.012, radius * 0.18)
+    dish_depth = max(0.003, radius * 0.05)
+    spoke_t = max(0.0025, radius * 0.04)
+    spoke_window_r = max(0.006, radius * 0.10)
+
+    if wheel_style == "spoked_chunky":
+        tread = TireTread(style="block", depth=0.008, count=14, land_ratio=0.50)
+        sidewall = TireSidewall(style="square", bulge=0.030)
+        shoulder = TireShoulder(width=0.008, radius=0.004)
+        groove = TireGroove(center_offset=0.0, width=0.008, depth=0.004)
+    else:  # spoked_steel
+        tread = TireTread(style="block", depth=0.005, count=18, land_ratio=0.58)
+        sidewall = TireSidewall(style="square", bulge=0.024)
+        shoulder = TireShoulder(width=0.006, radius=0.003)
+        groove = TireGroove(center_offset=0.0, width=0.005, depth=0.003)
+
+    name_suffix = wheel_part.name
+    tire_mesh = mesh_from_geometry(
+        TireGeometry(
+            radius,
+            width,
+            inner_radius=inner_r,
+            tread=tread,
+            grooves=(groove,),
+            sidewall=sidewall,
+            shoulder=shoulder,
+        ),
+        f"tire_{name_suffix}",
+    )
+    wheel_mesh = mesh_from_geometry(
+        WheelGeometry(
+            inner_r,
+            width * 0.94,
+            rim=WheelRim(
+                inner_radius=inner_r * 0.78,
+                flange_height=flange_h,
+                flange_thickness=flange_t,
+                bead_seat_depth=max(0.002, radius * 0.04),
+            ),
+            hub=WheelHub(
+                radius=hub_r,
+                width=hub_w,
+                cap_style="domed",
+                bolt_pattern=BoltPattern(
+                    count=5, circle_diameter=bolt_circle, hole_diameter=bolt_d
+                ),
+            ),
+            face=WheelFace(dish_depth=dish_depth, front_inset=0.002, rear_inset=0.002),
+            spokes=WheelSpokes(
+                style="straight",
+                count=5,
+                thickness=spoke_t,
+                window_radius=spoke_window_r,
+            ),
+            bore=WheelBore(style="round", diameter=bore_d),
+        ),
+        f"wheel_{name_suffix}",
+    )
+    # Spin axle is world +Y. WheelGeometry/TireGeometry meshes have their
+    # natural axle along world +X (verified against S5/S8/S10), so rotate
+    # them 90° about +Z to bring +X to +Y. (NOTE: this is different from the
+    # primitive Cylinder convention, where the long axis is +Z and we rotate
+    # about +X by 90°.)
+    spin = Origin(rpy=(0.0, 0.0, math.pi / 2.0))
+    wheel_part.visual(tire_mesh, origin=spin, material=rubber_mat, name="tire")
+    wheel_part.visual(wheel_mesh, origin=spin, material=rim_mat, name="rim")
+
+
 def _add_wheel_geometry(
     wheel_part,
     *,
     radius: float,
     width: float,
     wheel_tread: WheelTread,
+    wheel_style: WheelStyle,
     rubber_mat,
     rim_mat,
     hardware_mat,
 ) -> None:
-    """Wheel local frame: spin axis along +X; cylinder rotated to align."""
-    wheel_part.visual(
-        Cylinder(radius=radius, length=width),
-        origin=Origin(rpy=(0.0, math.pi / 2.0, 0.0)),
-        material=rubber_mat,
-        name="tire",
-    )
-    wheel_part.visual(
-        Cylinder(radius=radius * 0.58, length=width * 1.04),
-        origin=Origin(rpy=(0.0, math.pi / 2.0, 0.0)),
-        material=rim_mat,
-        name="rim",
-    )
-    wheel_part.visual(
-        Cylinder(radius=radius * 0.20, length=width * 1.10),
-        origin=Origin(rpy=(0.0, math.pi / 2.0, 0.0)),
-        material=hardware_mat,
-        name="hub",
-    )
-    # Tread decoration: visual ribs on the tire (no separate part).
-    if wheel_tread == "ribbed":
-        for i in range(6):
-            ang = (2.0 * math.pi * i) / 6.0
+    """Wheel local frame: spin axis along +Y (so the cylinder, whose natural
+    long axis is +Z, gets rotated about +X by 90°). ``radius`` is the outside
+    tire radius. Wheel touches ground when axle is at world z = radius."""
+    spin = Origin(rpy=(math.pi / 2.0, 0.0, 0.0))
+
+    if wheel_style in ("spoked_steel", "spoked_chunky"):
+        _add_procedural_wheel(
+            wheel_part,
+            radius=radius,
+            width=width,
+            wheel_style=wheel_style,
+            rubber_mat=rubber_mat,
+            rim_mat=rim_mat,
+        )
+        return
+
+    if wheel_style == "rim_hub":
+        # Recipe B (S4): tire + slim rim + central hub stub.
+        wheel_part.visual(
+            Cylinder(radius=radius, length=width),
+            origin=spin,
+            material=rubber_mat,
+            name="tire",
+        )
+        wheel_part.visual(
+            Cylinder(radius=radius * 0.64, length=width * 0.68),
+            origin=spin,
+            material=rim_mat,
+            name="rim",
+        )
+        wheel_part.visual(
+            Cylinder(radius=radius * 0.22, length=width * 0.96),
+            origin=spin,
+            material=hardware_mat,
+            name="hub",
+        )
+    elif wheel_style == "treaded_lugs":
+        # Recipe C (S3): pneumatic with chunky tread lugs.
+        wheel_part.visual(
+            Cylinder(radius=radius, length=width),
+            origin=spin,
+            material=rubber_mat,
+            name="tire",
+        )
+        wheel_part.visual(
+            Cylinder(radius=radius * 0.65, length=width * 0.84),
+            origin=spin,
+            material=rim_mat,
+            name="rim_shell",
+        )
+        wheel_part.visual(
+            Cylinder(radius=radius * 0.32, length=width * 0.86),
+            origin=spin,
+            material=hardware_mat,
+            name="hub_cap",
+        )
+        # Tread lugs wrap the tire perimeter in the XZ plane around the +Y
+        # spin axle. Each lug is a thin Box rotated about +Y; positioned at
+        # 0.95·R so its outer face flushes with the tire surface.
+        lug_count = 16
+        lug_thickness = 0.012
+        lug_long = radius * 0.18
+        # Lug centre radius keeps the outer extent strictly inside the tire
+        # radius: outer = lug_center + lug_long/2 ≤ radius.
+        lug_center = radius - lug_long / 2.0 - 0.001
+        for i in range(lug_count):
+            ang = (2.0 * math.pi * i) / lug_count
             wheel_part.visual(
-                Box((width * 1.02, radius * 0.04, radius * 0.10)),
+                Box((lug_thickness, width * 0.94, lug_long)),
                 origin=Origin(
-                    xyz=(0.0, math.cos(ang) * radius * 0.96, math.sin(ang) * radius * 0.96),
-                    rpy=(ang, 0.0, 0.0),
-                ),
-                material=rubber_mat,
-                name=f"tread_rib_{i}",
-            )
-    elif wheel_tread == "chunky":
-        for i in range(8):
-            ang = (2.0 * math.pi * i) / 8.0
-            wheel_part.visual(
-                Box((width * 0.90, radius * 0.16, radius * 0.16)),
-                origin=Origin(
-                    xyz=(0.0, math.cos(ang) * radius * 0.94, math.sin(ang) * radius * 0.94),
-                    rpy=(ang, 0.0, 0.0),
+                    xyz=(math.sin(ang) * lug_center, 0.0, math.cos(ang) * lug_center),
+                    rpy=(0.0, ang, 0.0),
                 ),
                 material=rubber_mat,
                 name=f"tread_lug_{i}",
             )
+    else:  # simple_hub (Recipe A; most common)
+        wheel_part.visual(
+            Cylinder(radius=radius, length=width),
+            origin=spin,
+            material=rubber_mat,
+            name="tire",
+        )
+        wheel_part.visual(
+            Cylinder(radius=radius * 0.60, length=width - 0.006),
+            origin=spin,
+            material=rim_mat,
+            name="hub",
+        )
+        wheel_part.visual(
+            Cylinder(radius=radius * 0.28, length=width + 0.006),
+            origin=spin,
+            material=hardware_mat,
+            name="hub_cap",
+        )
+        # Optional tread decoration. Ribs/lugs orbit the +Y spin axle in the
+        # XZ plane and stay strictly inside the tire radius.
+        if wheel_tread == "ribbed":
+            rib_long = radius * 0.10
+            rib_center = radius - rib_long / 2.0 - 0.001
+            for i in range(6):
+                ang = (2.0 * math.pi * i) / 6.0
+                wheel_part.visual(
+                    Box((radius * 0.04, width * 1.02, rib_long)),
+                    origin=Origin(
+                        xyz=(
+                            math.sin(ang) * rib_center,
+                            0.0,
+                            math.cos(ang) * rib_center,
+                        ),
+                        rpy=(0.0, ang, 0.0),
+                    ),
+                    material=rubber_mat,
+                    name=f"tread_rib_{i}",
+                )
+        elif wheel_tread == "chunky":
+            lug_long = radius * 0.16
+            lug_center = radius - lug_long / 2.0 - 0.001
+            for i in range(8):
+                ang = (2.0 * math.pi * i) / 8.0
+                wheel_part.visual(
+                    Box((radius * 0.16, width * 0.90, lug_long)),
+                    origin=Origin(
+                        xyz=(
+                            math.sin(ang) * lug_center,
+                            0.0,
+                            math.cos(ang) * lug_center,
+                        ),
+                        rpy=(0.0, ang, 0.0),
+                    ),
+                    material=rubber_mat,
+                    name=f"tread_lug_{i}",
+                )
+
+
+def _build_caster_yoke(caster, *, radius: float, tire_width: float, hardware_mat) -> None:
+    """Caster yoke local frame: origin = swivel pin on body underside; legs
+    descend along local -Z and flank the tire."""
+    drop = radius + 0.012
+    leg_thickness = 0.006
+    leg_y_offset = tire_width / 2.0 + leg_thickness / 2.0 + 0.002
+    caster.visual(
+        Cylinder(radius=0.012, length=0.020),
+        origin=Origin(xyz=(0.0, 0.0, -0.010)),
+        material=hardware_mat,
+        name="caster_swivel_post",
+    )
+    for sign, side in ((-1.0, "l"), (1.0, "r")):
+        caster.visual(
+            Box((0.008, leg_thickness, drop)),
+            origin=Origin(xyz=(0.0, sign * leg_y_offset, -drop / 2.0 - 0.010)),
+            material=hardware_mat,
+            name=f"caster_yoke_leg_{side}",
+        )
 
 
 # ---------------------------------------------------------------------------
-# Drawer (optional)
+# Drawer
 # ---------------------------------------------------------------------------
 
 
 def _build_drawer_visuals(
     drawer, resolved: ResolvedRollingToolboxConfig, *, body_mat, trim_mat
 ) -> None:
-    """Drawer local frame: origin is the rear face of the drawer in closed pose.
-
-    Drawer extends along +X (front direction). At q=0 it sits inside the body
-    cavity. Positive prismatic q slides it outward (+X).
-    """
+    """Drawer local frame: origin at the rear face of the drawer in closed
+    pose. Drawer extends along +X; positive prismatic q slides it outward."""
     W = resolved.box_width
     drawer_depth = resolved.box_depth * 0.32
     drawer_width = W * 0.84
     drawer_height = resolved.box_height * 0.18
-    # Front face of drawer
     drawer.visual(
         Box((0.012, drawer_width, drawer_height)),
         origin=Origin(xyz=(drawer_depth - 0.006, 0.0, drawer_height / 2.0)),
         material=trim_mat,
         name="drawer_front",
     )
-    # Drawer floor
     drawer.visual(
         Box((drawer_depth, drawer_width, 0.008)),
         origin=Origin(xyz=(drawer_depth / 2.0, 0.0, 0.004)),
         material=body_mat,
         name="drawer_floor",
     )
-    # Side walls
     drawer.visual(
         Box((drawer_depth, 0.008, drawer_height * 0.7)),
         origin=Origin(
@@ -841,30 +1279,6 @@ def _build_drawer_visuals(
 
 
 # ---------------------------------------------------------------------------
-# Caster (front_support == small_casters)
-# ---------------------------------------------------------------------------
-
-
-def _build_caster_yoke(caster, *, radius: float, hardware_mat) -> None:
-    """Caster yoke local frame: origin = swivel pin on body underside; yoke
-    legs descend to the wheel axle along local -Z."""
-    drop = radius + 0.012
-    caster.visual(
-        Cylinder(radius=0.012, length=0.020),
-        origin=Origin(xyz=(0.0, 0.0, -0.010)),
-        material=hardware_mat,
-        name="caster_swivel_post",
-    )
-    for sign, side in ((-1.0, "l"), (1.0, "r")):
-        caster.visual(
-            Box((0.008, 0.006, drop)),
-            origin=Origin(xyz=(0.0, sign * (radius * 0.55), -drop / 2.0 - 0.010)),
-            material=hardware_mat,
-            name=f"caster_yoke_leg_{side}",
-        )
-
-
-# ---------------------------------------------------------------------------
 # Assembly
 # ---------------------------------------------------------------------------
 
@@ -878,6 +1292,17 @@ def build_rolling_toolbox(
     resolved = resolve_config(config)
     if assets is None:
         assets = AssetContext(Path(tempfile.mkdtemp(prefix="articraft-rolling-toolbox-assets-")))
+    # Activate an AssetSession bound to the same asset root so that
+    # ``mesh_from_geometry`` (used by procedural wheels) writes its OBJ files
+    # into the asset directory the URDF exporter resolves against.
+    session = AssetSession(assets.root, mesh_subdir=assets.mesh_subdir)
+    with activate_asset_session(session):
+        return _build_rolling_toolbox_inner(resolved, assets)
+
+
+def _build_rolling_toolbox_inner(
+    resolved: ResolvedRollingToolboxConfig, assets: AssetContext
+) -> ArticulatedObject:
     model = ArticulatedObject(name=resolved.name, assets=assets)
 
     palette = MATERIAL_PALETTES[resolved.material_style]
@@ -887,44 +1312,48 @@ def build_rolling_toolbox(
     hardware_mat = model.material("toolbox_hardware", rgba=palette["hardware"])
     rubber_mat = model.material("toolbox_rubber", rgba=palette["rubber"])
     rim_mat = model.material("toolbox_rim", rgba=palette["rim"])
+    grip_mat = model.material("toolbox_grip", rgba=palette["grip"])
 
     W = resolved.box_width
     D = resolved.box_depth
     H = resolved.box_height
-    floor_z = _floor_z(resolved)
+    floor_z = resolved.floor_z
 
     body = model.part("toolbox_body")
     _build_body_shell(body, resolved, body_mat=body_mat, trim_mat=trim_mat)
 
-    # ----- Telescoping handle: outer sleeves are visuals on the body --------
-    # Mount the sleeves on the REAR face of the body. Their base sits just
-    # above the body floor at the rear, extending upward with a small
-    # backward tilt (≤15 deg).
+    # ----- Handle guides on body (sleeves or rear channel) -----------------
     tilt = math.radians(HANDLE_BACK_TILT_DEG)
-    sleeve_origin = (
-        -D / 2.0 - SLEEVE_OUTER_DIAMETER / 2.0 - 0.002,
+    # Handle joint origin: mounted on the OUTSIDE face of the rear wall,
+    # ~0.025 m behind the body so the guide tubes and inner rods never pierce
+    # the body cavity. Pattern from S4 (HANDLE_X = -BODY_L/2 - 0.027).
+    # Mounted further outboard (0.034 m behind rear wall) so the lid clears
+    # the telescope tubes when fully open at q≈upper.
+    handle_joint_xyz = (
+        -D / 2.0 - 0.034,
         0.0,
-        floor_z + 0.030,
+        floor_z + H + RIM_HEIGHT + 0.004,
     )
-    _add_outer_sleeves(
+    _build_body_handle_guides(
         body,
         resolved,
-        sleeve_origin_xyz=sleeve_origin,
+        joint_origin_xyz=handle_joint_xyz,
         tilt=tilt,
         hardware_mat=hardware_mat,
+        trim_mat=trim_mat,
     )
 
     # ----- Front support: feet are visuals on body; casters are parts ------
     if resolved.front_support == "feet":
         _build_front_feet(body, resolved, hardware_mat=hardware_mat)
 
-    # ----- Rear wheels (continuous joints) ----------------------------------
-    # Two rear wheels mounted on the bottom-back, axle along world X.
-    # Axle center sits at z = wheel_radius (so wheel touches ground at z=0).
-    wheel_x = -D / 2.0 + resolved.wheel_radius + 0.010
-    wheel_y_half = W / 2.0 + resolved.wheel_width / 2.0 + 0.004
+    # ----- Rear wheels (continuous) ----------------------------------------
+    # Outboard placement: axle is in the body's rear half along X; wheel sits
+    # outside the sidewall along Y by half its width plus a small gap.
+    wheel_x = -D / 2.0 + resolved.wheel_radius * 0.7 + 0.018
+    wheel_y_half = W / 2.0 + resolved.wheel_width / 2.0 + 0.012
     wheel_z = resolved.wheel_radius
-    wheel_parts: list[str] = []
+
     for i, sign in enumerate((-1.0, 1.0)):
         wheel_part = model.part(f"rear_wheel_{i}")
         _add_wheel_geometry(
@@ -932,6 +1361,7 @@ def build_rolling_toolbox(
             radius=resolved.wheel_radius,
             width=resolved.wheel_width,
             wheel_tread=resolved.wheel_tread,
+            wheel_style=resolved.rear_wheel_style,
             rubber_mat=rubber_mat,
             rim_mat=rim_mat,
             hardware_mat=hardware_mat,
@@ -945,63 +1375,93 @@ def build_rolling_toolbox(
             axis=(0.0, 1.0, 0.0),
             motion_limits=MotionLimits(effort=10.0, velocity=20.0),
         )
-        # Decorative axle stub on the body so the wheel attaches plausibly.
+        # Body-side axle hub: a thick stub that bridges the body sidewall to
+        # the wheel's inner hub face (pattern from ea46d5 axle_hub). Centred
+        # on Y between body sidewall and wheel centre, length covers the gap
+        # plus ~50% of the wheel width so the hub visually socket-nests into
+        # the wheel's central rim.
+        axle_hub_r = max(0.014, resolved.wheel_radius * 0.40)
+        gap = wheel_y_half - W / 2.0
+        axle_hub_len = gap + resolved.wheel_width * 0.55
+        axle_hub_y = (W / 2.0 + wheel_y_half) / 2.0
         body.visual(
-            Cylinder(radius=0.008, length=0.012),
+            Cylinder(radius=axle_hub_r, length=axle_hub_len),
             origin=Origin(
-                xyz=(wheel_x, sign * (W / 2.0 - 0.006), wheel_z),
+                xyz=(wheel_x, sign * axle_hub_y, wheel_z),
                 rpy=(math.pi / 2.0, 0.0, 0.0),
             ),
             material=hardware_mat,
             name=f"rear_axle_stub_{i}",
         )
-        wheel_parts.append(wheel_part.name)
 
-    # ----- Front casters (optional, replace static feet) --------------------
+    # ----- Front casters (optional) ----------------------------------------
     if resolved.front_support == "small_casters":
-        caster_radius = max(0.025, resolved.wheel_radius * 0.6)
-        caster_x = D / 2.0 - caster_radius - 0.020
-        caster_y = W / 2.0 - caster_radius - 0.020
+        caster_radius = max(0.025, resolved.wheel_radius * 0.55)
+        caster_tire_width = max(0.020, resolved.wheel_width * 0.6)
+        # Axle Z = caster_radius (touches ground). Yoke drop = radius+0.012.
+        # So swivel origin Z above ground = caster_radius + 0.012 + 0.010
+        # (post height). Keep that ≤ floor_z so the caster doesn't intersect
+        # the body floor.
+        swivel_z = floor_z
+        caster_x = D / 2.0 - caster_radius - 0.022
+        caster_y = W / 2.0 - caster_radius - 0.022
         for ci, sign in enumerate((-1.0, 1.0)):
             caster_part = model.part(f"front_caster_{ci}")
-            _build_caster_yoke(caster_part, radius=caster_radius, hardware_mat=hardware_mat)
+            _build_caster_yoke(
+                caster_part,
+                radius=caster_radius,
+                tire_width=caster_tire_width,
+                hardware_mat=hardware_mat,
+            )
             model.articulation(
                 f"front_caster_swivel_{ci}",
                 ArticulationType.CONTINUOUS,
                 parent=body,
                 child=caster_part,
-                origin=Origin(xyz=(caster_x, sign * caster_y, floor_z)),
+                origin=Origin(xyz=(caster_x, sign * caster_y, swivel_z)),
                 axis=(0.0, 0.0, 1.0),
                 motion_limits=MotionLimits(effort=5.0, velocity=10.0),
             )
-            # The actual caster wheel is a child of the caster yoke.
             caster_wheel = model.part(f"front_caster_wheel_{ci}")
             _add_wheel_geometry(
                 caster_wheel,
                 radius=caster_radius,
-                width=max(0.020, resolved.wheel_width * 0.6),
+                width=caster_tire_width,
                 wheel_tread="smooth",
+                wheel_style=resolved.front_wheel_style,
                 rubber_mat=rubber_mat,
                 rim_mat=rim_mat,
                 hardware_mat=hardware_mat,
             )
+            # Spin axle Z below the swivel post by the yoke drop, so the wheel
+            # touches the ground at z = 0.
+            wheel_drop = -(caster_radius + 0.012)
+            # ... but the world Z of the caster wheel axle = swivel_z + wheel_drop
+            # so we need swivel_z = caster_radius + 0.012 → enforce here.
+            # Adjust by tweaking the joint origin's z explicitly:
+            # caster_radius + 0.012 must equal swivel_z, so move wheel_drop
+            # so the wheel lands on the ground regardless of swivel_z choice.
+            wheel_axle_world_z = caster_radius
+            wheel_drop = wheel_axle_world_z - swivel_z
             model.articulation(
                 f"front_caster_spin_{ci}",
                 ArticulationType.CONTINUOUS,
                 parent=caster_part,
                 child=caster_wheel,
-                origin=Origin(xyz=(0.0, 0.0, -(caster_radius + 0.014))),
-                axis=(1.0, 0.0, 0.0),
+                origin=Origin(xyz=(0.0, 0.0, wheel_drop)),
+                axis=(0.0, 1.0, 0.0),
                 motion_limits=MotionLimits(effort=6.0, velocity=20.0),
             )
 
     # ----- Lid + lid_joint --------------------------------------------------
-    lid_hinge_x = -D / 2.0 - HINGE_KNUCKLE_RADIUS - 0.003
-    lid_hinge_z = floor_z + H + RIM_HEIGHT + HINGE_KNUCKLE_RADIUS - 0.002
+    # Hinge axis sits flush on the rear rim top (Z) and just behind the rear
+    # wall (X). The knuckle barrels straddle the rim edge so the joint reads
+    # as a piano hinge instead of a floating connection.
+    lid_hinge_x = -D / 2.0 - HINGE_KNUCKLE_RADIUS - 0.001
+    lid_hinge_z = floor_z + H + RIM_HEIGHT
 
     lid = model.part("lid")
     _build_lid(lid, resolved, lid_mat=lid_mat, trim_mat=trim_mat)
-    _build_lid_latch_strikes(lid, resolved, trim_mat=trim_mat)
     model.articulation(
         "lid_joint",
         ArticulationType.REVOLUTE,
@@ -1012,18 +1472,15 @@ def build_rolling_toolbox(
         motion_limits=MotionLimits(effort=12.0, velocity=2.0, lower=0.0, upper=1.8),
     )
 
-    # ----- Latches (revolute) -----------------------------------------------
-    # Latches pivot on the BODY front edge (just below the rim) and the hook
-    # reaches over the latch_strike on the lid.
+    # ----- Latches ----------------------------------------------------------
     body_front_x = D / 2.0
-    latch_pivot_z = floor_z + H - 0.020
+    latch_pivot_z = floor_z + H - 0.015
     for i, y in enumerate(_latch_y_positions(resolved)):
         latch = model.part(f"latch_{i}")
         _build_latch_visuals(latch, hardware_mat=hardware_mat)
-        # Body-side keeper plate (visual on body)
         body.visual(
             Box((0.006, 0.030, 0.020)),
-            origin=Origin(xyz=(body_front_x + 0.003, y, latch_pivot_z - 0.010)),
+            origin=Origin(xyz=(body_front_x + 0.003, y, latch_pivot_z - 0.018)),
             material=hardware_mat,
             name=f"latch_keeper_{i}",
         )
@@ -1032,85 +1489,58 @@ def build_rolling_toolbox(
             ArticulationType.REVOLUTE,
             parent=body,
             child=latch,
-            origin=Origin(xyz=(body_front_x + 0.008, y, latch_pivot_z)),
-            axis=(0.0, -1.0, 0.0),
-            motion_limits=MotionLimits(effort=2.5, velocity=3.0, lower=0.0, upper=1.4),
+            origin=Origin(xyz=(body_front_x + 0.006, y, latch_pivot_z)),
+            # +Y axis: positive q rotates the latch plate FORWARD (+X), away
+            # from the body, so the user opens the latch by pulling outward.
+            axis=(0.0, 1.0, 0.0),
+            motion_limits=MotionLimits(effort=2.5, velocity=3.0, lower=0.0, upper=math.pi / 2.0),
         )
 
-    # ----- Handle inner (telescoping) --------------------------------------
-    # The inner handle is a single articulated part that slides up the
-    # tilted sleeve axis. Origin of the joint is at the sleeve entry plane,
-    # and the joint axis tilts backward by HANDLE_BACK_TILT_DEG.
+    # ----- Handle stage 1 ---------------------------------------------------
     inner_part = model.part("handle_inner")
-    _build_handle_inner(inner_part, resolved, hardware_mat=hardware_mat, grip_mat=hardware_mat)
+    _build_handle_stage_1(inner_part, resolved, hardware_mat=hardware_mat, grip_mat=grip_mat)
     model.articulation(
         "handle_stage_joint",
         ArticulationType.PRISMATIC,
         parent=body,
         child=inner_part,
-        # Joint origin = base of sleeves on the body. The articulation rpy
-        # tilts the local +Z axis backward (rotation about +Y means local +Z
-        # rotates toward -X, i.e. toward the rear).
-        origin=Origin(xyz=sleeve_origin, rpy=(0.0, -tilt, 0.0)),
+        origin=Origin(xyz=handle_joint_xyz, rpy=(0.0, -tilt, 0.0)),
         axis=(0.0, 0.0, 1.0),
         motion_limits=MotionLimits(
             effort=80.0,
-            velocity=0.30,
+            velocity=0.35,
             lower=0.0,
-            upper=resolved.handle_travel,
+            upper=resolved.handle_stage_1_upper,
         ),
     )
 
-    # Optional second stage joint (the inner part already has its rods; the
-    # second stage is modeled as a nested telescoping extension of the same
-    # inner). The second stage child is a small extension cap above the grip.
+    # ----- Handle stage 2 (optional) ---------------------------------------
     if resolved.handle_stage_count >= 2:
         stage2 = model.part("handle_stage_2")
-        # Local frame inherits from inner_part: extension cap rises along +Z.
-        half = resolved.handle_grip_span / 2.0
-        ext_radius = SLEEVE_INNER_DIAMETER / 2.0 * 0.85
-        ext_length = resolved.handle_outer_sleeve_length * 0.40
-        for sign, side in ((-1.0, "l"), (1.0, "r")):
-            stage2.visual(
-                Cylinder(radius=ext_radius, length=ext_length),
-                origin=Origin(xyz=(0.0, sign * half, ext_length / 2.0 - 0.040)),
-                material=hardware_mat,
-                name=f"handle_stage_2_rod_{side}",
-            )
-        stage2.visual(
-            Box((HANDLE_BAR_THICKNESS * 0.9, 2.0 * half + 0.016, HANDLE_BAR_THICKNESS * 0.9)),
-            origin=Origin(xyz=(0.0, 0.0, ext_length - 0.020)),
-            material=hardware_mat,
-            name="handle_stage_2_top_bar",
-        )
-        # Mount above the inner grip; joint origin sits near the top of the
-        # inner rods so the nested extension slides upward along +Z too.
-        grip_top_z = resolved.handle_inner_length * 0.85
+        _build_handle_stage_2(stage2, resolved, hardware_mat=hardware_mat, grip_mat=grip_mat)
+        upper_sleeve_len = max(0.045, resolved.handle_stage_2_upper * 0.55)
+        # Joint origin: top of stage-1's upper sleeve assembly + bridge.
+        stage2_origin_z = upper_sleeve_len + 0.012
         model.articulation(
             "handle_stage_2_joint",
             ArticulationType.PRISMATIC,
             parent=inner_part,
             child=stage2,
-            origin=Origin(xyz=(0.0, 0.0, grip_top_z)),
+            origin=Origin(xyz=(0.0, 0.0, stage2_origin_z)),
             axis=(0.0, 0.0, 1.0),
             motion_limits=MotionLimits(
                 effort=60.0,
-                velocity=0.30,
+                velocity=0.35,
                 lower=0.0,
-                upper=resolved.handle_outer_sleeve_length * 0.40,
+                upper=resolved.handle_stage_2_upper,
             ),
         )
 
-    # ----- Drawer (optional) ------------------------------------------------
+    # ----- Drawer (optional) -----------------------------------------------
     if resolved.has_drawer:
         drawer = model.part("drawer")
         _build_drawer_visuals(drawer, resolved, body_mat=body_mat, trim_mat=trim_mat)
         drawer_depth = resolved.box_depth * 0.32
-        drawer_width = W * 0.84
-        drawer_height = H * 0.18
-        # Drawer origin at q=0: sits flush inside the body, near the front.
-        # The articulation origin places the drawer rear face at
-        # x = D/2 - drawer_depth (inside the body); +X is "out".
         drawer_y0 = floor_z + 0.014
         model.articulation(
             "drawer_joint",
@@ -1126,8 +1556,6 @@ def build_rolling_toolbox(
                 upper=drawer_depth * 0.85,
             ),
         )
-        # Silence unused warnings while keeping derived widths/heights.
-        _ = drawer_width, drawer_height
 
     return model
 
@@ -1155,8 +1583,7 @@ def run_rolling_toolbox_tests(
     body = object_model.get_part("toolbox_body")
     lid = object_model.get_part("lid")
 
-    # --- Required joints -----------------------------------------------------
-    # Wheel joints: continuous spin on rear wheels.
+    # Wheel joints + ground contact.
     for i in range(2):
         wheel_part = object_model.get_part(f"rear_wheel_{i}")
         joint = object_model.get_articulation(f"wheel_joint_{i}")
@@ -1165,15 +1592,34 @@ def run_rolling_toolbox_tests(
             joint.articulation_type == ArticulationType.CONTINUOUS,
             details=f"type={joint.articulation_type}",
         )
-        # Allow the decorative axle stub to nest into the wheel hub.
         ctx.allow_overlap(
             body,
             wheel_part,
             elem_a=f"rear_axle_stub_{i}",
             elem_b="hub",
-            reason="The rear axle stub on the body is captured by the wheel hub.",
+            reason="Axle stub on body is captured by the wheel hub.",
         )
-        # Rear wheels must be near the ground (bottom of tire close to z=0).
+        ctx.allow_overlap(
+            body,
+            wheel_part,
+            elem_a=f"rear_axle_stub_{i}",
+            elem_b="hub_cap",
+            reason="Axle stub on body is captured by the wheel hub cap.",
+        )
+        ctx.allow_overlap(
+            body,
+            wheel_part,
+            elem_a=f"rear_axle_stub_{i}",
+            elem_b="rim",
+            reason="Axle stub on body sockets into the wheel rim mesh.",
+        )
+        ctx.allow_overlap(
+            body,
+            wheel_part,
+            elem_a=f"rear_axle_stub_{i}",
+            elem_b="tire",
+            reason="Axle stub may graze the inner edge of the tire mesh.",
+        )
         wheel_aabb = ctx.part_world_aabb(wheel_part)
         ctx.check(
             f"rear_wheel_{i}_near_ground",
@@ -1181,44 +1627,49 @@ def run_rolling_toolbox_tests(
             details=f"wheel_aabb={wheel_aabb}",
         )
 
-    # Handle joint must be prismatic with axis tilt ≤ 15° from vertical.
+    # Handle stage_1: prismatic, tilt ≤15°, extends upward.
     handle_joint = object_model.get_articulation("handle_stage_joint")
     ctx.check(
         "handle_stage_joint_is_prismatic",
         handle_joint.articulation_type == ArticulationType.PRISMATIC,
         details=f"type={handle_joint.articulation_type}",
     )
-    # The articulation origin rpy tilts the joint frame; +Z in the joint frame
-    # maps to a world direction. Check the tilt angle.
-    tilt_y = handle_joint.origin.rpy[1]
-    tilt_x = handle_joint.origin.rpy[0]
-    tilt_total_deg = math.degrees(math.sqrt(tilt_y * tilt_y + tilt_x * tilt_x))
+    rx, ry, rz = handle_joint.origin.rpy
+    tilt_total_deg = math.degrees(math.sqrt(rx * rx + ry * ry + rz * rz))
     ctx.check(
         "handle_axis_tilt_within_15_deg",
         tilt_total_deg <= 15.0 + 1e-3,
         details=f"tilt_total_deg={tilt_total_deg}",
     )
 
-    # Handle inner must remain captured in the sleeves at full extension.
     handle_inner = object_model.get_part("handle_inner")
-    # Sleeves are visuals on body; allow the inner rods to overlap the sleeves
-    # (the sleeves are simplified solid proxies for hollow tubes).
-    ctx.allow_overlap(
-        body,
-        handle_inner,
-        elem_a="handle_outer_sleeve_l",
-        elem_b="handle_inner_rod_l",
-        reason="The inner rod slides inside the simplified solid sleeve proxy.",
-    )
-    ctx.allow_overlap(
-        body,
-        handle_inner,
-        elem_a="handle_outer_sleeve_r",
-        elem_b="handle_inner_rod_r",
-        reason="The inner rod slides inside the simplified solid sleeve proxy.",
-    )
+    if resolved.sleeve_style == "external_tubes":
+        for side in ("l", "r"):
+            ctx.allow_overlap(
+                body,
+                handle_inner,
+                elem_a=f"handle_outer_sleeve_{side}",
+                elem_b=f"handle_inner_rod_{side}",
+                reason="Inner rod slides inside the simplified solid sleeve proxy.",
+            )
+    else:  # rear_channel
+        for side in ("l", "r"):
+            ctx.allow_overlap(
+                body,
+                handle_inner,
+                elem_a="rear_handle_channel",
+                elem_b=f"handle_inner_rod_{side}",
+                reason="Inner rod slides inside the simplified channel housing.",
+            )
+            ctx.allow_overlap(
+                body,
+                handle_inner,
+                elem_a=f"rear_handle_channel_guide_{side}",
+                elem_b=f"handle_inner_rod_{side}",
+                reason="Channel guide tab flanks the inner rod.",
+            )
 
-    # Verify the handle actually extends upward when extended.
+    # Handle must extend upward when extended.
     rest_aabb = ctx.part_world_aabb(handle_inner)
     if handle_joint.motion_limits and handle_joint.motion_limits.upper is not None:
         with ctx.pose({handle_joint: handle_joint.motion_limits.upper}):
@@ -1230,8 +1681,17 @@ def run_rolling_toolbox_tests(
             and extended_aabb[1][2] > rest_aabb[1][2] + 0.05,
             details=f"rest={rest_aabb}, extended={extended_aabb}",
         )
+        # At full extension, the inner rod should still extend below the body
+        # top edge so it remains visually captured by the body guides.
+        bottom_z_extended = extended_aabb[0][2] if extended_aabb is not None else None
+        body_top_z = resolved.floor_z + resolved.box_height + RIM_HEIGHT
+        ctx.check(
+            "handle_inner_remains_captured",
+            bottom_z_extended is not None and bottom_z_extended < body_top_z,
+            details=f"bottom_z_extended={bottom_z_extended}, body_top_z={body_top_z}",
+        )
 
-    # --- Latches -------------------------------------------------------------
+    # Latches.
     latch_parts = [p for p in object_model.parts if p.name.startswith("latch_")]
     ctx.check(
         "latch_part_count_matches_config",
@@ -1245,7 +1705,6 @@ def run_rolling_toolbox_tests(
             joint.articulation_type == ArticulationType.REVOLUTE,
             details=f"type={joint.articulation_type}",
         )
-        # Latch keeper position: on the FRONT (+X) side of the body.
         keeper_aabb = ctx.part_element_world_aabb(body, elem=f"latch_keeper_{i}")
         ctx.check(
             f"latch_{i}_keeper_on_front_side",
@@ -1253,32 +1712,26 @@ def run_rolling_toolbox_tests(
             details=f"keeper_aabb={keeper_aabb}",
         )
 
-    # --- Lid -----------------------------------------------------------------
+    # Lid.
     lid_joint = object_model.get_articulation("lid_joint")
     ctx.check(
         "lid_joint_is_revolute",
         lid_joint.articulation_type == ArticulationType.REVOLUTE,
         details=f"type={lid_joint.articulation_type}",
     )
-    # Lid panel must sit above the body floor at rest.
     lid_panel_aabb = ctx.part_element_world_aabb(lid, elem="lid_panel")
-    floor_z = _floor_z(resolved)
     ctx.check(
         "lid_above_body",
         lid_panel_aabb is not None
-        and lid_panel_aabb[0][2] >= floor_z + resolved.box_height - 0.010,
-        details=(
-            f"lid_panel_aabb={lid_panel_aabb}, expected_min_z>={floor_z + resolved.box_height}"
-        ),
+        and lid_panel_aabb[0][2] >= resolved.floor_z + resolved.box_height - 0.010,
+        details=f"lid_panel_aabb={lid_panel_aabb}",
     )
-    # Lid hinge sits at the rear of the body (negative X).
     ctx.check(
         "lid_hinge_on_rear",
         lid_joint.origin.xyz[0] < -resolved.box_depth * 0.35,
         details=f"lid_hinge_x={lid_joint.origin.xyz[0]}",
     )
-    # Allow lid hinge knuckles to lightly nest into the body rear rim.
-    for i in range(2):
+    for i in range(3):
         ctx.allow_overlap(
             body,
             lid,
@@ -1287,7 +1740,7 @@ def run_rolling_toolbox_tests(
             reason="Lid hinge knuckles share the hinge axis with the body rear edge.",
         )
 
-    # --- Optional drawer -----------------------------------------------------
+    # Drawer.
     if resolved.has_drawer:
         drawer = object_model.get_part("drawer")
         drawer_joint = object_model.get_articulation("drawer_joint")
@@ -1296,14 +1749,19 @@ def run_rolling_toolbox_tests(
             drawer_joint.articulation_type == ArticulationType.PRISMATIC,
             details=f"type={drawer_joint.articulation_type}",
         )
-        # Drawer sits inside the body footprint at rest.
+        front_top_band_aabb = ctx.part_element_world_aabb(body, elem="body_front_top_band")
+        ctx.check(
+            "drawer_opening_in_front_wall",
+            front_top_band_aabb is not None,
+            details="expected body_front_top_band element when has_drawer=True",
+        )
         ctx.allow_overlap(
             body,
             drawer,
             reason="The drawer slides inside the body cavity proxy.",
         )
 
-    # --- Optional handle stage 2 --------------------------------------------
+    # Handle stage 2.
     if resolved.handle_stage_count >= 2:
         stage2 = object_model.get_part("handle_stage_2")
         stage2_joint = object_model.get_articulation("handle_stage_2_joint")
@@ -1312,13 +1770,41 @@ def run_rolling_toolbox_tests(
             stage2_joint.articulation_type == ArticulationType.PRISMATIC,
             details=f"type={stage2_joint.articulation_type}",
         )
-        ctx.allow_overlap(
-            handle_inner,
-            stage2,
-            reason="Stage 2 telescoping extension is nested inside the handle inner.",
-        )
+        # Stage-2 rods must remain captured by stage-1 upper sleeves even at
+        # full extension: the bottom of the stage-2 rod must be below the
+        # stage-2 joint origin in stage_1's local frame.
+        for side in ("l", "r"):
+            ctx.allow_overlap(
+                inner_part_or_stage1 := object_model.get_part("handle_inner"),
+                stage2,
+                elem_a=f"handle_stage1_upper_sleeve_{side}",
+                elem_b=f"handle_stage2_rod_{side}",
+                reason="Stage-2 rod nests inside the stage-1 upper sleeve proxy.",
+            )
+            del inner_part_or_stage1
+        # Combined extension check.
+        if (
+            handle_joint.motion_limits
+            and handle_joint.motion_limits.upper is not None
+            and stage2_joint.motion_limits
+            and stage2_joint.motion_limits.upper is not None
+        ):
+            with ctx.pose(
+                {
+                    handle_joint: handle_joint.motion_limits.upper,
+                    stage2_joint: stage2_joint.motion_limits.upper,
+                }
+            ):
+                stage2_extended = ctx.part_world_aabb(stage2)
+            ctx.check(
+                "handle_stage_2_extends_above_stage_1",
+                stage2_extended is not None
+                and rest_aabb is not None
+                and stage2_extended[1][2] > resolved.floor_z + resolved.box_height + RIM_HEIGHT,
+                details=f"stage2_extended={stage2_extended}",
+            )
 
-    # --- Front support ------------------------------------------------------
+    # Front casters.
     if resolved.front_support == "small_casters":
         for ci in range(2):
             caster_joint = object_model.get_articulation(f"front_caster_swivel_{ci}")
@@ -1332,6 +1818,13 @@ def run_rolling_toolbox_tests(
                 f"front_caster_spin_{ci}_is_continuous",
                 spin_joint.articulation_type == ArticulationType.CONTINUOUS,
                 details=f"type={spin_joint.articulation_type}",
+            )
+            caster_wheel = object_model.get_part(f"front_caster_wheel_{ci}")
+            caster_wheel_aabb = ctx.part_world_aabb(caster_wheel)
+            ctx.check(
+                f"front_caster_wheel_{ci}_on_ground",
+                caster_wheel_aabb is not None and abs(caster_wheel_aabb[0][2]) < 0.015,
+                details=f"caster_wheel_aabb={caster_wheel_aabb}",
             )
 
     return ctx.report()
