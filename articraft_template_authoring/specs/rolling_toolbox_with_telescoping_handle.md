@@ -6,12 +6,14 @@
 | slug | `rolling_toolbox_with_telescoping_handle` |
 | template path | `agent/templates/rolling_toolbox_with_telescoping_handle.py` |
 | test path | `tests/agent/test_rolling_toolbox_with_telescoping_handle_template.py` |
+| status | baseline spec for style reference only |
+
+> 这是已有类别的 baseline spec，只用于参考 spec 写法、结构组织和 validator 写法。新增类别的部件来源必须来自新 spec 中被采纳且有 `model.py:Lx-Ly` 的 5 星样本源码片段。
 
 ## 核心身份
 可移动工具箱，带箱体、箱盖、锁扣、后轮、前支撑、伸缩拉杆。
 
 ## 部件（Parts）
-
 ```
 toolbox_body                          # 箱体主 part
  ├── lid                              # 箱盖 part（revolute 到 body）
@@ -26,14 +28,7 @@ toolbox_body                          # 箱体主 part
 
 注：拉杆导套 (`handle_outer_sleeve_l/r`)、提手 (`carry_handle`)、脚 (`front_feet`)、护角等是 visual 子件,不创建独立 part。
 
-## 组合逻辑（Composition Logic）
-- 以“部件（Parts）”中的树结构作为父子装配顺序。
-- 先在 `resolve_config` 中确定全局 spine / envelope，再派生子件尺寸、数量、位置和 joint range。
-- 活动件必须挂在对应父 part 上；非可动装饰 / 嵌入件优先作为 `parent.visual(...)` 子件挂载。
-- 所有 required part 必须连到同一主树；optional part 必须受参数显式控制。
-
 ## 关节（Joints）
-
 | joint | 类型 | 含义 |
 |---|---|---|
 | wheel_joint_i | continuous | 后轮旋转 |
@@ -44,10 +39,11 @@ toolbox_body                          # 箱体主 part
 | drawer_joint | prismatic（可选） | 前抽屉抽出 |
 
 ## 已有模板写法参考
+> 该字段只说明旧模板中可参考的写法，不表示部件来源。
+
 telescoping_tube / continuous_wheel / revolute_hinge / latch_lock / handle_grip / guide_shoe / caster_wheel
 
 ## 参数范围汇总
-
 | 参数 | 取值建议 |
 |---|---|
 | box_size | compact / standard / jobsite large（离散桶 + 桶内连续） |
@@ -60,6 +56,13 @@ telescoping_tube / continuous_wheel / revolute_hinge / latch_lock / handle_grip 
 | front_support | feet / small_casters |
 | corner_guard | none / reinforced |
 | material_style | yellow_black / red_black / gray / blue_black |
+
+## 部件多样性审计（Part Diversity Audit）
+> baseline spec 未补完整审计。新增类别必须逐个核心部件填写本表。
+
+| 部件类型 | observed_variation | 连续参数是否足够 | 是否需要离散参数 | 推荐参数 | 说明 |
+|---|---|---|---|---|---|
+| 待新增类别填写 | - | - | - | - | - |
 
 ## 约束
 - 后轮必须靠近箱体后下方。

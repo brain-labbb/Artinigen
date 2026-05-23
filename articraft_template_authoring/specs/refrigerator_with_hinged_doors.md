@@ -6,12 +6,14 @@
 | slug | `refrigerator_with_hinged_doors` |
 | template path | `agent/templates/refrigerator_with_hinged_doors.py` |
 | test path | `tests/agent/test_refrigerator_with_hinged_doors_template.py` |
+| status | baseline spec for style reference only |
+
+> 这是已有类别的 baseline spec，只用于参考 spec 写法、结构组织和 validator 写法。新增类别的部件来源必须来自新 spec 中被采纳且有 `model.py:Lx-Ly` 的 5 星样本源码片段。
 
 ## 核心身份
 冰箱主体，带一扇或多扇铰链门、门把手、内部隔板、抽屉、门封条。
 
 ## 部件（Parts）
-
 ```
 fridge_body                           # 冰箱主 part
  ├── door_0 / door_1 / ...            # 每扇门一个独立 part；门把手、gasket、dispenser 都以 visual 挂在 door 上
@@ -21,24 +23,18 @@ fridge_body                           # 冰箱主 part
 
 注：dispenser、handle、gasket_strip 均以 `door.visual(...)` 挂在 door 上,不是独立 part；也没有 service_flap / subdoor / control_panel 这些 part 或 joint。
 
-## 组合逻辑（Composition Logic）
-- 以“部件（Parts）”中的树结构作为父子装配顺序。
-- 先在 `resolve_config` 中确定全局 spine / envelope，再派生子件尺寸、数量、位置和 joint range。
-- 活动件必须挂在对应父 part 上；非可动装饰 / 嵌入件优先作为 `parent.visual(...)` 子件挂载。
-- 所有 required part 必须连到同一主树；optional part 必须受参数显式控制。
-
 ## 关节（Joints）
-
 | joint | 类型 | 含义 |
 |---|---|---|
 | door_i_joint | revolute | 门绕侧边打开 |
 | drawer_i_joint | prismatic（可选） | 抽屉前后滑动 |
 
 ## 已有模板写法参考
+> 该字段只说明旧模板中可参考的写法，不表示部件来源。
+
 revolute_hinge / handle_grip / gasket_strip / prismatic_slide
 
 ## 参数范围汇总
-
 | 参数 | 取值建议 |
 |---|---|
 | size_class | mini / standard / tall（离散桶 + 桶内连续值；spine 字段） |
@@ -52,6 +48,13 @@ revolute_hinge / handle_grip / gasket_strip / prismatic_slide
 | dispenser | none / water / ice |
 | gasket_style | thin / thick / dark |
 | material_style | white / stainless / black / retro |
+
+## 部件多样性审计（Part Diversity Audit）
+> baseline spec 未补完整审计。新增类别必须逐个核心部件填写本表。
+
+| 部件类型 | observed_variation | 连续参数是否足够 | 是否需要离散参数 | 推荐参数 | 说明 |
+|---|---|---|---|---|---|
+| 待新增类别填写 | - | - | - | - | - |
 
 ## 约束
 - 每扇门的 hinge axis 必须竖直 `(0, 0, ±1)`。

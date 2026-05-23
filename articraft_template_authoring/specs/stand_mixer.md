@@ -6,12 +6,14 @@
 | slug | `stand_mixer` |
 | template path | `agent/templates/stand_mixer.py` |
 | test path | `tests/agent/test_stand_mixer_template.py` |
+| status | baseline spec for style reference only |
+
+> 这是已有类别的 baseline spec，只用于参考 spec 写法、结构组织和 validator 写法。新增类别的部件来源必须来自新 spec 中被采纳且有 `model.py:Lx-Ly` 的 5 星样本源码片段。
 
 ## 核心身份
 台式厨师机，带底座、立柱、可抬起机头、搅拌碗、搅拌头、速度旋钮或控制件。
 
 ## 部件（Parts）
-
 ```
 mixer_base                            # 底座 part；speed_selector / head_lock_control 等以 visual 挂在 base 或 head 上
 bowl_carriage（可选；bowl_lift_type ≠ none 时）  # bowl 滑台 part
@@ -22,14 +24,7 @@ tool_attachment                       # 搅拌工具 part（continuous 旋转）
 
 注：motor_housing、attachment_socket、speed_selector 旋钮、head_lock 拨杆等都按 §0 「非可动子件挂载」用 `parent.visual(...)` 实现，不是独立 part。
 
-## 组合逻辑（Composition Logic）
-- 以“部件（Parts）”中的树结构作为父子装配顺序。
-- 先在 `resolve_config` 中确定全局 spine / envelope，再派生子件尺寸、数量、位置和 joint range。
-- 活动件必须挂在对应父 part 上；非可动装饰 / 嵌入件优先作为 `parent.visual(...)` 子件挂载。
-- 所有 required part 必须连到同一主树；optional part 必须受参数显式控制。
-
 ## 关节（Joints）
-
 | joint | 类型 | 含义 |
 |---|---|---|
 | head_tilt_joint | revolute | 机头绕后侧铰链抬起 |
@@ -39,10 +34,11 @@ tool_attachment                       # 搅拌工具 part（continuous 旋转）
 | head_lock_joint | revolute（可选） | 机头锁定拨杆 |
 
 ## 已有模板写法参考
+> 该字段只说明旧模板中可参考的写法，不表示部件来源。
+
 revolute_hinge / continuous_rotor / prismatic_slide / button_slider
 
 ## 参数范围汇总
-
 | 参数 | 取值建议 |
 |---|---|
 | head_shape | rounded / boxy / retro / industrial |
@@ -59,6 +55,13 @@ revolute_hinge / continuous_rotor / prismatic_slide / button_slider
 | control_count | 1 / 2 / 3 |
 | material_style | pastel / stainless / black / retro |
 | detail_level | minimal / normal / detailed |
+
+## 部件多样性审计（Part Diversity Audit）
+> baseline spec 未补完整审计。新增类别必须逐个核心部件填写本表。
+
+| 部件类型 | observed_variation | 连续参数是否足够 | 是否需要离散参数 | 推荐参数 | 说明 |
+|---|---|---|---|---|---|
+| 待新增类别填写 | - | - | - | - | - |
 
 ## 约束
 - mixer_head 必须连接到 rear_column。

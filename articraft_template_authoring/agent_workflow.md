@@ -2,7 +2,7 @@
 
 本文件定义 agent 如何从 Articraft-10K 的新类别生成 spec、如何等待人工审核、以及审核后如何基于 spec 和已有模板代码落地新模板。
 
-核心原则：**先 spec，后模板；审核前不写代码；Spec 阶段必须枚举并完整阅读目标类别全部 5 星样本；最终 spec 只引用被采纳为模板依据的源码片段；写代码时以审核后的 spec 和其中被采纳的 5 星样本源码片段为主实现来源，已有 11 个模板代码只作为骨架、SDK 用法、测试风格和相似 pattern 参考。**
+核心原则：**先 spec，后模板；审核前不写代码；Spec 阶段必须枚举并完整阅读目标类别全部 5 星样本；最终 spec 只引用被采纳为模板依据的源码片段；写代码时以审核后的 spec 和其中被采纳的 5 星样本源码片段为主实现来源，已有 11 个模板代码只作为骨架、SDK 用法、测试风格和相似写法参考。**
 
 ---
 
@@ -49,91 +49,14 @@ cli/template.py
 
 1. 审核后的 `specs/<category_slug>.md`。
 2. spec 中标注并被采纳的 5 星样本 `model.py:Lx-Ly` 代码片段。
-3. 已有 11 个模板代码：`agent/templates/*.py`，仅用于文件骨架、SDK 写法、`resolve_config` / `_build_*` 组织方式、palette、validator 和测试风格对齐。
+3. 已有 11 个模板代码：`agent/templates/*.py`，仅用于文件骨架、SDK 写法、`resolve_config` / `_build_*` 组织方式、palette、joint metadata、validator 和测试风格对齐。
 4. 本文件的通用模板要求、编码约定、已有模板写法参考表、测试规约。
 
 ---
 
-## 2. 文件组织约定
+## 2. SPEC_ONLY 工作流
 
-```text
-articraft_template_authoring/
-├── AGENT_ENTRYPOINT.md
-├── agent_workflow.md
-├── CATEGORY_BATCH_TEMPLATE.md
-├── SPEC_REVIEW_TEMPLATE.md
-└── specs/
-    ├── sliding_window.md
-    ├── tackle_box_with_simple_hinged_lid.md
-    ├── telescoping_boom.md
-    └── <new_category_slug>.md
-```
-
-已有 11 个 `specs/*.md` 是 baseline spec，用于学习结构、参数、关节、validator 写法。新增类别必须另建新的 spec 文件。
-
----
-
-## 3. 输入与输出
-
-### 3.1 输入
-
-| 输入项 | 说明 |
-|---|---|
-| category_slug list | 用户给出的 N 个 Articraft 类别，建议 snake_case |
-| Articraft-10K dataset root | 用于读取 retained 样本、评分、`model.py`、`revision.json`、`record.json` |
-| existing template directory | 默认 `agent/templates/`，包含已有 11 个模板代码 |
-| existing tests directory | 默认 `tests/agent/` |
-| baseline specs | `articraft_template_authoring/specs/*.md` |
-
-### 3.2 SPEC_ONLY 输出
-
-| 输出项 | 说明 |
-|---|---|
-| `articraft_template_authoring/specs/<category_slug>.md` | 该类别 spec。必须包含阅读摘要、核心身份、被采纳源码索引、Parts、Joints、组合逻辑、参数范围、已有模板写法参考、约束、Validator、Reject cases。|
-
-### 3.3 TEMPLATE_AFTER_REVIEW 输出
-
-| 输出项 | 说明 |
-|---|---|
-| `agent/templates/<category_slug>.py` | 新类别可参数化模板 |
-| `tests/agent/test_<category_slug>_template.py` | 模板 validator 测试 |
-| registry update | 在 `cli/template.py` 或项目实际 registry 注册 slug |
-
----
-
-## 4. Hard Fail Rules
-
-以下情况必须停止，不得继续。
-
-### 4.1 SPEC_ONLY 阶段
-
-- 目标类别找不到 5 星样本。
-- 目标类别 5 星样本少于 5 个，且没有人工确认可继续。
-- 没有枚举该类别全部 5 星样本。
-- 没有读取该类别每一个 5 星样本的 `model.py` / `revision.json` / `record.json`。
-- 新增 spec 的 `部件（Parts）` / `关节（Joints）` / `参数范围汇总` 缺少被采纳 5 星样本片段的真实 `model.py:Lx-Ly` 来源索引。
-- spec 把已阅读但未采用的 5 星样本路径、行号、源码索引写进最终来源索引。
-- spec 中出现无法从 5 星样本支持的结构，但没有标记为 `inferred`。
-- spec 只总结外观颜色，没有提炼结构级参数。
-
-### 4.2 TEMPLATE_AFTER_REVIEW 阶段
-
-- spec 未经人工审核确认。
-- 实现模板时没有读取审核后的 spec。
-- 实现模板时没有打开现有 11 个模板代码作为风格和 SDK 用法参考。
-- 实现模板时没有回溯 spec 中被采纳的 5 星样本 `model.py:Lx-Ly` 片段。
-- 新增 pattern 不在已有模板写法参考表，且没有登记来源与参考实现。
-- `resolve_config` 后仍在 `_build_*` 中随机采样关键尺寸。
-- 活动件缺少 joint metadata：`type / axis / origin / range`。
-- 生成结果出现漂浮件、严重穿模、关节轴错误、类别身份丢失。
-
----
-
-## 5. SPEC_ONLY 工作流
-
-对用户给出的每个类别依次执行。
-
-### 5.1 收集并完整阅读 5 星样本
+### 2.1 收集并完整阅读 5 星样本
 
 1. 用 storage API 或 `uv run articraft dataset ...` 列出该类别全部 retained 样本。
 2. 过滤评分为 5 星的样本，得到完整 5 星样本清单。
@@ -160,7 +83,7 @@ articraft_template_authoring/
 | source_index_policy | only adopted reusable snippets are indexed below |
 ```
 
-### 5.2 选择“被采纳源码片段”
+### 2.2 选择“被采纳源码片段”
 
 完整阅读全部 5 星样本后，只选择适合模板化复用的代码片段进入 spec。
 
@@ -191,20 +114,16 @@ articraft_template_authoring/
 
 注意：本表只列被采纳的片段；已阅读但未采用的 5 星样本不要写进来。
 
-### 5.3 提炼核心身份
+### 2.3 提炼核心身份
 
 写 1–2 句中文，说明该类别最小辨识特征。
-
-格式：
 
 ```md
 ## 核心身份
 <什么东西>，至少包含 <关键结构>，并具有 <关键活动方式>。
 ```
 
-这句话决定 reject cases。任何不满足核心身份的结构都不应进入模板。
-
-### 5.4 提取部件
+### 2.4 提取部件
 
 从被采纳源码片段中抽取可复用、可参数化部件。
 
@@ -223,7 +142,7 @@ articraft_template_authoring/
 - 样本中没有但逻辑上需要的部件必须标为 `inferred`，不得混入 required part。
 - 非可动装饰件默认用 `parent.visual(...)`，不创建独立 part。
 
-### 5.5 提取关节
+### 2.5 提取关节
 
 ```md
 ## 关节（Joints）
@@ -240,7 +159,7 @@ articraft_template_authoring/
 - prismatic 关节必须说明滑动方向与最大行程。
 - Mimic 关节必须说明源关节、multiplier、offset。
 
-### 5.6 提取参数
+### 2.6 提取参数
 
 ```md
 ## 参数范围汇总
@@ -253,11 +172,44 @@ articraft_template_authoring/
 
 - 参数必须基于完整阅读全部 5 星样本后的结构变化判断。
 - 参数表中的来源索引只引用被采纳、适合模板复用的 `model.py:Lx-Ly` 片段。
-- “small / medium / large”“low / medium / tall”必须拆成：`*_class` + 桶内连续值。
-- 所有关键尺寸必须在 `resolve_config` 中确定。
-- 参数必须能在样本中产生结构级差异，不允许只换颜色。
+- 连续尺寸参数用于表达尺度、比例、厚度、角度、行程等连续变化。
+- 定性形态参数用于表达连续尺寸无法表达的形状、轮廓、布局、风格差异。
+- 不强制每个部件都有离散桶；但如果 5 星样本显示存在定性外形差异，必须显式加入 `*_shape / *_style / *_profile / *_variant / *_layout` 等参数。
 
-### 5.7 写组合逻辑
+### 2.7 部件多样性审计（Part Diversity Audit）
+
+每个 spec 必须对核心部件逐个做多样性审计。这个审计不是数 enum 行，而是判断每个关键部件是否有足够的形态表达。
+
+至少检查：
+
+- 主体外壳：`body / housing / case / frame`
+- 活动部件：`door / blade / drawer / arm / screen / pedal / crank / lens barrel`
+- 支撑部件：`base / stand / bracket / mast / fork / legs`
+- 操作部件：`handle / knob / switch / latch / grip`
+- 连接部件：`hinge / joint cover / collar / hub`
+- 类别识别部件：最能让人认出该类别的 1–3 个 part
+
+写法：
+
+```md
+## 部件多样性审计（Part Diversity Audit）
+| 部件类型 | observed_variation | 连续参数是否足够 | 是否需要离散参数 | 推荐参数 | 说明 |
+|---|---|---|---|---|---|
+| blade | 木纹长方板 / 弧形 / 翼形 | no | yes | blade_shape | 长宽厚和 pitch 不能表达轮廓差异 |
+| hub | 圆柱 / 球形 / 分层壳体 | no | yes | hub_style | hub 是核心视觉部件 |
+| downrod | none | yes | no | downrod_length | 全部 5 星样本中未观察到定性外形差异；只保留长度连续参数 |
+| pull_chain | none | no | no | none | 若样本中没有该部件或不属于核心部件，可记录 none，不强行加入参数 |
+```
+
+判断规则：
+
+- 如果差异只是长短、宽窄、厚薄、角度、行程：连续参数即可。
+- 如果差异是轮廓、拓扑、布局、截面、开孔、框架形式、操作件形式：必须显式枚举。
+- 连续参数不能替代定性外形差异。
+- 如果某个核心部件在全部 5 星样本中没有观察到形态多样性，记录 `observed_variation = none`，不强行加 enum。
+- 如果只观察到长短、宽窄、厚薄、角度、行程等连续变化，说明连续参数为什么足够。
+
+### 2.8 写组合逻辑
 
 说明父子链、装配顺序、数量约束、派生关系：
 
@@ -269,7 +221,7 @@ articraft_template_authoring/
 4. 装饰件作为 visual 子件挂载。
 ```
 
-### 5.8 写已有模板写法参考
+### 2.9 写已有模板写法参考
 
 从本文件的「已有模板写法参考表」选择 pattern 名。该字段只回答一个问题：**新模板写代码时，旧 11 个模板里哪些文件最适合参考写法**。
 
@@ -280,7 +232,7 @@ prismatic_slide / revolute_hinge / handle_grip
 
 注意：这个字段不是部件来源表，不决定新模板应该包含哪些实体部件。真正写入新模板的部件、关节和关键参数，必须来自审核后 spec 的 `部件（Parts）`、`关节（Joints）`、`参数范围汇总`，并优先回溯 `采用源码索引（Adopted Source Index）` 中的 5 星样本 `model.py:Lx-Ly`。旧 11 个模板只教 agent 怎么组织代码、怎么调用 SDK、怎么写 `resolve_config` / `_build_*`、怎么写 joint metadata 和测试。
 
-### 5.9 写 Validator
+### 2.10 写 Validator
 
 Validator 表必须可直接映射到后续测试代码。
 
@@ -291,26 +243,16 @@ Validator 表必须可直接映射到后续测试代码。
 | joint count | 至少 1 个 revolute |
 | axis check | hinge axis 与 spec 一致 |
 | no floating | 所有 part 连接到主树 |
+| part diversity | Part Diversity Audit 中需要的 style/shape 参数均存在 |
 ```
 
-单样本结构检查写进 `run_<slug>_tests`；数据集级覆盖率检查只写进 batch validator 或 reviewer checklist。
+### 2.11 写 Reject cases
 
-### 5.10 写 Reject cases
-
-写 5–8 条，描述会让样本变成 1–3 星的失败模式：
-
-```md
-## Reject cases
-- 关键活动件缺失。
-- 关节轴方向错误。
-- 部件漂浮。
-- 严重穿模。
-- 类别身份丢失。
-```
+写 5–8 条，描述会让样本变成 1–3 星的失败模式。
 
 ---
 
-## 6. Spec Schema
+## 3. Spec Schema
 
 每个新增 `specs/<category_slug>.md` 必须使用以下字段，字段顺序不要变。
 
@@ -348,15 +290,20 @@ Validator 表必须可直接映射到后续测试代码。
 | 关节 | 类型 | axis | origin | range | 描述 | 来源 |
 |---|---|---|---|---|---|---|
 
+## 参数范围汇总
+| 参数 | 类型 | 取值范围 / 候选值 | 默认值 | 派生关系 | 来源 |
+|---|---|---|---|---|---|
+
+## 部件多样性审计（Part Diversity Audit）
+| 部件类型 | observed_variation | 连续参数是否足够 | 是否需要离散参数 | 推荐参数 | 说明 |
+|---|---|---|---|---|---|
+| <part> | none / <observed variants> | yes / no | yes / no | <param or none> | <reason> |
+
 ## 组合逻辑（Composition Logic）
 ...
 
 ## 已有模板写法参考
 ...
-
-## 参数范围汇总
-| 参数 | 类型 | 取值范围 / 候选值 | 默认值 | 派生关系 | 来源 |
-|---|---|---|---|---|---|
 
 ## 约束
 - ...
@@ -377,67 +324,28 @@ Validator 表必须可直接映射到后续测试代码。
 
 ---
 
-## 7. TEMPLATE_AFTER_REVIEW 工作流
+## 4. TEMPLATE_AFTER_REVIEW 工作流
 
-对每个审核通过的类别依次执行。
-
-### 7.1 读取审核后的 spec
-
-必须先读取：
-
-```text
-articraft_template_authoring/specs/<category_slug>.md
-```
+### 4.1 读取审核后的 spec
 
 检查：
 
 - `reviewer status = approved` 或用户明确说明已审核通过。
 - Parts / Joints / 参数范围表都有被采纳片段的来源索引。
 - `采用源码索引` 只包含被采纳为模板依据的片段。
-- 已有模板写法参考字段可映射到 参考表；该字段只用于选择已有模板骨架和相似写法，不作为部件实现的优先来源。
+- `部件多样性审计` 已覆盖核心部件。
+- 审计中标为“需要离散参数”的部件，在 `参数范围汇总` 中确实有对应 `*_shape / *_style / *_profile / *_variant / *_layout` 参数。
+- 已有模板写法参考字段只用于选择旧模板骨架和相似写法，不作为部件实现的优先来源。
 
-### 7.2 选择已有模板骨架
+### 4.2 选择已有模板骨架
 
-从已有 11 个模板代码中选 1–3 个最接近的新类别骨架。注意：已有模板的作用是提供代码组织、SDK 用法、`resolve_config` / `_build_*` 拆分方式、palette、validator 和测试风格；不是优先部件实现来源。关键部件、关节和参数实现必须优先改编 spec 中被采纳的 5 星样本源码片段。
+从已有 11 个模板代码中选 1–3 个最接近的新类别骨架。注意：已有模板的作用是提供代码组织、SDK 用法、`resolve_config` / `_build_*` 拆分方式、palette、validator 和测试风格；不是优先部件实现来源。
 
-优先级：
-
-1. 关节类型一致。
-2. part 树相似。
-3. 参数模式相似。
-4. validator 逻辑相似。
-5. SDK 用法最接近。
-
-示例：
-
-| 新类别结构 | 优先参考模板 |
-|---|---|
-| 直线滑动 / 抽屉 / 导轨 | `sliding_window.py` / `refrigerator_with_hinged_doors.py` |
-| 铰链盖 / 翻盖 / 门 | `tackle_box_with_simple_hinged_lid.py` / `refrigerator_with_hinged_doors.py` |
-| 多级伸缩 | `telescoping_boom.py` / `standing_desk_with_synchronous_telescoping_legs_and_articulated_controls.py` |
-| 轮子 / 推车 / 万向轮 | `platform_cart.py` / `rolling_toolbox_with_telescoping_handle.py` |
-| 径向阵列 / 中心旋转 | `revolving_door.py` / `ferris_wheel.py` |
-| 折叠框架 | `simple_aframe_step_ladder.py` |
-| 竖直旋转工具 / 控件 | `stand_mixer.py` |
-
-### 7.3 回溯被采纳的 5 星样本源码片段
+### 4.3 回溯被采纳的 5 星样本源码片段
 
 根据 spec 中 `采用源码索引`、Parts / Joints / 参数表标注的 `model.py:Lx-Ly` 读取被采纳代码片段。该步骤是模板实现的主来源。
 
-用途：
-
-- 抽取关键几何部件写法。
-- 抽取 joint 定义写法。
-- 抽取参数范围和默认值。
-- 抽取材质 / palette 习惯。
-
-模板代码中的注释必须标明关键复用来源，例如：
-
-```python
-# Adapted from Articraft-10K sample: samples/<id>/model.py:L51-L69
-```
-
-### 7.4 编写 `agent/templates/<category_slug>.py`
+### 4.4 编写 `agent/templates/<category_slug>.py`
 
 要求：
 
@@ -450,105 +358,58 @@ articraft_template_authoring/specs/<category_slug>.md
 - 每个活动件必须有 joint metadata。
 - 非可动装饰优先 `parent.visual(...)`。
 - palette 必须命名，不允许裸 RGB 随机。
-
-### 7.5 写测试
-
-测试路径：
-
-```text
-tests/agent/test_<category_slug>_template.py
-```
-
-测试覆盖：
-
-- part 数量
-- joint 数量
-- joint 类型
-- axis
-- range
-- parent-child connectivity
-- bbox containment
-- no floating
-- no severe penetration
-- identity check
-
-### 7.6 注册并运行
-
-根据项目实际 registry 位置注册 slug，例如：
-
-```text
-cli/template.py
-```
-
-至少运行：
-
-```bash
-uv run articraft template <category_slug> --seed 0
-uv run articraft template <category_slug> --seed 1
-uv run articraft template <category_slug> --seed 2
-uv run pytest tests/agent/test_<category_slug>_template.py
-```
-
-失败时优先修复：
-
-1. URDF / SDK API 错误。
-2. joint metadata 缺失。
-3. bbox / connectivity 错误。
-4. 明显穿模 / 漂浮。
-5. 类别身份不清。
-6. 参数随机性不足。
+- 对 `Part Diversity Audit` 中标为需要离散参数的核心部件，必须实现对应 shape/style/profile/variant/layout 分支。
 
 ---
 
-## 8. 通用模板要求
+## 5. Hard Fail Rules
 
-所有新增类别都必须遵守下表。
+### 5.1 SPEC_ONLY 阶段
+
+- 目标类别找不到 5 星样本。
+- 目标类别 5 星样本少于 5 个，且没有人工确认可继续。
+- 没有枚举该类别全部 5 星样本。
+- 没有读取该类别每一个 5 星样本的 `model.py` / `revision.json` / `record.json`。
+- 新增 spec 的 `部件（Parts）` / `关节（Joints）` / `参数范围汇总` 缺少被采纳 5 星样本片段的真实 `model.py:Lx-Ly` 来源索引。
+- spec 把已阅读但未采用的 5 星样本路径、行号、源码索引写进最终来源索引。
+- spec 缺少 `部件多样性审计（Part Diversity Audit）`。
+- 5 星样本中存在关键部件的定性形态差异，但 spec 只用连续尺寸参数表示。
+- 核心部件没有观察到形态多样性，但未记录 `observed_variation = none`。
+- 核心部件只观察到连续变化，但未说明连续参数为什么足够。
+- spec 中出现无法从 5 星样本支持的结构，但没有标记为 `inferred`。
+
+### 5.2 TEMPLATE_AFTER_REVIEW 阶段
+
+- spec 未经人工审核确认。
+- 实现模板时没有读取审核后的 spec。
+- 实现模板时没有打开现有 11 个模板代码作为风格和 SDK 用法参考。
+- 实现模板时没有回溯 spec 中被采纳的 5 星样本 `model.py:Lx-Ly` 片段。
+- 实现模板时没有落实 `Part Diversity Audit` 中要求的离散参数。
+- 活动件缺少 joint metadata：`type / axis / origin / range`。
+- 生成结果出现漂浮件、严重穿模、关节轴错误、类别身份丢失。
+
+---
+
+## 6. 通用模板要求
 
 | 项 | 要求 |
 |---|---|
 | seed | 给定 seed 后生成结果可复现 |
 | part naming | 零件命名稳定，不随随机采样混乱 |
 | joint metadata | 每个活动件必须有 joint type / axis / origin / range |
-| diversity | 不能只靠颜色变化，必须有结构级随机 |
-| validation | 每类必须自带 validator |
-| reject | 漂浮零件、关节轴错误、严重穿模、类别身份丢失，一律拒绝 |
-| 已有模板写法参考表语义 | 该表是「已有模板写法参考 + 工程风格 anchor」，不是可 import 的库，也不是新模板部件来源 |
-| 参数语义 | RANDOM PARAMETERS 是设计空间提示，必须有结构级差异，不允许全部硬编码同一形态 |
-| multi-parent 处理 | 物理上多父支撑的零件允许选择单一父链 + Mimic 同步关节 |
-| 离散桶 + 连续范围 | `small / medium / large`、`low / medium / tall`、`compact / normal / landmark` 等必须实现为 class 字段 + 桶内连续值 |
-| 几何自洽 | 单一物体的 envelope 是 spine，所有关键子件尺寸从 spine 和 layout 派生 |
+| diversity | 不能只靠颜色变化，必须有结构级随机；关键部件若存在定性形态差异，必须显式表达 |
+| 参数语义 | 连续参数表达尺度 / 比例 / 厚度 / 角度；离散参数表达形态 / 轮廓 / 布局 / 风格 |
+| 已有模板参考表语义 | 该表是「已有模板写法参考 + 工程风格 anchor」，不是可 import 的库，也不是新模板部件来源 |
 | 非可动子件挂载 | 非可动装饰 / 嵌入件优先用 `parent.visual(...)`，不创建独立 part 或 FIXED articulation |
 | 测试规约 | 单测只跑单样本结构、关节、几何自洽；数据集级覆盖率放 batch validator 或 reviewer 抽样 |
 
 ---
 
-## 9. 命名与编码约定
-
-| 项 | 约定 |
-|---|---|
-| slug 命名 | `snake_case`，与 prompt / category 一致。复合特征用 `_and_` 或 `_with_` 连接 |
-| Part 命名 | 与 spec 的 part 树严格对应。计数派生件用 `_i` 后缀，i 从 0 起 |
-| Joint 命名 | `<part>_joint` 或语义化 `<动作>_joint`。Mimic 派生关节命名并注释源关节 |
-| Axis 写法 | 全部用世界系 `(x, y, z)` tuple；竖直默认 `(0, 0, 1)`，宽度方向默认 `(0, 1, 0)`，前后方向默认 `(1, 0, 0)` |
-| 范围单位 | 距离 m，角度 rad，质量 kg |
-| `resolve_config` | 所有尺寸耦合、派生 count、axis、range 都在此固定 |
-| `_build_*` 函数 | 一段几何 = 一个 helper；helper 自描述自包含，不依赖外部全局状态 |
-| Visual 子件 | 用 `parent.visual(...)`，不创建 part 也不创建 FIXED articulation |
-| 颜色采样 | 调色板必须命名，不允许裸 `(r, g, b)` 随机 |
-
----
-
-## 10. 已有模板写法参考表
+## 7. 已有模板写法参考表
 
 下表用于帮助 agent 在已有 11 个旧模板里定位相似写法。它不是部件库，也不是可 import 的代码符号。
 
 **边界必须清楚：旧模板教 agent 怎么写模板；审核后的新 spec 决定新模板写什么部件。**
-
-实现优先级必须是：
-
-1. 审核后的 spec。
-2. spec 中被采纳并带有 `model.py:Lx-Ly` 索引的 5 星样本部件 / 关节 / 参数代码片段。
-3. 已有 11 个旧模板的代码骨架、SDK 写法、`resolve_config` / `_build_*` 组织方式、palette、joint metadata、validator 和测试风格。
 
 | 写法参考项 | 中文 | 适合参考的旧模板 | 具体参考位置 |
 |---|---|---|---|
@@ -558,7 +419,7 @@ uv run pytest tests/agent/test_<category_slug>_template.py
 | continuous_wheel | 定轴轮写法 | Platform Cart / Rolling Toolbox | `agent/templates/platform_cart.py` `_add_wheel_geometry` |
 | caster_wheel | 万向轮写法 | Platform Cart / Rolling Toolbox | `agent/templates/rolling_toolbox_with_telescoping_handle.py` `_build_caster_yoke` |
 | latch_lock | 锁扣翻片写法 | Tackle Box / Rolling Toolbox | `agent/templates/tackle_box_with_simple_hinged_lid.py` `_build_latch_visuals` |
-| handle_grip | 把手 / 推手写法 | Sliding Window / Tackle Box / Platform Cart | `agent/templates/tackle_box_with_simple_hinged_lid.py` `_build_top_bar_handle`；folding handle 见 `agent/templates/platform_cart.py` |
+| handle_grip | 把手 / 推手写法 | Sliding Window / Tackle Box / Platform Cart | `agent/templates/tackle_box_with_simple_hinged_lid.py` `_build_top_bar_handle` |
 | rotary_post | 旋转中心柱写法 | Revolving Door / Ferris Wheel | `agent/templates/revolving_door.py` `_build_central_post` |
 | radial_array | 径向阵列写法 | Revolving Door / Ferris Wheel | `agent/templates/revolving_door.py` `_add_wing` |
 | folding_link_chain | A-frame 折叠连杆写法 | Simple Aframe Step Ladder | `agent/templates/simple_aframe_step_ladder.py` `build()` 顶部铰链 + spreader 段 |
@@ -574,41 +435,21 @@ uv run pytest tests/agent/test_<category_slug>_template.py
 2. 若 spec 已经提供某个部件 / 关节 / 参数的 `model.py:Lx-Ly` 来源，必须优先改编该源码片段。
 3. 打开对应旧模板代码时，只学习文件组织、SDK 调用方式、helper 拆分、joint metadata 写法、palette 与 validator 风格。
 4. 只有当 spec 中的 5 星源码片段缺少某个通用工程写法时，才允许从旧模板借用相似 helper 的写法，并按新类别尺寸、轴向、palette 重新校准。
-5. 新类别引入本表没有的写法时，先在新 spec 的「已有模板写法参考」字段写新名字，再在本表末尾追加一行，包含参考位置。
 
-## 11. Spec 审核 checklist
+---
 
-提交一份新类别 spec 前自查：
+## 8. Spec 审核 checklist
 
-- [ ] 已枚举并读取该类别全部 5 星样本，且不少于 5 个；不足 5 个时已说明原因并等待人工确认。
-- [ ] 读取内容包含每个 5 星样本的 `model.py` / `revision.json` / `record.json`。
+- [ ] 已枚举并读取该类别全部 5 星样本。
 - [ ] spec 中没有把已读但未采用的样本写入来源索引。
 - [ ] 核心身份能区分该类别与相邻类别。
 - [ ] 部件表包含被采纳 5 星样本片段的 `model.py:Lx-Ly` 来源索引。
 - [ ] 关节表包含 type / axis / origin / range / 来源。
 - [ ] 参数表包含类型、取值范围、默认值、派生关系，以及被采纳片段来源。
-- [ ] required part 是全部 5 星样本的稳定交集或核心身份必需项，不是单样本零件清单。
-- [ ] 所有“小/中/大”“低/中/高”语义字段都拆成 class + 桶内连续值。
-- [ ] 约束、Validator、Reject cases 互相补完，不重复堆砌。
-- [ ] 已有模板写法参考项都能在参考表中查到；新增 pattern 已登记。
+- [ ] 已有 `部件多样性审计（Part Diversity Audit）`。
+- [ ] 审计覆盖主体、活动件、支撑件、操作件、连接件和类别识别部件中实际存在的核心 part。
+- [ ] 若观察到定性外形差异，参数表中已加入对应 `*_shape / *_style / *_profile / *_variant / *_layout`。
+- [ ] 若没有观察到部件多样性，审计中记录 `observed_variation = none`。
+- [ ] 若只观察到尺寸 / 比例 / 厚度 / 角度 / 行程变化，审计中说明连续参数为什么足够。
+- [ ] 已有模板写法参考字段只用于旧模板写法参考，不是部件来源。
 - [ ] 审核状态仍为 pending，不得进入模板实现阶段。
-
----
-
-## 12. Template 实现 checklist
-
-实现新模板前自查：
-
-- [ ] 用户明确批准进入 `TEMPLATE_AFTER_REVIEW`。
-- [ ] 已读取审核后的 spec。
-- [ ] 已读取 spec 中所有被采纳的关键 `model.py:Lx-Ly` 源码片段。
-- [ ] 已打开 1–3 个最接近的已有模板代码作为骨架、SDK、测试风格参考。
-- [ ] 已确认关键部件 / 关节 / 参数优先改编 spec 中被采纳的 5 星样本源码片段。
-- [ ] 已确定哪些已有模板写法参考项仅作为风格与骨架参考使用。
-- [ ] `resolve_config` 固定所有关键尺寸、数量、range。
-- [ ] `_build_*` 不再随机关键尺寸。
-- [ ] 每个活动件都有 joint metadata。
-- [ ] 非可动装饰件用 visual 子件挂载。
-- [ ] 已写测试并覆盖 spec 的 Validator 表。
-- [ ] `uv run articraft template <slug> --seed 0..2` 能跑通。
-- [ ] `uv run pytest tests/agent/test_<slug>_template.py` 能跑通。

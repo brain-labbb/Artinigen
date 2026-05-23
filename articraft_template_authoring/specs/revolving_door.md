@@ -6,35 +6,31 @@
 | slug | `revolving_door` |
 | template path | `agent/templates/revolving_door.py` |
 | test path | `tests/agent/test_revolving_door_template.py` |
+| status | baseline spec for style reference only |
+
+> 这是已有类别的 baseline spec，只用于参考 spec 写法、结构组织和 validator 写法。新增类别的部件来源必须来自新 spec 中被采纳且有 `model.py:Lx-Ly` 的 5 星样本源码片段。
 
 ## 核心身份
 中心柱带 2、3 或 4 个径向门翼，在圆筒形或半圆形外壳中绕竖直轴连续旋转。单台旋转门 = 一个中心柱 + 一组门翼；多台 airlock 复合属于多个独立 instance，不属于本类别。
 
 ## 部件（Parts）
-
 ```
 outer_drum（可选）                    # 静态外壳 part；top_cap / bottom_ring / side_glass_panels 等以 visual 挂在 drum 上
 central_post                          # 旋转中心柱 part
  └── wing_0 / wing_1 / ...（visual）  # 门翼以 parent.visual(...) 挂在 central_post 上，作为 rotor 整体一起旋转，不创建独立 part
 ```
 
-## 组合逻辑（Composition Logic）
-- 以“部件（Parts）”中的树结构作为父子装配顺序。
-- 先在 `resolve_config` 中确定全局 spine / envelope，再派生子件尺寸、数量、位置和 joint range。
-- 活动件必须挂在对应父 part 上；非可动装饰 / 嵌入件优先作为 `parent.visual(...)` 子件挂载。
-- 所有 required part 必须连到同一主树；optional part 必须受参数显式控制。
-
 ## 关节（Joints）
-
 | joint | 类型 | 含义 |
 |---|---|---|
 | central_rotation_joint（命名风格 `*_spin` / `*_rotation`） | continuous | 中心门翼组件绕竖直轴旋转 |
 
 ## 已有模板写法参考
+> 该字段只说明旧模板中可参考的写法，不表示部件来源。
+
 rotary_post / radial_array / handle_grip
 
 ## 参数范围汇总
-
 | 参数 | 取值建议 |
 |---|---|
 | wing_count | 3 / 4 |
@@ -53,6 +49,13 @@ rotary_post / radial_array / handle_grip
 | bottom_ring | none / low / full |
 | sensor_module | none / small_blocks |
 | material_style | glass / dark_metal / aluminum |
+
+## 部件多样性审计（Part Diversity Audit）
+> baseline spec 未补完整审计。新增类别必须逐个核心部件填写本表。
+
+| 部件类型 | observed_variation | 连续参数是否足够 | 是否需要离散参数 | 推荐参数 | 说明 |
+|---|---|---|---|---|---|
+| 待新增类别填写 | - | - | - | - | - |
 
 ## 约束
 - 门翼必须等角度分布。

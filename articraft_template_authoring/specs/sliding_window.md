@@ -6,12 +6,14 @@
 | slug | `sliding_window` |
 | template path | `agent/templates/sliding_window.py` |
 | test path | `tests/agent/test_sliding_window_template.py` |
+| status | baseline spec for style reference only |
+
+> 这是已有类别的 baseline spec，只用于参考 spec 写法、结构组织和 validator 写法。新增类别的部件来源必须来自新 spec 中被采纳且有 `model.py:Lx-Ly` 的 5 星样本源码片段。
 
 ## 核心身份
 带外框、轨道、玻璃窗扇，其中至少一个窗扇沿轨道做直线滑动。
 
 ## 部件（Parts）
-
 ```
 window_frame（窗户外框）
  ├── top_rail（上轨道）
@@ -27,23 +29,17 @@ window_frame（窗户外框）
       └── travel_stop / keeper_block / latch_mount（明确的限位与锁挡块）
 ```
 
-## 组合逻辑（Composition Logic）
-- 以“部件（Parts）”中的树结构作为父子装配顺序。
-- 先在 `resolve_config` 中确定全局 spine / envelope，再派生子件尺寸、数量、位置和 joint range。
-- 活动件必须挂在对应父 part 上；非可动装饰 / 嵌入件优先作为 `parent.visual(...)` 子件挂载。
-- 所有 required part 必须连到同一主树；optional part 必须受参数显式控制。
-
 ## 关节（Joints）
-
 | joint | 类型 | 含义 |
 |---|---|---|
 | sliding_sash_i_joint | prismatic | 窗扇沿轨道滑动 |
 
 ## 已有模板写法参考
+> 该字段只说明旧模板中可参考的写法，不表示部件来源。
+
 prismatic_slide / handle_grip / guide_shoe / gasket_strip
 
 ## 参数范围汇总
-
 | 参数 | 取值建议 |
 |---|---|
 | window_orientation | horizontal / vertical |
@@ -57,6 +53,13 @@ prismatic_slide / handle_grip / guide_shoe / gasket_strip
 | lock_style | none / small latch / central lock |
 | material_style | aluminum / PVC / wood / black metal |
 | sill_profile | flush / nose（控制窗台外侧是否带 drip cap） |
+
+## 部件多样性审计（Part Diversity Audit）
+> baseline spec 未补完整审计。新增类别必须逐个核心部件填写本表。
+
+| 部件类型 | observed_variation | 连续参数是否足够 | 是否需要离散参数 | 推荐参数 | 说明 |
+|---|---|---|---|---|---|
+| 待新增类别填写 | - | - | - | - | - |
 
 ## 约束
 - sliding_sash 必须在 window_frame 内部。

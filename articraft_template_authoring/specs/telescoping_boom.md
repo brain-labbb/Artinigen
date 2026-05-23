@@ -6,12 +6,14 @@
 | slug | `telescoping_boom` |
 | template path | `agent/templates/telescoping_boom.py` |
 | test path | `tests/agent/test_telescoping_boom_template.py` |
+| status | baseline spec for style reference only |
+
+> 这是已有类别的 baseline spec，只用于参考 spec 写法、结构组织和 validator 写法。新增类别的部件来源必须来自新 spec 中被采纳且有 `model.py:Lx-Ly` 的 5 星样本源码片段。
 
 ## 核心身份
 多级嵌套伸缩臂，每一级沿同一轴线线性伸缩。
 
 ## 部件（Parts）
-
 ```
 base_bracket（底座支架）
  └── outer_stage
@@ -20,14 +22,7 @@ base_bracket（底座支架）
                 └── end_effector（可选）
 ```
 
-## 组合逻辑（Composition Logic）
-- 以“部件（Parts）”中的树结构作为父子装配顺序。
-- 先在 `resolve_config` 中确定全局 spine / envelope，再派生子件尺寸、数量、位置和 joint range。
-- 活动件必须挂在对应父 part 上；非可动装饰 / 嵌入件优先作为 `parent.visual(...)` 子件挂载。
-- 所有 required part 必须连到同一主树；optional part 必须受参数显式控制。
-
 ## 关节（Joints）
-
 | joint | 类型 | 含义 |
 |---|---|---|
 | stage_i_joint 或 parent_to_child 命名 | prismatic | 第 i 级伸缩段沿主轴滑动 |
@@ -35,10 +30,11 @@ base_bracket（底座支架）
 关节命名允许两种风格：`stage_i_to_stage_i+1` 或 `outer_to_middle / middle_to_inner_*`。校验只检查 axis 共线性和数量，不强制命名。
 
 ## 已有模板写法参考
+> 该字段只说明旧模板中可参考的写法，不表示部件来源。
+
 telescoping_tube / prismatic_slide
 
 ## 参数范围汇总
-
 | 参数 | 取值建议 |
 |---|---|
 | stage_count | 3 / 4 / 5 |
@@ -51,6 +47,13 @@ telescoping_tube / prismatic_slide
 | collar_count | stage_count − 1 |
 | decoration | warning stripe / bolts / fake cylinder；装饰仅是 visual mesh，不创建独立 part 或 joint |
 | material_style | metal / black_polymer / safety_yellow / safety_orange / industrial_blue |
+
+## 部件多样性审计（Part Diversity Audit）
+> baseline spec 未补完整审计。新增类别必须逐个核心部件填写本表。
+
+| 部件类型 | observed_variation | 连续参数是否足够 | 是否需要离散参数 | 推荐参数 | 说明 |
+|---|---|---|---|---|---|
+| 待新增类别填写 | - | - | - | - | - |
 
 ## 约束
 - 内层套筒尺寸必须小于外层。

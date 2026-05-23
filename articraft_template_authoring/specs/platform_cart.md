@@ -6,12 +6,14 @@
 | slug | `platform_cart` |
 | template path | `agent/templates/platform_cart.py` |
 | test path | `tests/agent/test_platform_cart_template.py` |
+| status | baseline spec for style reference only |
+
+> 这是已有类别的 baseline spec，只用于参考 spec 写法、结构组织和 validator 写法。新增类别的部件来源必须来自新 spec 中被采纳且有 `model.py:Lx-Ly` 的 5 星样本源码片段。
 
 ## 核心身份
 平板运输车，带平台 deck、底部轮子，可选折叠推手、万向轮、栏杆和防滑垫。
 
 ## 部件（Parts）
-
 ```
 deck                                  # 平台主 part
  ├── wheel_i / caster_i               # 4 或 6 个轮 part；caster 模式下还有 caster_swivel_i + caster_wheel_i 两层
@@ -22,14 +24,7 @@ deck                                  # 平台主 part
  └── （visual 子件挂在 deck 上）anti_slip_pad / bumpers / side_rail / tow_loop / deck_top 纹理等
 ```
 
-## 组合逻辑（Composition Logic）
-- 以“部件（Parts）”中的树结构作为父子装配顺序。
-- 先在 `resolve_config` 中确定全局 spine / envelope，再派生子件尺寸、数量、位置和 joint range。
-- 活动件必须挂在对应父 part 上；非可动装饰 / 嵌入件优先作为 `parent.visual(...)` 子件挂载。
-- 所有 required part 必须连到同一主树；optional part 必须受参数显式控制。
-
 ## 关节（Joints）
-
 | joint | 类型 | 含义 |
 |---|---|---|
 | wheel_i_joint | continuous | 定轮绕轮轴旋转 |
@@ -41,10 +36,11 @@ deck                                  # 平台主 part
 | fold_lip_joint | revolute（可选） | 可翻折侧栏 |
 
 ## 已有模板写法参考
+> 该字段只说明旧模板中可参考的写法，不表示部件来源。
+
 continuous_wheel / caster_wheel / revolute_hinge / handle_grip
 
 ## 参数范围汇总
-
 | 参数 | 取值建议 |
 |---|---|
 | deck_shape | rectangle / rounded / ribbed / tray / framed / slatted / tapered / stepped |
@@ -64,6 +60,13 @@ continuous_wheel / caster_wheel / revolute_hinge / handle_grip
 | bumper_style | none / corner / full |
 | anti_slip_pattern | none / stripes / dots / grid |
 | material_style | steel / plastic / aluminum |
+
+## 部件多样性审计（Part Diversity Audit）
+> baseline spec 未补完整审计。新增类别必须逐个核心部件填写本表。
+
+| 部件类型 | observed_variation | 连续参数是否足够 | 是否需要离散参数 | 推荐参数 | 说明 |
+|---|---|---|---|---|---|
+| 待新增类别填写 | - | - | - | - | - |
 
 ## 约束
 - 所有轮子必须在平台下方。

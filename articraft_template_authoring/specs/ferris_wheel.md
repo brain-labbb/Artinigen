@@ -6,6 +6,9 @@
 | slug | `ferris_wheel` |
 | template path | `agent/templates/ferris_wheel.py` |
 | test path | `tests/agent/test_ferris_wheel_template.py` |
+| status | baseline spec for style reference only |
+
+> 这是已有类别的 baseline spec，只用于参考 spec 写法、结构组织和 validator 写法。新增类别的部件来源必须来自新 spec 中被采纳且有 `model.py:Lx-Ly` 的 5 星样本源码片段。
 
 ## 核心身份
 大型回转娱乐设施，由支撑框架、绕水平轴旋转的车轮、径向分布的吊舱组成；吊舱绕各自枢纽点摇晃或随轮反向同步旋转。
@@ -42,24 +45,18 @@ support_frame
  └── service_deck
 ```
 
-## 组合逻辑（Composition Logic）
-- 以“部件（Parts）”中的树结构作为父子装配顺序。
-- 先在 `resolve_config` 中确定全局 spine / envelope，再派生子件尺寸、数量、位置和 joint range。
-- 活动件必须挂在对应父 part 上；非可动装饰 / 嵌入件优先作为 `parent.visual(...)` 子件挂载。
-- 所有 required part 必须连到同一主树；optional part 必须受参数显式控制。
-
 ## 关节（Joints）
-
 | joint | 类型 | 含义 |
 |---|---|---|
 | wheel_rotation | revolute（range [0, 2π]，实现上等价于 continuous 整圈旋转） | 车轮绕固定水平轴旋转 |
 | gondola_pivot_i | revolute | 第 i 个吊舱绕枢纽杆摇晃；`gondola_motion_mode = counter_rotate_mimic` 时设 Mimic（multiplier = -1.0）跟随 wheel_rotation |
 
 ## 已有模板写法参考
+> 该字段只说明旧模板中可参考的写法，不表示部件来源。
+
 rotary_post / radial_array / continuous_rotor / revolute_hinge / mimic_link / handle_grip
 
 ## 参数范围汇总
-
 | 参数 | 取值建议 |
 |---|---|
 | num_gondolas | 4–20（推荐 8 / 12 / 16） |
@@ -73,6 +70,13 @@ rotary_post / radial_array / continuous_rotor / revolute_hinge / mimic_link / ha
 | hanger_style | pivot_bar / yoke_fork / between_rims / leveling_arm（受 rim_style 约束：between_rims 仅 twin_rings；leveling_arm 仅非双环） |
 | gondola_motion_mode | free_swing / counter_rotate_mimic（建议权重 0.7 / 0.3） |
 | frame_palette / cabin_palette / gondola_palette | 命名调色板，详见 [agent/templates/ferris_wheel.py](agent/templates/ferris_wheel.py) `PALETTES` 表 |
+
+## 部件多样性审计（Part Diversity Audit）
+> baseline spec 未补完整审计。新增类别必须逐个核心部件填写本表。
+
+| 部件类型 | observed_variation | 连续参数是否足够 | 是否需要离散参数 | 推荐参数 | 说明 |
+|---|---|---|---|---|---|
+| 待新增类别填写 | - | - | - | - | - |
 
 ## 约束
 - 车轮旋转轴必须水平（世界 X 轴 `(1, 0, 0)`），与固定轴共线。

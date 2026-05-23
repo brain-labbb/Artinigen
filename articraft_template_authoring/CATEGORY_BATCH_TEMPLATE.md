@@ -19,6 +19,8 @@ SPEC_ONLY
 - 每个新增 spec 必须枚举并读取该类别全部 5 星样本；不得抽样、不得只读部分样本。
 - 最终 spec 只写被采纳为模板依据的 5 星样本 `model.py:Lx-Ly` 来源索引。
 - 已阅读但未采用的 5 星样本，不写入 spec 的来源索引表，也不在 Parts / Joints / 参数表中引用。
+- 每个 spec 必须包含 `部件多样性审计（Part Diversity Audit）`。
+- 对每个关键部件判断：是否观察到多样性；若没有，记录 `observed_variation = none`；若连续参数不够，必须加入 `*_shape / *_style / *_profile / *_variant / *_layout`。
 - 写完所有 spec 后停止，等待人工审核。
 - 审核前禁止写 `agent/templates/*.py`、测试、registry。
 
