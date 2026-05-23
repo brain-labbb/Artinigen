@@ -1,0 +1,56 @@
+{
+  "schema_version": 3,
+  "record_id": "rec_seeded-standing-desk-with-synchronous-telescopin_20260522_022043_613147_f3d0c5c9",
+  "created_at": "2026-05-22T02:20:43Z",
+  "updated_at": "2026-05-22T02:20:48Z",
+  "rating": null,
+  "secondary_rating": null,
+  "author": "brian",
+  "rated_by": "brian",
+  "secondary_rated_by": null,
+  "kind": "external_model",
+  "prompt_kind": "single_prompt",
+  "category_slug": "standing_desk_with_synchronous_telescoping_legs_and_articulated_controls",
+  "source": {
+    "run_id": null,
+    "prompt_batch_id": null,
+    "batch_spec_id": null,
+    "row_id": null,
+    "prompt_index": null
+  },
+  "sdk_package": "sdk",
+  "provider": "openai",
+  "model_id": null,
+  "display": {
+    "title": "standing_desk_seed_5",
+    "prompt_preview": "seeded standing_desk_with_synchronous_telescoping_legs_and_articulated_controls 5"
+  },
+  "artifacts": {
+    "prompt_txt": "revisions/rev_000001/prompt.txt",
+    "prompt_series_json": null,
+    "model_py": "revisions/rev_000001/model.py",
+    "provenance_json": "revisions/rev_000001/provenance.json",
+    "cost_json": null,
+    "inputs_dir": "revisions/rev_000001/inputs",
+    "traces_dir": "revisions/rev_000001/traces"
+  },
+  "hashes": {
+    "prompt_sha256": "55516cc0519526e7eaa5dede386b59a980c4f807fa7549888bd2d72202b6838d",
+    "model_py_sha256": "188baf71a6f0e4017515e3478d791e08b3f2075b8e51ca8db3ad85e80041209e"
+  },
+  "collections": [
+    "dataset"
+  ],
+  "active_revision_id": "rev_000001",
+  "lineage": {
+    "origin_record_id": "rec_seeded-standing-desk-with-synchronous-telescopin_20260522_022043_613147_f3d0c5c9",
+    "parent_record_id": null,
+    "parent_revision_id": null,
+    "edit_mode": "root"
+  },
+  "creator": {
+    "mode": "external_agent",
+    "agent": "codex",
+    "trace_available": false
+  }
+}

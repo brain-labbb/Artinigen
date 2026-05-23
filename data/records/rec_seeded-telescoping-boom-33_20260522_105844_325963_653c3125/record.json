@@ -1,0 +1,56 @@
+{
+  "schema_version": 3,
+  "record_id": "rec_seeded-telescoping-boom-33_20260522_105844_325963_653c3125",
+  "created_at": "2026-05-22T10:58:44Z",
+  "updated_at": "2026-05-22T10:58:48Z",
+  "rating": null,
+  "secondary_rating": null,
+  "author": "brian",
+  "rated_by": "brian",
+  "secondary_rated_by": null,
+  "kind": "external_model",
+  "prompt_kind": "single_prompt",
+  "category_slug": "telescoping_boom",
+  "source": {
+    "run_id": null,
+    "prompt_batch_id": null,
+    "batch_spec_id": null,
+    "row_id": null,
+    "prompt_index": null
+  },
+  "sdk_package": "sdk",
+  "provider": "anthropic",
+  "model_id": null,
+  "display": {
+    "title": "telescoping_boom_seed_33",
+    "prompt_preview": "seeded telescoping_boom 33"
+  },
+  "artifacts": {
+    "prompt_txt": "revisions/rev_000001/prompt.txt",
+    "prompt_series_json": null,
+    "model_py": "revisions/rev_000001/model.py",
+    "provenance_json": "revisions/rev_000001/provenance.json",
+    "cost_json": null,
+    "inputs_dir": "revisions/rev_000001/inputs",
+    "traces_dir": "revisions/rev_000001/traces"
+  },
+  "hashes": {
+    "prompt_sha256": "63a5ff0a5de68032cb8e373cd265f527e83a29ab656e8216975c3964c94b3a90",
+    "model_py_sha256": "fd237479919b9ca83caeaf77cbbc9b7d19356f5e2b8eb3312c128b8fe122d889"
+  },
+  "collections": [
+    "dataset"
+  ],
+  "active_revision_id": "rev_000001",
+  "lineage": {
+    "origin_record_id": "rec_seeded-telescoping-boom-33_20260522_105844_325963_653c3125",
+    "parent_record_id": null,
+    "parent_revision_id": null,
+    "edit_mode": "root"
+  },
+  "creator": {
+    "mode": "external_agent",
+    "agent": "claude-code",
+    "trace_available": false
+  }
+}

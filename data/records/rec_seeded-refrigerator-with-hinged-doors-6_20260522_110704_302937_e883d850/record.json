@@ -1,0 +1,56 @@
+{
+  "schema_version": 3,
+  "record_id": "rec_seeded-refrigerator-with-hinged-doors-6_20260522_110704_302937_e883d850",
+  "created_at": "2026-05-22T11:07:04Z",
+  "updated_at": "2026-05-22T11:07:08Z",
+  "rating": null,
+  "secondary_rating": null,
+  "author": "brian",
+  "rated_by": "brian",
+  "secondary_rated_by": null,
+  "kind": "external_model",
+  "prompt_kind": "single_prompt",
+  "category_slug": "refrigerator_with_hinged_doors",
+  "source": {
+    "run_id": null,
+    "prompt_batch_id": null,
+    "batch_spec_id": null,
+    "row_id": null,
+    "prompt_index": null
+  },
+  "sdk_package": "sdk",
+  "provider": "anthropic",
+  "model_id": null,
+  "display": {
+    "title": "refrigerator_seed_6",
+    "prompt_preview": "seeded refrigerator_with_hinged_doors 6"
+  },
+  "artifacts": {
+    "prompt_txt": "revisions/rev_000001/prompt.txt",
+    "prompt_series_json": null,
+    "model_py": "revisions/rev_000001/model.py",
+    "provenance_json": "revisions/rev_000001/provenance.json",
+    "cost_json": null,
+    "inputs_dir": "revisions/rev_000001/inputs",
+    "traces_dir": "revisions/rev_000001/traces"
+  },
+  "hashes": {
+    "prompt_sha256": "792c80e2c826acf28af0bf02650caa39b2bb510c59085d5e3518def2c26692fd",
+    "model_py_sha256": "7005d2167be13e3de18df31c6d536bbded4b77ab157240b0738115db57aa7add"
+  },
+  "collections": [
+    "dataset"
+  ],
+  "active_revision_id": "rev_000001",
+  "lineage": {
+    "origin_record_id": "rec_seeded-refrigerator-with-hinged-doors-6_20260522_110704_302937_e883d850",
+    "parent_record_id": null,
+    "parent_revision_id": null,
+    "edit_mode": "root"
+  },
+  "creator": {
+    "mode": "external_agent",
+    "agent": "claude-code",
+    "trace_available": false
+  }
+}
