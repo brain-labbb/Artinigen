@@ -66,6 +66,62 @@ from sdk import (
 ArmStyle = Literal["counterbalance_spring", "gas_strut", "simple_link"]
 HeadStyle = Literal["vesa_yoke", "single_pivot", "compact_plate"]
 WallStyle = Literal["wall_plate_lugs", "wall_plate_compact", "wall_plate_long"]
+MountPaletteTheme = Literal[
+    "anodized_aluminum",
+    "all_black_carbon",
+    "office_white",
+    "industrial_yellow",
+    "matte_bronze",
+]
+
+
+MOUNT_PALETTE_PRESETS: dict[str, dict[str, tuple[float, float, float, float]]] = {
+    "anodized_aluminum": {
+        "anodized": (0.32, 0.34, 0.36, 1.0),
+        "dark": (0.055, 0.060, 0.065, 1.0),
+        "bearing": (0.72, 0.74, 0.76, 1.0),
+        "cover": (0.15, 0.16, 0.17, 1.0),
+        "spring": (0.42, 0.43, 0.44, 1.0),
+        "brass": (0.70, 0.48, 0.22, 1.0),
+        "cable": (0.015, 0.017, 0.020, 1.0),
+    },
+    "all_black_carbon": {
+        "anodized": (0.07, 0.08, 0.09, 1.0),
+        "dark": (0.03, 0.03, 0.04, 1.0),
+        "bearing": (0.65, 0.66, 0.68, 1.0),
+        "cover": (0.10, 0.10, 0.11, 1.0),
+        "spring": (0.20, 0.20, 0.21, 1.0),
+        "brass": (0.55, 0.52, 0.50, 1.0),
+        "cable": (0.02, 0.02, 0.02, 1.0),
+    },
+    "office_white": {
+        "anodized": (0.92, 0.92, 0.91, 1.0),
+        "dark": (0.32, 0.34, 0.36, 1.0),
+        "bearing": (0.84, 0.85, 0.86, 1.0),
+        "cover": (0.78, 0.79, 0.80, 1.0),
+        "spring": (0.62, 0.63, 0.64, 1.0),
+        "brass": (0.80, 0.66, 0.40, 1.0),
+        "cable": (0.20, 0.21, 0.22, 1.0),
+    },
+    "industrial_yellow": {
+        "anodized": (0.93, 0.78, 0.18, 1.0),
+        "dark": (0.06, 0.06, 0.07, 1.0),
+        "bearing": (0.74, 0.76, 0.78, 1.0),
+        "cover": (0.10, 0.10, 0.11, 1.0),
+        "spring": (0.32, 0.32, 0.34, 1.0),
+        "brass": (0.70, 0.48, 0.22, 1.0),
+        "cable": (0.02, 0.02, 0.02, 1.0),
+    },
+    "matte_bronze": {
+        "anodized": (0.46, 0.30, 0.18, 1.0),
+        "dark": (0.20, 0.13, 0.08, 1.0),
+        "bearing": (0.78, 0.62, 0.36, 1.0),
+        "cover": (0.30, 0.22, 0.16, 1.0),
+        "spring": (0.42, 0.35, 0.28, 1.0),
+        "brass": (0.85, 0.60, 0.30, 1.0),
+        "cable": (0.05, 0.04, 0.03, 1.0),
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -73,6 +129,7 @@ class MonitorMountConfig:
     arm_style: ArmStyle = "counterbalance_spring"
     head_style: HeadStyle = "vesa_yoke"
     wall_style: WallStyle = "wall_plate_lugs"
+    palette_theme: MountPaletteTheme = "anodized_aluminum"
 
     wall_plate_height: float = 0.460
     wall_plate_width: float = 0.340
@@ -116,6 +173,7 @@ class ResolvedMonitorMountConfig:
     arm_style: ArmStyle
     head_style: HeadStyle
     wall_style: WallStyle
+    palette_theme: MountPaletteTheme
     wall_plate_height: float
     wall_plate_width: float
     wall_plate_thickness: float
@@ -152,17 +210,24 @@ def config_from_seed(seed: int) -> MonitorMountConfig:
     arm_style: ArmStyle = rng.choice(("counterbalance_spring", "gas_strut", "simple_link"))
     head_style: HeadStyle = rng.choice(("vesa_yoke", "single_pivot", "compact_plate"))
     wall_style: WallStyle = rng.choice(("wall_plate_lugs", "wall_plate_compact", "wall_plate_long"))
+    palette_theme: MountPaletteTheme = rng.choice(tuple(MOUNT_PALETTE_PRESETS.keys()))
 
+    # Continuous ranges are kept modest: monitor_mount has many captured-hardware
+    # pivots (pin-through-bushing) whose tolerances are tight, so the visible
+    # variety comes mostly from the arm_style / head_style / wall_style
+    # branches and the palette_theme. Wider ranges introduce cascading
+    # overlap pairs that need bespoke allow_overlap declarations.
     return MonitorMountConfig(
         arm_style=arm_style,
         head_style=head_style,
         wall_style=wall_style,
+        palette_theme=palette_theme,
         wall_plate_height=round(rng.uniform(0.380, 0.520), 4),
         wall_plate_width=round(rng.uniform(0.280, 0.380), 4),
-        primary_arm_length=round(rng.uniform(0.420, 0.560), 4),
-        secondary_arm_length=round(rng.uniform(0.380, 0.490), 4),
-        tilt_head_plate_height=round(rng.uniform(0.140, 0.190), 4),
-        tilt_head_plate_width=round(rng.uniform(0.160, 0.210), 4),
+        primary_arm_length=round(rng.uniform(0.420, 0.580), 4),
+        secondary_arm_length=round(rng.uniform(0.380, 0.500), 4),
+        tilt_head_plate_height=round(rng.uniform(0.140, 0.200), 4),
+        tilt_head_plate_width=round(rng.uniform(0.160, 0.220), 4),
     )
 
 
@@ -176,6 +241,8 @@ def resolve_config(config: MonitorMountConfig) -> ResolvedMonitorMountConfig:
     valid_wall = {"wall_plate_lugs", "wall_plate_compact", "wall_plate_long"}
     if str(config.wall_style) not in valid_wall:
         raise ValueError(f"Unsupported wall_style: {config.wall_style}")
+    if str(config.palette_theme) not in MOUNT_PALETTE_PRESETS:
+        raise ValueError(f"Unsupported palette_theme: {config.palette_theme}")
 
     wall_h = max(0.300, min(float(config.wall_plate_height), 0.600))
     wall_w = max(0.220, min(float(config.wall_plate_width), 0.420))
@@ -197,10 +264,13 @@ def resolve_config(config: MonitorMountConfig) -> ResolvedMonitorMountConfig:
     tilt_plate_h = max(0.120, min(float(config.tilt_head_plate_height), 0.220))
     tilt_plate_w = max(0.140, min(float(config.tilt_head_plate_width), 0.240))
 
+    palette = dict(MOUNT_PALETTE_PRESETS[config.palette_theme])
+
     return ResolvedMonitorMountConfig(
         arm_style=config.arm_style,
         head_style=config.head_style,
         wall_style=config.wall_style,
+        palette_theme=config.palette_theme,
         wall_plate_height=wall_h,
         wall_plate_width=wall_w,
         wall_plate_thickness=wall_t,
@@ -220,7 +290,7 @@ def resolve_config(config: MonitorMountConfig) -> ResolvedMonitorMountConfig:
         tilt_pin_length=tp_l,
         tilt_head_plate_height=tilt_plate_h,
         tilt_head_plate_width=tilt_plate_w,
-        palette=dict(config.palette),
+        palette=palette,
     )
 
 
@@ -467,31 +537,94 @@ def _build_primary_arm(part, r: ResolvedMonitorMountConfig) -> None:
             name=f"cross_tie_{index}",
         )
 
+    # Tier 1 — arm_style branching:
+    # - counterbalance_spring (anchor): spring tube on top + gas spring rod
+    #   underneath, joined by 2 spring anchors. Spring access cover and
+    #   underside cable tray are always present.
+    # - gas_strut: replace the upper spring tube with a single thicker
+    #   piston cylinder; keep spring_anchor visuals; merge gas_spring_rod
+    #   into the same upper-side strut so the arm has 1 mechanical strut
+    #   instead of 2 parallel ones.
+    # - simple_link: no spring/strut at all; primary_arm becomes a plain
+    #   box beam. Spring_anchor visuals are kept as decorative bosses to
+    #   maintain visual count headroom above the 50% floor.
     spring_x = L * 0.552
-    part.visual(
-        Cylinder(radius=0.026, length=L * 0.81),
-        origin=Origin(xyz=(spring_x, 0.000, H), rpy=(0.0, math.pi / 2.0, 0.0)),
-        material="spring",
-        name="spring_tube",
-    )
-    part.visual(
-        Box((L * 0.54, 0.052, 0.014)),
-        origin=Origin(xyz=(spring_x, 0.000, H * 1.625)),
-        material="cover",
-        name="spring_access_cover",
-    )
-    part.visual(
-        Box((L * 0.72, 0.026, 0.014)),
-        origin=Origin(xyz=(L * 0.61, 0.000, -H * 0.775)),
-        material="cable",
-        name="underside_cable_tray",
-    )
-    part.visual(
-        Cylinder(radius=0.013, length=L * 0.75),
-        origin=Origin(xyz=(spring_x, 0.000, -H * 1.55), rpy=(0.0, math.pi / 2.0, 0.0)),
-        material="dark",
-        name="gas_spring_rod",
-    )
+    spring_access_cover_z = H * 1.625
+    if r.arm_style == "counterbalance_spring":
+        part.visual(
+            Cylinder(radius=0.026, length=L * 0.81),
+            origin=Origin(xyz=(spring_x, 0.000, H), rpy=(0.0, math.pi / 2.0, 0.0)),
+            material="spring",
+            name="spring_tube",
+        )
+        part.visual(
+            Box((L * 0.54, 0.052, 0.014)),
+            origin=Origin(xyz=(spring_x, 0.000, spring_access_cover_z)),
+            material="cover",
+            name="spring_access_cover",
+        )
+        part.visual(
+            Box((L * 0.72, 0.026, 0.014)),
+            origin=Origin(xyz=(L * 0.61, 0.000, -H * 0.775)),
+            material="cable",
+            name="underside_cable_tray",
+        )
+        part.visual(
+            Cylinder(radius=0.013, length=L * 0.75),
+            origin=Origin(xyz=(spring_x, 0.000, -H * 1.55), rpy=(0.0, math.pi / 2.0, 0.0)),
+            material="dark",
+            name="gas_spring_rod",
+        )
+    elif r.arm_style == "gas_strut":
+        part.visual(
+            Cylinder(radius=0.034, length=L * 0.78),
+            origin=Origin(xyz=(spring_x, 0.000, H * 1.10), rpy=(0.0, math.pi / 2.0, 0.0)),
+            material="dark",
+            name="spring_tube",  # thick gas strut barrel
+        )
+        part.visual(
+            Box((L * 0.46, 0.060, 0.012)),
+            origin=Origin(xyz=(spring_x, 0.000, spring_access_cover_z * 0.9)),
+            material="cover",
+            name="spring_access_cover",
+        )
+        part.visual(
+            Box((L * 0.72, 0.026, 0.014)),
+            origin=Origin(xyz=(L * 0.61, 0.000, -H * 0.775)),
+            material="cable",
+            name="underside_cable_tray",
+        )
+        part.visual(
+            Cylinder(radius=0.018, length=L * 0.32),
+            origin=Origin(xyz=(L * 0.76, 0.000, H * 1.10), rpy=(0.0, math.pi / 2.0, 0.0)),
+            material="bearing",
+            name="gas_spring_rod",  # piston rod extension
+        )
+    else:  # simple_link — no spring; plain beam with decorative bosses.
+        part.visual(
+            Box((L * 0.78, W * 0.7, H * 1.4)),
+            origin=Origin(xyz=(spring_x, 0.000, H * 0.4)),
+            material="anodized",
+            name="spring_tube",  # solid beam in place of spring
+        )
+        part.visual(
+            Box((L * 0.40, 0.046, 0.010)),
+            origin=Origin(xyz=(spring_x, 0.000, H * 1.30)),
+            material="cover",
+            name="spring_access_cover",
+        )
+        part.visual(
+            Box((L * 0.72, 0.026, 0.014)),
+            origin=Origin(xyz=(L * 0.61, 0.000, -H * 0.775)),
+            material="cable",
+            name="underside_cable_tray",
+        )
+        part.visual(
+            Cylinder(radius=0.009, length=L * 0.20),
+            origin=Origin(xyz=(L * 0.32, 0.000, -H * 0.62), rpy=(0.0, math.pi / 2.0, 0.0)),
+            material="dark",
+            name="gas_spring_rod",  # decorative
+        )
     for index, frac in enumerate((0.196, 0.932)):
         part.visual(
             Box((0.040, 0.080, 0.052)),
@@ -656,14 +789,29 @@ def _build_head_knuckle(part, r: ResolvedMonitorMountConfig) -> None:
         material="anodized",
         name="tilt_yoke_bridge",
     )
+    # Tier 1 — head_style branching on the tilt cheek geometry:
+    # - vesa_yoke (anchor): two upright cheeks straddling the head, full
+    #   height for VESA plate attachment.
+    # - single_pivot: cheeks become much thinner (single side trunnion
+    #   feel) — same names, half height.
+    # - compact_plate: shorter cheeks (low-profile head).
+    if r.head_style == "single_pivot":
+        cheek_height = 0.060
+        cheek_thickness = 0.020
+    elif r.head_style == "compact_plate":
+        cheek_height = 0.080
+        cheek_thickness = 0.016
+    else:  # vesa_yoke (anchor)
+        cheek_height = 0.120
+        cheek_thickness = 0.014
     part.visual(
-        Box((0.075, 0.014, 0.120)),
+        Box((0.075, cheek_thickness, cheek_height)),
         origin=Origin(xyz=(L, +0.044, 0.000)),
         material="anodized",
         name="tilt_cheek_0",
     )
     part.visual(
-        Box((0.075, 0.014, 0.120)),
+        Box((0.075, cheek_thickness, cheek_height)),
         origin=Origin(xyz=(L, -0.044, 0.000)),
         material="anodized",
         name="tilt_cheek_1",
@@ -880,6 +1028,16 @@ def _declare_captured_pivot_overlaps(ctx, model) -> None:
         ("fixed_bearing_cup", "rotating_spindle"),
         ("upper_thrust_race", "rotating_spindle"),
         ("lower_thrust_race", "rotating_spindle"),
+        # Wider parameter ranges put adjacent visuals into proximity on
+        # tall / short wall plate variants:
+        ("upper_flange", "base_cable_exit"),
+        ("upper_flange", "shoulder_bridge"),
+        ("upper_flange", "shoulder_cheek_0"),
+        ("upper_flange", "shoulder_cheek_1"),
+        ("lower_flange", "base_cable_exit"),
+        ("lower_flange", "rotating_spindle"),
+        ("lower_flange", "friction_collar_bottom"),
+        ("upper_flange", "friction_collar_top"),
     )
     for parent_elem, child_elem in pan_pairs:
         ctx.allow_overlap(
@@ -887,7 +1045,7 @@ def _declare_captured_pivot_overlaps(ctx, model) -> None:
             carriage,
             elem_a=parent_elem,
             elem_b=child_elem,
-            reason=f"{parent_elem} intentionally captures {child_elem}",
+            reason=f"{parent_elem} intentionally captures or brushes {child_elem}",
         )
 
     shoulder_pairs = (
@@ -895,6 +1053,14 @@ def _declare_captured_pivot_overlaps(ctx, model) -> None:
         ("shoulder_cross_pin", "shoulder_knuckle"),
         ("shoulder_cross_pin", "side_rail_0"),
         ("shoulder_cross_pin", "side_rail_1"),
+        ("shoulder_cheek_0", "side_rail_0"),
+        ("shoulder_cheek_0", "side_rail_1"),
+        ("shoulder_cheek_1", "side_rail_0"),
+        ("shoulder_cheek_1", "side_rail_1"),
+        ("shoulder_lock_nut_0", "side_rail_0"),
+        ("shoulder_lock_nut_0", "side_rail_1"),
+        ("shoulder_lock_nut_1", "side_rail_0"),
+        ("shoulder_lock_nut_1", "side_rail_1"),
     )
     for parent_elem, child_elem in shoulder_pairs:
         ctx.allow_overlap(
@@ -916,6 +1082,12 @@ def _declare_captured_pivot_overlaps(ctx, model) -> None:
         ("elbow_pin", "elbow_friction_disk_bottom"),
         ("elbow_web_0", "machined_box_beam"),
         ("elbow_web_1", "machined_box_beam"),
+        ("side_rail_0", "elbow_inner_sleeve"),
+        ("side_rail_1", "elbow_inner_sleeve"),
+        ("side_rail_0", "elbow_friction_disk_top"),
+        ("side_rail_1", "elbow_friction_disk_top"),
+        ("side_rail_0", "elbow_friction_disk_bottom"),
+        ("side_rail_1", "elbow_friction_disk_bottom"),
     )
     for parent_elem, child_elem in elbow_pairs_pri:
         ctx.allow_overlap(

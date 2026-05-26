@@ -56,8 +56,65 @@ from sdk import (
 )
 
 BladeStyle = Literal["snap_off_trapezoid", "fixed_trapezoid", "compact_trapezoid"]
-GripStyle = Literal["triple_strip", "single_strip", "none"]
+GripStyle = Literal["triple_strip", "single_strip", "diamond_pattern"]
 LockStyle = Literal["thumb_wheel", "none"]
+NoseTreatment = Literal["squared", "rounded", "pointed"]
+PaletteTheme = Literal[
+    "anchor_yellow",
+    "industrial_black",
+    "navy_blue",
+    "safety_orange",
+    "stealth_gray",
+]
+
+
+KNIFE_PALETTE_PRESETS: dict[str, dict[str, tuple[float, float, float, float]]] = {
+    "anchor_yellow": {
+        "body": (0.92, 0.77, 0.16, 1.0),
+        "grip": (0.12, 0.12, 0.12, 1.0),
+        "track": (0.40, 0.42, 0.44, 1.0),
+        "slider": (0.14, 0.14, 0.15, 1.0),
+        "wheel": (0.10, 0.10, 0.11, 1.0),
+        "steel": (0.82, 0.84, 0.86, 1.0),
+        "dark_steel": (0.44, 0.47, 0.50, 1.0),
+    },
+    "industrial_black": {
+        "body": (0.10, 0.10, 0.11, 1.0),
+        "grip": (0.65, 0.55, 0.18, 1.0),
+        "track": (0.30, 0.32, 0.34, 1.0),
+        "slider": (0.85, 0.20, 0.15, 1.0),
+        "wheel": (0.05, 0.05, 0.06, 1.0),
+        "steel": (0.82, 0.84, 0.86, 1.0),
+        "dark_steel": (0.30, 0.32, 0.34, 1.0),
+    },
+    "navy_blue": {
+        "body": (0.13, 0.22, 0.40, 1.0),
+        "grip": (0.55, 0.58, 0.62, 1.0),
+        "track": (0.30, 0.34, 0.42, 1.0),
+        "slider": (0.92, 0.92, 0.92, 1.0),
+        "wheel": (0.85, 0.55, 0.10, 1.0),
+        "steel": (0.82, 0.84, 0.86, 1.0),
+        "dark_steel": (0.42, 0.45, 0.50, 1.0),
+    },
+    "safety_orange": {
+        "body": (0.95, 0.42, 0.10, 1.0),
+        "grip": (0.10, 0.10, 0.11, 1.0),
+        "track": (0.35, 0.36, 0.38, 1.0),
+        "slider": (0.18, 0.18, 0.19, 1.0),
+        "wheel": (0.06, 0.06, 0.07, 1.0),
+        "steel": (0.85, 0.86, 0.88, 1.0),
+        "dark_steel": (0.46, 0.48, 0.52, 1.0),
+    },
+    "stealth_gray": {
+        "body": (0.22, 0.23, 0.25, 1.0),
+        "grip": (0.05, 0.05, 0.06, 1.0),
+        "track": (0.34, 0.36, 0.38, 1.0),
+        "slider": (0.10, 0.10, 0.11, 1.0),
+        "wheel": (0.03, 0.03, 0.04, 1.0),
+        "steel": (0.65, 0.68, 0.72, 1.0),
+        "dark_steel": (0.28, 0.30, 0.32, 1.0),
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -65,6 +122,8 @@ class RetractableUtilityKnifeConfig:
     blade_style: BladeStyle = "snap_off_trapezoid"
     grip_style: GripStyle = "triple_strip"
     lock_style: LockStyle = "thumb_wheel"
+    nose_treatment: NoseTreatment = "squared"
+    palette_theme: PaletteTheme = "anchor_yellow"
 
     handle_length: float = 0.168
     handle_width: float = 0.026
@@ -105,6 +164,8 @@ class ResolvedRetractableUtilityKnifeConfig:
     blade_style: BladeStyle
     grip_style: GripStyle
     lock_style: LockStyle
+    nose_treatment: NoseTreatment
+    palette_theme: PaletteTheme
     handle_length: float
     handle_width: float
     handle_height: float
@@ -139,6 +200,8 @@ def config_from_seed(seed: int) -> RetractableUtilityKnifeConfig:
             blade_style="snap_off_trapezoid",
             grip_style="triple_strip",
             lock_style="thumb_wheel",
+            nose_treatment="squared",
+            palette_theme="anchor_yellow",
             handle_length=0.168,
             handle_width=0.026,
             handle_height=0.021,
@@ -160,25 +223,30 @@ def config_from_seed(seed: int) -> RetractableUtilityKnifeConfig:
     blade_style: BladeStyle = rng.choice(
         ("snap_off_trapezoid", "fixed_trapezoid", "compact_trapezoid")
     )
-    grip_style: GripStyle = rng.choice(("triple_strip", "single_strip", "none"))
+    grip_style: GripStyle = rng.choice(("triple_strip", "single_strip", "diamond_pattern"))
     lock_style: LockStyle = rng.choice(("thumb_wheel", "none"))
+    nose_treatment: NoseTreatment = rng.choice(("squared", "rounded", "pointed"))
+    palette_theme: PaletteTheme = rng.choice(tuple(KNIFE_PALETTE_PRESETS.keys()))
 
-    handle_length = rng.uniform(0.150, 0.182)
-    handle_width = rng.uniform(0.024, 0.030)
-    handle_height = rng.uniform(0.019, 0.024)
+    # Tier 4 — wider continuous ranges (still safe under bbox_ratio ±30%).
+    handle_length = rng.uniform(0.135, 0.205)
+    handle_width = rng.uniform(0.022, 0.032)
+    handle_height = rng.uniform(0.016, 0.028)
 
-    blade_length = rng.uniform(0.100, 0.135)
-    blade_height = rng.uniform(0.0075, 0.0100)
+    blade_length = rng.uniform(0.085, 0.155)
+    blade_height = rng.uniform(0.0070, 0.0110)
 
-    carrier_travel = rng.uniform(0.024, 0.040)
+    carrier_travel = rng.uniform(0.022, 0.045)
 
-    blade_segment_count = rng.randint(3, 7) if blade_style == "snap_off_trapezoid" else 0
-    slider_ridge_count = rng.randint(2, 4)
+    blade_segment_count = rng.randint(3, 8) if blade_style == "snap_off_trapezoid" else 0
+    slider_ridge_count = rng.randint(1, 5)
 
     return RetractableUtilityKnifeConfig(
         blade_style=blade_style,
         grip_style=grip_style,
         lock_style=lock_style,
+        nose_treatment=nose_treatment,
+        palette_theme=palette_theme,
         handle_length=round(handle_length, 4),
         handle_width=round(handle_width, 4),
         handle_height=round(handle_height, 4),
@@ -196,12 +264,17 @@ def resolve_config(
     valid_blade = {"snap_off_trapezoid", "fixed_trapezoid", "compact_trapezoid"}
     if str(config.blade_style) not in valid_blade:
         raise ValueError(f"Unsupported blade_style: {config.blade_style}")
-    valid_grip = {"triple_strip", "single_strip", "none"}
+    valid_grip = {"triple_strip", "single_strip", "diamond_pattern"}
     if str(config.grip_style) not in valid_grip:
         raise ValueError(f"Unsupported grip_style: {config.grip_style}")
     valid_lock = {"thumb_wheel", "none"}
     if str(config.lock_style) not in valid_lock:
         raise ValueError(f"Unsupported lock_style: {config.lock_style}")
+    valid_nose = {"squared", "rounded", "pointed"}
+    if str(config.nose_treatment) not in valid_nose:
+        raise ValueError(f"Unsupported nose_treatment: {config.nose_treatment}")
+    if str(config.palette_theme) not in KNIFE_PALETTE_PRESETS:
+        raise ValueError(f"Unsupported palette_theme: {config.palette_theme}")
 
     handle_length = max(0.140, min(float(config.handle_length), 0.200))
     handle_width = max(0.020, min(float(config.handle_width), 0.034))
@@ -230,10 +303,14 @@ def resolve_config(
     lock_wheel_radius = max(0.005, min(float(config.lock_wheel_radius), 0.011))
     lock_wheel_length = max(0.003, min(float(config.lock_wheel_length), 0.008))
 
+    palette = dict(KNIFE_PALETTE_PRESETS[config.palette_theme])
+
     return ResolvedRetractableUtilityKnifeConfig(
         blade_style=config.blade_style,
         grip_style=config.grip_style,
         lock_style=config.lock_style,
+        nose_treatment=config.nose_treatment,
+        palette_theme=config.palette_theme,
         handle_length=handle_length,
         handle_width=handle_width,
         handle_height=handle_height,
@@ -250,7 +327,7 @@ def resolve_config(
         slider_ridge_count=slider_ridge_count,
         lock_wheel_radius=lock_wheel_radius,
         lock_wheel_length=lock_wheel_length,
-        palette=dict(config.palette),
+        palette=palette,
     )
 
 
@@ -267,28 +344,64 @@ def _blade_mesh(
     blade_length: float,
     blade_height: float,
     blade_thickness: float,
+    blade_style: BladeStyle = "snap_off_trapezoid",
 ) -> object:
-    """Trapezoidal snap-off blade silhouette extruded along z.
+    """Trapezoidal blade silhouette extruded along z, with profile chosen by
+    blade_style:
 
-    Adapted from anchor's `_blade_mesh`: profile points are scaled by
-    blade_length / blade_height while preserving the cutting-edge taper.
+    - snap_off_trapezoid (anchor): classic snap-off blade with rear tab,
+      flat bottom edge, raked tip with rear_tip_lift kick at the tab end.
+    - fixed_trapezoid: shorter rear tab, straight cutting edge across most
+      of body_length, single sharp tip with no segmentation kick.
+    - compact_trapezoid: shorter body_length, blunter chisel tip, taller
+      rear tab — utility-blade variant that doesn't break into segments.
+
+    All three branches stay Mesh-typed via mesh_from_geometry(ExtrudeGeometry)
+    per primitive_complexity_lower_bound.
     """
-    rear_tab = blade_length * 0.085
-    body_length = blade_length * 0.685
-    tip_extension = blade_length * 0.300
-    rear_tip_lift = blade_height * 0.0625
-    tip_lift = blade_height * 0.75
-    profile = [
-        (-rear_tab, rear_tip_lift),
-        (-rear_tab + 0.004, 0.0),
-        (body_length, 0.0),
-        (body_length + tip_extension, tip_lift),
-        (body_length * 0.566, blade_height),
-        (-rear_tab, blade_height),
-    ]
+    if blade_style == "fixed_trapezoid":
+        rear_tab = blade_length * 0.055
+        body_length = blade_length * 0.85
+        tip_extension = blade_length * 0.095
+        profile = [
+            (-rear_tab, 0.0),
+            (body_length, 0.0),
+            (body_length + tip_extension, blade_height * 0.45),
+            (body_length * 0.72, blade_height),
+            (-rear_tab, blade_height),
+        ]
+        mesh_name = "utility_knife_blade_fixed"
+    elif blade_style == "compact_trapezoid":
+        rear_tab = blade_length * 0.105
+        body_length = blade_length * 0.55
+        tip_extension = blade_length * 0.255
+        profile = [
+            (-rear_tab, blade_height * 0.10),
+            (-rear_tab + 0.003, 0.0),
+            (body_length, 0.0),
+            (body_length + tip_extension, blade_height * 0.55),
+            (body_length * 0.62, blade_height),
+            (-rear_tab, blade_height),
+        ]
+        mesh_name = "utility_knife_blade_compact"
+    else:  # snap_off_trapezoid (anchor)
+        rear_tab = blade_length * 0.085
+        body_length = blade_length * 0.685
+        tip_extension = blade_length * 0.300
+        rear_tip_lift = blade_height * 0.0625
+        tip_lift = blade_height * 0.75
+        profile = [
+            (-rear_tab, rear_tip_lift),
+            (-rear_tab + 0.004, 0.0),
+            (body_length, 0.0),
+            (body_length + tip_extension, tip_lift),
+            (body_length * 0.566, blade_height),
+            (-rear_tab, blade_height),
+        ]
+        mesh_name = "utility_knife_blade"
     return mesh_from_geometry(
         ExtrudeGeometry.from_z0(profile, blade_thickness, cap=True, closed=True),
-        "utility_knife_blade",
+        mesh_name,
     )
 
 
@@ -423,8 +536,23 @@ def _build_body_shell(part, r: ResolvedRetractableUtilityKnifeConfig, palette) -
         name="rear_cap",
     )
 
-    nose_cheek_length = 0.016
-    nose_cheek_height = inner_height * 0.75
+    # Tier 1 — nose_treatment enum changes the proportions of the four nose
+    # visuals (left/right cheek + left/right roof). seed=0 ("squared")
+    # reproduces anchor's nose geometry exactly.
+    if r.nose_treatment == "rounded":
+        nose_cheek_length = 0.024
+        nose_cheek_height_ratio = 0.62
+        nose_roof_length = 0.030
+    elif r.nose_treatment == "pointed":
+        nose_cheek_length = 0.022
+        nose_cheek_height_ratio = 0.55
+        nose_roof_length = 0.034
+    else:  # squared (anchor)
+        nose_cheek_length = 0.016
+        nose_cheek_height_ratio = 0.75
+        nose_roof_length = 0.024
+
+    nose_cheek_height = inner_height * nose_cheek_height_ratio
     nose_cheek_center_z = bottom_thickness + 0.5 * nose_cheek_height
     nose_cheek_x = 0.5 * L - 0.5 * nose_cheek_length
     part.visual(
@@ -440,7 +568,6 @@ def _build_body_shell(part, r: ResolvedRetractableUtilityKnifeConfig, palette) -
         name="nose_right_cheek",
     )
 
-    nose_roof_length = 0.024
     nose_roof_thickness = 0.003
     nose_roof_width = top_rail_width
     nose_roof_x = 0.5 * L - 0.5 * nose_roof_length - 0.001
@@ -463,6 +590,7 @@ def _build_body_shell(part, r: ResolvedRetractableUtilityKnifeConfig, palette) -
     grip_y = 0.5 * W - 0.5 * grip_thickness
 
     if r.grip_style == "triple_strip":
+        # Anchor: three textured rubber strips (one long left, two right).
         part.visual(
             Box((L * 0.535, grip_thickness, grip_height)),
             origin=Origin(xyz=(-0.008, -grip_y, grip_z)),
@@ -482,12 +610,36 @@ def _build_body_shell(part, r: ResolvedRetractableUtilityKnifeConfig, palette) -
             name="right_front_grip",
         )
     elif r.grip_style == "single_strip":
+        # Single long strip down both sides.
         part.visual(
-            Box((L * 0.65, grip_thickness, grip_height)),
+            Box((L * 0.78, grip_thickness, grip_height * 1.25)),
             origin=Origin(xyz=(-0.008, -grip_y, grip_z)),
             material=grip_mat,
             name="left_grip",
         )
+        part.visual(
+            Box((L * 0.78, grip_thickness, grip_height * 1.25)),
+            origin=Origin(xyz=(-0.008, +grip_y, grip_z)),
+            material=grip_mat,
+            name="right_grip",
+        )
+    else:  # diamond_pattern
+        # Grid of small grip dots, alternating sides. Preserves visual count
+        # roughly comparable to anchor's 3 strips while producing a clearly
+        # different surface texture.
+        dot_w = L * 0.035
+        dot_h = grip_height * 0.55
+        dot_pitch = L * 0.07
+        n_cols = max(3, int(L / dot_pitch * 0.55))
+        for i in range(n_cols):
+            x = -L * 0.30 + i * dot_pitch
+            side_y = -grip_y if i % 2 == 0 else +grip_y
+            part.visual(
+                Box((dot_w, grip_thickness, dot_h)),
+                origin=Origin(xyz=(x, side_y, grip_z + grip_height * 0.15)),
+                material=grip_mat,
+                name=f"grip_dot_{i}",
+            )
 
     bridge_width = L * 0.37
     part.visual(
@@ -554,6 +706,7 @@ def _build_blade(part, r: ResolvedRetractableUtilityKnifeConfig, palette) -> Non
             blade_length=r.blade_length,
             blade_height=r.blade_height,
             blade_thickness=r.blade_thickness,
+            blade_style=r.blade_style,
         ),
         origin=Origin(rpy=(math.pi / 2.0, 0.0, 0.0)),
         material=steel,

@@ -67,6 +67,62 @@ from sdk import (
 ControllerLayout = Literal["dual_jog_controller", "single_jog_controller", "compact_pad_controller"]
 HandleStyle = Literal["fold_out_carry", "fixed_carry", "none"]
 DeckStyle = Literal["dual_decks", "single_deck", "no_decks"]
+DJPaletteTheme = Literal[
+    "anchor_black",
+    "white_studio",
+    "neon_pink",
+    "wood_finish",
+    "brushed_steel",
+]
+
+
+DJ_PALETTE_PRESETS: dict[str, dict[str, tuple[float, float, float, float]]] = {
+    "anchor_black": {
+        "housing_black": (0.08, 0.09, 0.10, 1.0),
+        "deck_graphite": (0.13, 0.14, 0.16, 1.0),
+        "platter_dark": (0.12, 0.13, 0.14, 1.0),
+        "platter_top": (0.21, 0.22, 0.24, 1.0),
+        "accent_silver": (0.74, 0.76, 0.79, 1.0),
+        "slider_black": (0.05, 0.05, 0.06, 1.0),
+        "cue_gray": (0.28, 0.30, 0.33, 1.0),
+    },
+    "white_studio": {
+        "housing_black": (0.92, 0.92, 0.91, 1.0),
+        "deck_graphite": (0.84, 0.85, 0.86, 1.0),
+        "platter_dark": (0.30, 0.32, 0.34, 1.0),
+        "platter_top": (0.55, 0.56, 0.58, 1.0),
+        "accent_silver": (0.40, 0.42, 0.45, 1.0),
+        "slider_black": (0.20, 0.20, 0.21, 1.0),
+        "cue_gray": (0.62, 0.63, 0.65, 1.0),
+    },
+    "neon_pink": {
+        "housing_black": (0.08, 0.04, 0.06, 1.0),
+        "deck_graphite": (0.18, 0.10, 0.16, 1.0),
+        "platter_dark": (0.10, 0.05, 0.08, 1.0),
+        "platter_top": (0.92, 0.18, 0.55, 1.0),
+        "accent_silver": (0.95, 0.42, 0.72, 1.0),
+        "slider_black": (0.04, 0.04, 0.05, 1.0),
+        "cue_gray": (0.30, 0.10, 0.20, 1.0),
+    },
+    "wood_finish": {
+        "housing_black": (0.32, 0.21, 0.12, 1.0),
+        "deck_graphite": (0.42, 0.27, 0.16, 1.0),
+        "platter_dark": (0.18, 0.12, 0.07, 1.0),
+        "platter_top": (0.55, 0.36, 0.20, 1.0),
+        "accent_silver": (0.78, 0.62, 0.40, 1.0),
+        "slider_black": (0.10, 0.07, 0.04, 1.0),
+        "cue_gray": (0.48, 0.34, 0.22, 1.0),
+    },
+    "brushed_steel": {
+        "housing_black": (0.55, 0.57, 0.60, 1.0),
+        "deck_graphite": (0.65, 0.66, 0.68, 1.0),
+        "platter_dark": (0.32, 0.34, 0.36, 1.0),
+        "platter_top": (0.75, 0.76, 0.78, 1.0),
+        "accent_silver": (0.92, 0.93, 0.94, 1.0),
+        "slider_black": (0.12, 0.13, 0.14, 1.0),
+        "cue_gray": (0.45, 0.46, 0.48, 1.0),
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -74,6 +130,7 @@ class DJEquipmentConfig:
     controller_layout: ControllerLayout = "dual_jog_controller"
     handle_style: HandleStyle = "fold_out_carry"
     deck_style: DeckStyle = "dual_decks"
+    palette_theme: DJPaletteTheme = "anchor_black"
 
     body_width: float = 0.58
     body_depth: float = 0.34
@@ -125,6 +182,7 @@ class ResolvedDJEquipmentConfig:
     controller_layout: ControllerLayout
     handle_style: HandleStyle
     deck_style: DeckStyle
+    palette_theme: DJPaletteTheme
     body_width: float
     body_depth: float
     body_height: float
@@ -170,22 +228,42 @@ def config_from_seed(seed: int) -> DJEquipmentConfig:
     )
     handle_style: HandleStyle = rng.choice(("fold_out_carry", "fixed_carry", "none"))
     deck_style: DeckStyle = "dual_decks"  # required by anchor topology
+    palette_theme: DJPaletteTheme = rng.choice(tuple(DJ_PALETTE_PRESETS.keys()))
 
-    body_width = round(rng.uniform(0.52, 0.65), 4)
-    body_depth = round(rng.uniform(0.30, 0.38), 4)
-    body_height = round(rng.uniform(0.055, 0.072), 4)
-    jog_x = round(rng.uniform(0.155, 0.190), 4)
-    handle_span = round(rng.uniform(0.42, 0.55), 4)
+    body_width = round(rng.uniform(0.50, 0.68), 4)
+    body_depth = round(rng.uniform(0.30, 0.40), 4)
+    body_height = round(rng.uniform(0.052, 0.074), 4)
+    jog_x = round(rng.uniform(0.150, 0.205), 4)
+    # handle_span must stay near body_width to keep the handle hinge bracket
+    # over the housing — otherwise the joint origin drifts beyond
+    # articulation_origin tol on extreme seeds.
+    handle_span = round(rng.uniform(body_width * 0.78, body_width * 0.92), 4)
+
+    # Tier 1 — vary pad count by controller_layout to give visible diversity
+    # in the pad grid (anchor is 2x3 = 12 pads; compact_pad_controller pushes
+    # toward a denser 3x4 grid; single_jog_controller stays modest).
+    if layout == "compact_pad_controller":
+        pad_rows = rng.randint(3, 4)
+        pad_cols = rng.randint(3, 4)
+    elif layout == "single_jog_controller":
+        pad_rows = rng.randint(2, 3)
+        pad_cols = rng.randint(3, 4)
+    else:  # dual_jog_controller
+        pad_rows = 2
+        pad_cols = 3
 
     return DJEquipmentConfig(
         controller_layout=layout,
         handle_style=handle_style,
         deck_style=deck_style,
+        palette_theme=palette_theme,
         body_width=body_width,
         body_depth=body_depth,
         body_height=body_height,
         jog_x=jog_x,
         handle_span=handle_span,
+        pad_rows=pad_rows,
+        pad_cols=pad_cols,
     )
 
 
@@ -199,6 +277,8 @@ def resolve_config(config: DJEquipmentConfig) -> ResolvedDJEquipmentConfig:
     valid_deck = {"dual_decks", "single_deck", "no_decks"}
     if str(config.deck_style) not in valid_deck:
         raise ValueError(f"Unsupported deck_style: {config.deck_style}")
+    if str(config.palette_theme) not in DJ_PALETTE_PRESETS:
+        raise ValueError(f"Unsupported palette_theme: {config.palette_theme}")
 
     bw = max(0.40, min(float(config.body_width), 0.80))
     bd = max(0.24, min(float(config.body_depth), 0.42))
@@ -238,10 +318,13 @@ def resolve_config(config: DJEquipmentConfig) -> ResolvedDJEquipmentConfig:
     if len(pad_size) != 3:
         pad_size = (0.020, 0.020, 0.003)
 
+    palette = dict(DJ_PALETTE_PRESETS[config.palette_theme])
+
     return ResolvedDJEquipmentConfig(
         controller_layout=config.controller_layout,
         handle_style=config.handle_style,
         deck_style=config.deck_style,
+        palette_theme=config.palette_theme,
         body_width=bw,
         body_depth=bd,
         body_height=bh,
@@ -269,7 +352,7 @@ def resolve_config(config: DJEquipmentConfig) -> ResolvedDJEquipmentConfig:
         pad_rows=pad_rows,
         pad_cols=pad_cols,
         pad_size=pad_size,  # type: ignore[arg-type]
-        palette=dict(config.palette),
+        palette=palette,
     )
 
 
