@@ -1766,28 +1766,37 @@ def find_joint_mating_findings(
             )
             continue
 
-        parent_face_geom = _face_center_in_geom_frame(parent_aabb, mating.parent_face_side)
-        child_face_geom = _face_center_in_geom_frame(child_aabb, mating.child_face_side)
-
         parent_visual_origin = getattr(parent_visual, "origin", Origin())
         child_visual_origin = getattr(child_visual, "origin", Origin())
 
-        parent_visual_tf = _mat4_mul(
-            part_world.get(parent_name, _identity4()),
-            _origin_to_mat4(parent_visual_origin),
-        )
-        child_visual_tf = _mat4_mul(
-            part_world.get(child_name, _identity4()),
-            _origin_to_mat4(child_visual_origin),
-        )
+        # Compute each visual's AABB *in its part's local frame* (i.e., after
+        # applying the visual's origin transform incl. rpy). This way
+        # parent_face_side / child_face_side are interpreted in the part's
+        # axes — what an author writing the MatingContract naturally means
+        # when they say "the top face of `blade_plate`" — rather than in
+        # the (possibly rotated) geometry frame.
+        parent_visual_origin_tf = _origin_to_mat4(parent_visual_origin)
+        child_visual_origin_tf = _origin_to_mat4(child_visual_origin)
+        parent_aabb_part = _transform_aabb(parent_aabb, parent_visual_origin_tf)
+        child_aabb_part = _transform_aabb(child_aabb, child_visual_origin_tf)
 
-        parent_face_world = _mat4_vec3(parent_visual_tf, parent_face_geom)
-        child_face_world = _mat4_vec3(child_visual_tf, child_face_geom)
+        parent_face_part = _face_center_in_geom_frame(parent_aabb_part, mating.parent_face_side)
+        child_face_part = _face_center_in_geom_frame(child_aabb_part, mating.child_face_side)
 
-        dx = parent_face_world[0] - child_face_world[0]
-        dy = parent_face_world[1] - child_face_world[1]
-        dz = parent_face_world[2] - child_face_world[2]
-        distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+        parent_face_world = _mat4_vec3(part_world.get(parent_name, _identity4()), parent_face_part)
+        child_face_world = _mat4_vec3(part_world.get(child_name, _identity4()), child_face_part)
+
+        # Distance is measured ONLY along the parent face's outward normal.
+        # This is the correct semantics for "mating face contact": for a
+        # sliding-rail joint the parent's bottom face is naturally much
+        # longer than the child's rail shoe, but they should still touch
+        # in the direction PERPENDICULAR to the slide axis. Computing 3D
+        # Euclidean distance would spuriously fail on every prismatic mate.
+        # We assume axis-aligned visuals (no rpy on parent visual); under
+        # rpy != identity the axis would need to be rotated through the
+        # parent visual's transform; we leave that as a follow-up.
+        axis_idx, _ = _FACE_SIDE_TO_AXIS[mating.parent_face_side]
+        distance = abs(parent_face_world[axis_idx] - child_face_world[axis_idx])
 
         if distance > float(mating.contact_tol):
             findings.append(

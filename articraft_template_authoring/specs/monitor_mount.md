@@ -6,6 +6,7 @@
 | slug | `monitor_mount` |
 | template path | `agent/templates/monitor_mount.py` |
 | test path | `tests/agent/test_monitor_mount_template.py` |
+| primary_anchor | `rec_monitor_mount_997e8c29b2f44a30a7dd25da2a7c6fa6:rev_000001` |
 | stage | `SPEC_ONLY_DRAFT` |
 | status | `SPEC_ONLY_DRAFT` |
 

@@ -6,6 +6,7 @@
 | slug | `dj_equipment` |
 | template path | `agent/templates/dj_equipment.py` |
 | test path | `tests/agent/test_dj_equipment_template.py` |
+| primary_anchor | `rec_dj_equipment_47e2bd7d05da479eb2363c19da61276b:rev_000001` |
 | stage | `SPEC_ONLY_DRAFT` |
 | status | `SPEC_ONLY_DRAFT` |
 

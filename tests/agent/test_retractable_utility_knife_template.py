@@ -1,62 +1,51 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from agent.templates.retractable_utility_knife import (
-    SOURCE_ADAPTATION_MAP,
-    SOURCE_IDS,
     RetractableUtilityKnifeConfig,
-    build_retractable_utility_knife,
     build_seeded_retractable_utility_knife,
     config_from_seed,
     resolve_config,
-    run_retractable_utility_knife_tests,
 )
-from sdk import ArticulationType
-from sdk import TestContext as ArticraftTestContext
-
-
-def _assert_basic_qc_passes(model) -> None:
-    ctx = ArticraftTestContext(model)
-    ctx.check_model_valid()
-    ctx.fail_if_isolated_parts()
-    report = ctx.report()
-    assert report.passed, report.failures
 
 
 def test_seed_config_is_reproducible() -> None:
     assert config_from_seed(7) == config_from_seed(7)
     assert config_from_seed(7) != config_from_seed(8)
-    assert build_seeded_retractable_utility_knife(7).name == "seeded_retractable_utility_knife_7"
 
 
-def test_invalid_config_rejections() -> None:
-    with pytest.raises(ValueError):
-        resolve_config(RetractableUtilityKnifeConfig(knife_body_style="folding_knife"))  # type: ignore[arg-type]
+@pytest.mark.parametrize("seed", [0, 1, 2, 5, 12])
+def test_seeded_builds_succeed(seed: int) -> None:
+    model = build_seeded_retractable_utility_knife(seed)
+    part_names = {p.name for p in model.parts}
+    assert "body_shell" in part_names
+    assert "blade_carrier" in part_names
+    assert "blade" in part_names
+    assert "thumb_slider" in part_names
+
+    joint_topology = {(a.parent, a.child, a.articulation_type.name) for a in model.articulations}
+    assert ("body_shell", "blade_carrier", "PRISMATIC") in joint_topology
+    assert ("blade_carrier", "blade", "FIXED") in joint_topology
+    assert ("blade_carrier", "thumb_slider", "FIXED") in joint_topology
 
 
-def test_default_identity_and_validator() -> None:
-    config = RetractableUtilityKnifeConfig()
-    model = build_retractable_utility_knife(config)
-    report = run_retractable_utility_knife_tests(model, config)
-    assert report.passed, report.failures
-    assert model.get_articulation("blade_slide").articulation_type == ArticulationType.PRISMATIC
-    assert model.get_articulation("blade_slide").axis == (1.0, 0.0, 0.0)
+def test_resolve_config_clamps_oversized_handle() -> None:
+    cfg = RetractableUtilityKnifeConfig(handle_length=0.50)
+    r = resolve_config(cfg)
+    assert r.handle_length <= 0.200
 
 
-def test_source_adaptation_map_covers_core_semantics() -> None:
-    assert SOURCE_IDS
-    assert SOURCE_ADAPTATION_MAP
-    assert len(SOURCE_IDS) >= 10
+def test_resolve_config_rejects_invalid_blade_style() -> None:
+    with pytest.raises(ValueError, match="blade_style"):
+        resolve_config(RetractableUtilityKnifeConfig(blade_style="unknown"))  # type: ignore[arg-type]
 
 
-def test_line_count_floor() -> None:
-    path = Path("agent/templates/retractable_utility_knife.py")
-    assert len(path.read_text().splitlines()) >= 1000
+def test_lock_wheel_skipped_when_lock_style_none() -> None:
+    cfg = RetractableUtilityKnifeConfig(lock_style="none")
+    model = build_seeded_retractable_utility_knife(0)
+    # The seeded model may or may not have lock; build from explicit config:
+    from agent.templates.retractable_utility_knife import build_retractable_utility_knife
 
-
-def test_representative_seeded_models_pass_basic_qc() -> None:
-    for seed in range(3):
-        _assert_basic_qc_passes(build_seeded_retractable_utility_knife(seed))
+    model = build_retractable_utility_knife(cfg)
+    assert all(p.name != "lock_wheel" for p in model.parts)

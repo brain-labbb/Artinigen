@@ -6,6 +6,7 @@
 | slug | `retractable_utility_knife` |
 | template path | `agent/templates/retractable_utility_knife.py` |
 | test path | `tests/agent/test_retractable_utility_knife_template.py` |
+| primary_anchor | `rec_retractable_utility_knife_cad8e728806e47b09531688f7de35ba7:rev_000001` |
 | stage | `SPEC_ONLY_DRAFT` |
 | status | `SPEC_ONLY_DRAFT` |
 

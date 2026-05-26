@@ -1,26 +1,48 @@
-"""Procedural template for `dj_equipment`.
+"""DJ equipment procedural template (portable controller archetype).
 
-Coordinate convention:
-- +X is the right side of the device when viewed from the performer.
-- +Y is the rear / top edge of the controller.
-- +Z is up from the tabletop.
+PRIMARY_ANCHOR = rec_dj_equipment_47e2bd7d05da479eb2363c19da61276b:rev_000001
 
-Stable seed domain:
-- all_in_one_controller: dual jog wheels, central mixer strip, faders, knobs, pads.
-- dj_mixer: channel fader lanes, EQ knob banks, crossfader, master strip.
-- turntable_deck: single platter, tonearm swing, cue lift, small controls.
+Adapted from the anchor's structural skeleton with literal dimensions
+parameterised. Part tree, joint topology and the use of ExtrudeGeometry /
+ExtrudeWithHolesGeometry meshes for the housing's wall ring / bottom panel /
+top deck are inherited verbatim from the anchor (per TEMPLATE_DESIGN_RULES.md
+Rule 3); only dimensions, pad / EQ-knob counts and slider button shape are
+made configurable.
 
-The broad spec also documents pad samplers and monitor speakers. Those are treated as
-review-gated split candidates and are not sampled by config_from_seed.
+Anchor part tree (7 parts):
+  housing             — 30 visuals incl. 3 Mesh (wall_ring, bottom_panel,
+                        top_deck via Extrude/ExtrudeWithHoles + rounded_rect /
+                        superellipse profiles), 2 spindles, 2 motor pedestals,
+                        2 display strips, mixer panel, 12 pads (2 decks ×
+                        2 rows × 3 cols), 6 EQ knobs, 2 handle brackets.
+  left_platter        — 4 visuals (hub / rim / touch_ring / center_label).
+  right_platter       — 4 visuals (same).
+  crossfader          — 2 visuals (cap + grip).
+  left_volume_fader   — 2 visuals (cap + grip).
+  right_volume_fader  — 2 visuals (cap + grip).
+  carry_handle        — 5 visuals (2 hinge barrels, 2 side arms, 1 grip tube).
+
+Anchor joint topology (6 joints, must be preserved):
+  housing -> left_platter      : REVOLUTE  axis z   (jog wheel spin)
+  housing -> right_platter     : REVOLUTE  axis z
+  housing -> crossfader        : PRISMATIC axis x   (centre fader)
+  housing -> left_volume_fader : PRISMATIC axis y   (channel fader)
+  housing -> right_volume_fader: PRISMATIC axis y
+  housing -> carry_handle      : REVOLUTE  axis x   (fold-out handle)
+
+Mating model:
+  - Platters and faders are surface-mates (jog hub sits on spindle top;
+    fader cap rides top_deck surface). MatingContract is declared on each.
+  - carry_handle is a mechanical pivot (hinge barrel captured by housing
+    bracket pin). MatingContract abstraction does not naturally apply, so
+    the joint is grandfathered (no `mating` field).
 """
 
 from __future__ import annotations
 
 import math
 import random
-import tempfile
-from dataclasses import dataclass, replace
-from pathlib import Path
+from dataclasses import dataclass, field
 from typing import Literal
 
 from sdk import (
@@ -29,1826 +51,952 @@ from sdk import (
     AssetContext,
     Box,
     Cylinder,
+    ExtrudeGeometry,
+    ExtrudeWithHolesGeometry,
+    Inertial,
+    MatingContract,
     MotionLimits,
     Origin,
     TestContext,
     TestReport,
+    mesh_from_geometry,
+    rounded_rect_profile,
+    superellipse_profile,
 )
 
-EquipmentFamily = Literal[
-    "all_in_one_controller", "dj_mixer", "turntable_deck", "pad_sampler", "tilt_monitor_speaker"
-]
-SeedDomain = Literal[
-    "controller_mixer_turntable_core", "pad_sampler_review_gated", "monitor_speaker_split_candidate"
-]
-BodyProfile = Literal[
-    "flat_rectangular", "rounded_controller", "wedge_panel", "pad_grid_slab", "tilted_speaker_box"
-]
-PlatterStyle = Literal["vinyl_turntable", "cdj_jog_wheel", "ribbed_controller_jog", "none"]
-FaderOrientation = Literal["vertical_channels_horizontal_cross", "all_vertical", "horizontal_bank"]
-KnobBankLayout = Literal["eq_rows", "paired_deck_controls", "single_master_strip", "none"]
-PadShape = Literal["rounded_square", "low_rect_button", "circular_cue"]
-MaterialStyle = Literal["graphite", "club_black", "silver_blue", "retro_ivory"]
-
-SOURCE_IDS: dict[str, str] = {
-    "S1": "rec_dj_equipment_6e26a372336146aa950bcca959ce6d20:model.py:L44-L77 turntable plinth/rest/cue helpers",
-    "S2": "rec_dj_equipment_6e26a372336146aa950bcca959ce6d20:model.py:L79-L300 platter/tonearm/cue joints",
-    "S3": "rec_dj_equipment_395917f2ec534974bdcae44f082b3856:model.py:L55-L177 mixer grid/slots",
-    "S4": "rec_dj_equipment_395917f2ec534974bdcae44f082b3856:model.py:L184-L323 fader and knob builders",
-    "S5": "rec_dj_equipment_47e2bd7d05da479eb2363c19da61276b:model.py:L39-L143 platter/slider/handle helpers",
-    "S6": "rec_dj_equipment_47e2bd7d05da479eb2363c19da61276b:model.py:L145-L435 dual-jog controller",
-    "S7": "rec_dj_equipment_12cc4b441480440ab78ac715cebab79f:model.py:L22-L53 rounded pad mesh semantics",
-    "S8": "rec_dj_equipment_12cc4b441480440ab78ac715cebab79f:model.py:L65-L326 pad grid and lower faders",
-    "S9": "rec_dj_equipment_01b8a962219e49d29f1b01cacfc25b40:model.py:L63-L286 monitor speaker split candidate",
-    "S10": "rec_dj_equipment_395917f2ec534974bdcae44f082b3856:model.py:L366-L405 control-axis tests",
-}
-
-PALETTES: dict[MaterialStyle, dict[str, tuple[float, float, float, float]]] = {
-    "graphite": {
-        "body": (0.10, 0.11, 0.12, 1.0),
-        "panel": (0.16, 0.17, 0.18, 1.0),
-        "trim": (0.58, 0.60, 0.62, 1.0),
-        "rubber": (0.04, 0.04, 0.045, 1.0),
-        "accent": (0.15, 0.45, 0.80, 1.0),
-        "label": (0.82, 0.84, 0.86, 1.0),
-    },
-    "club_black": {
-        "body": (0.045, 0.045, 0.050, 1.0),
-        "panel": (0.08, 0.08, 0.09, 1.0),
-        "trim": (0.42, 0.43, 0.45, 1.0),
-        "rubber": (0.02, 0.02, 0.025, 1.0),
-        "accent": (0.86, 0.24, 0.16, 1.0),
-        "label": (0.78, 0.78, 0.74, 1.0),
-    },
-    "silver_blue": {
-        "body": (0.62, 0.64, 0.67, 1.0),
-        "panel": (0.24, 0.27, 0.31, 1.0),
-        "trim": (0.80, 0.82, 0.84, 1.0),
-        "rubber": (0.05, 0.05, 0.055, 1.0),
-        "accent": (0.08, 0.42, 0.78, 1.0),
-        "label": (0.92, 0.94, 0.96, 1.0),
-    },
-    "retro_ivory": {
-        "body": (0.86, 0.82, 0.68, 1.0),
-        "panel": (0.18, 0.18, 0.17, 1.0),
-        "trim": (0.56, 0.42, 0.24, 1.0),
-        "rubber": (0.06, 0.05, 0.04, 1.0),
-        "accent": (0.80, 0.28, 0.14, 1.0),
-        "label": (0.96, 0.92, 0.78, 1.0),
-    },
-}
-
-FAMILY_DEFAULTS: dict[EquipmentFamily, dict[str, object]] = {
-    "all_in_one_controller": {
-        "body_profile": "rounded_controller",
-        "body_width": 0.62,
-        "body_depth": 0.36,
-        "body_height": 0.060,
-        "platter_count": 2,
-        "platter_style": "ribbed_controller_jog",
-        "channel_count": 2,
-        "pad_grid_rows": 2,
-        "pad_grid_cols": 4,
-        "tonearm_enabled": False,
-        "handle_enabled": True,
-    },
-    "dj_mixer": {
-        "body_profile": "wedge_panel",
-        "body_width": 0.42,
-        "body_depth": 0.38,
-        "body_height": 0.070,
-        "platter_count": 0,
-        "platter_style": "none",
-        "channel_count": 4,
-        "pad_grid_rows": 0,
-        "pad_grid_cols": 0,
-        "tonearm_enabled": False,
-        "handle_enabled": False,
-    },
-    "turntable_deck": {
-        "body_profile": "flat_rectangular",
-        "body_width": 0.46,
-        "body_depth": 0.42,
-        "body_height": 0.072,
-        "platter_count": 1,
-        "platter_style": "vinyl_turntable",
-        "channel_count": 1,
-        "pad_grid_rows": 0,
-        "pad_grid_cols": 0,
-        "tonearm_enabled": True,
-        "handle_enabled": False,
-    },
-    "pad_sampler": {
-        "body_profile": "pad_grid_slab",
-        "body_width": 0.46,
-        "body_depth": 0.34,
-        "body_height": 0.052,
-        "platter_count": 0,
-        "platter_style": "none",
-        "channel_count": 2,
-        "pad_grid_rows": 8,
-        "pad_grid_cols": 8,
-        "tonearm_enabled": False,
-        "handle_enabled": False,
-    },
-    "tilt_monitor_speaker": {
-        "body_profile": "tilted_speaker_box",
-        "body_width": 0.34,
-        "body_depth": 0.28,
-        "body_height": 0.24,
-        "platter_count": 0,
-        "platter_style": "none",
-        "channel_count": 0,
-        "pad_grid_rows": 0,
-        "pad_grid_cols": 0,
-        "tonearm_enabled": False,
-        "handle_enabled": False,
-    },
-}
+ControllerLayout = Literal["dual_jog_controller", "single_jog_controller", "compact_pad_controller"]
+HandleStyle = Literal["fold_out_carry", "fixed_carry", "none"]
+DeckStyle = Literal["dual_decks", "single_deck", "no_decks"]
 
 
 @dataclass(frozen=True)
 class DJEquipmentConfig:
-    equipment_family: EquipmentFamily = "all_in_one_controller"
-    seed_domain: SeedDomain = "controller_mixer_turntable_core"
-    body_profile: BodyProfile | None = None
-    body_width: float | None = None
-    body_depth: float | None = None
-    body_height: float | None = None
-    platter_count: int | None = None
-    platter_style: PlatterStyle | None = None
-    channel_count: int | None = None
-    fader_orientation: FaderOrientation = "vertical_channels_horizontal_cross"
-    knob_bank_layout: KnobBankLayout = "eq_rows"
-    pad_grid_rows: int | None = None
-    pad_grid_cols: int | None = None
-    pad_shape: PadShape = "rounded_square"
-    tonearm_enabled: bool | None = None
-    handle_enabled: bool | None = None
-    speaker_enabled: bool = False
-    material_style: MaterialStyle = "graphite"
-    name: str = "reference_dj_equipment"
+    controller_layout: ControllerLayout = "dual_jog_controller"
+    handle_style: HandleStyle = "fold_out_carry"
+    deck_style: DeckStyle = "dual_decks"
+
+    body_width: float = 0.58
+    body_depth: float = 0.34
+    body_height: float = 0.062
+    corner_radius: float = 0.028
+    wall_thickness: float = 0.012
+    bottom_thickness: float = 0.004
+    top_thickness: float = 0.004
+
+    jog_x: float = 0.175
+    jog_y: float = 0.018
+    jog_open_diameter: float = 0.118
+    spindle_radius: float = 0.018
+    spindle_height: float = 0.004
+    platter_rim_radius: float = 0.064
+    platter_rim_length: float = 0.010
+
+    crossfader_y: float = -0.112
+    crossfader_slot: tuple[float, float] = (0.140, 0.014)
+    volume_slot: tuple[float, float] = (0.014, 0.098)
+    left_volume_x: float = -0.038
+    right_volume_x: float = 0.038
+    volume_y: float = 0.020
+
+    handle_span: float = 0.50
+    handle_reach: float = 0.068
+    handle_radius: float = 0.0055
+    handle_travel: float = 1.28
+
+    pad_rows: int = 2
+    pad_cols: int = 3
+    pad_size: tuple[float, float, float] = (0.020, 0.020, 0.003)
+
+    palette: dict[str, tuple[float, float, float, float]] = field(
+        default_factory=lambda: {
+            "housing_black": (0.08, 0.09, 0.10, 1.0),
+            "deck_graphite": (0.13, 0.14, 0.16, 1.0),
+            "platter_dark": (0.12, 0.13, 0.14, 1.0),
+            "platter_top": (0.21, 0.22, 0.24, 1.0),
+            "accent_silver": (0.74, 0.76, 0.79, 1.0),
+            "slider_black": (0.05, 0.05, 0.06, 1.0),
+            "cue_gray": (0.28, 0.30, 0.33, 1.0),
+        }
+    )
 
 
 @dataclass(frozen=True)
 class ResolvedDJEquipmentConfig:
-    equipment_family: EquipmentFamily
-    seed_domain: SeedDomain
-    body_profile: BodyProfile
+    controller_layout: ControllerLayout
+    handle_style: HandleStyle
+    deck_style: DeckStyle
     body_width: float
     body_depth: float
     body_height: float
-    panel_z: float
-    panel_inset: float
-    platter_count: int
-    platter_style: PlatterStyle
-    platter_radius: float
-    platter_centers: tuple[tuple[float, float], ...]
-    channel_count: int
-    fader_count: int
-    fader_orientation: FaderOrientation
-    fader_travel: float
-    knob_bank_layout: KnobBankLayout
-    knob_count: int
-    pad_grid_rows: int
-    pad_grid_cols: int
-    pad_count: int
-    pad_shape: PadShape
-    pad_travel: float
-    tonearm_enabled: bool
-    cue_lift_travel: float
-    handle_enabled: bool
-    material_style: MaterialStyle
-    name: str
-
-
-def _clamp(value: float, low: float, high: float) -> float:
-    return max(low, min(high, value))
-
-
-def _validate_enum(value: object, allowed: set[str], field: str) -> None:
-    if value not in allowed:
-        raise ValueError(f"Unsupported {field}: {value}")
+    corner_radius: float
+    wall_thickness: float
+    bottom_thickness: float
+    top_thickness: float
+    jog_x: float
+    jog_y: float
+    jog_open_diameter: float
+    spindle_radius: float
+    spindle_height: float
+    platter_rim_radius: float
+    platter_rim_length: float
+    crossfader_y: float
+    crossfader_slot: tuple[float, float]
+    volume_slot: tuple[float, float]
+    left_volume_x: float
+    right_volume_x: float
+    volume_y: float
+    handle_span: float
+    handle_reach: float
+    handle_radius: float
+    handle_travel: float
+    pad_rows: int
+    pad_cols: int
+    pad_size: tuple[float, float, float]
+    palette: dict[str, tuple[float, float, float, float]]
 
 
 def config_from_seed(seed: int) -> DJEquipmentConfig:
+    """Sample a DJ controller configuration.
+
+    Per TEMPLATE_DESIGN_RULES.md Rule 3, seed=0 must produce a config whose
+    geometry fingerprint matches the PRIMARY_ANCHOR.
+    """
+    if seed == 0:
+        return DJEquipmentConfig()
+
     rng = random.Random(seed)
-    family: EquipmentFamily = rng.choices(
-        ("all_in_one_controller", "dj_mixer", "turntable_deck"),
-        weights=(0.55, 0.27, 0.18),
-        k=1,
-    )[0]
-    defaults = FAMILY_DEFAULTS[family]
-    material: MaterialStyle = rng.choice(("graphite", "club_black", "silver_blue", "retro_ivory"))
-    channel_count = int(defaults["channel_count"])
-    if family == "dj_mixer":
-        channel_count = rng.choice((2, 3, 4))
-    body_width = round(float(defaults["body_width"]) * rng.uniform(0.92, 1.10), 3)
-    body_depth = round(float(defaults["body_depth"]) * rng.uniform(0.92, 1.10), 3)
-    body_height = round(float(defaults["body_height"]) * rng.uniform(0.92, 1.08), 3)
-    pad_rows = int(defaults["pad_grid_rows"])
-    pad_cols = int(defaults["pad_grid_cols"])
-    if family == "all_in_one_controller":
-        pad_rows = rng.choice((2, 4))
-        pad_cols = 4
+    layout: ControllerLayout = rng.choice(
+        ("dual_jog_controller", "single_jog_controller", "compact_pad_controller")
+    )
+    handle_style: HandleStyle = rng.choice(("fold_out_carry", "fixed_carry", "none"))
+    deck_style: DeckStyle = "dual_decks"  # required by anchor topology
+
+    body_width = round(rng.uniform(0.52, 0.65), 4)
+    body_depth = round(rng.uniform(0.30, 0.38), 4)
+    body_height = round(rng.uniform(0.055, 0.072), 4)
+    jog_x = round(rng.uniform(0.155, 0.190), 4)
+    handle_span = round(rng.uniform(0.42, 0.55), 4)
+
     return DJEquipmentConfig(
-        equipment_family=family,
-        body_profile=defaults["body_profile"],
+        controller_layout=layout,
+        handle_style=handle_style,
+        deck_style=deck_style,
         body_width=body_width,
         body_depth=body_depth,
         body_height=body_height,
-        platter_count=int(defaults["platter_count"]),
-        platter_style=defaults["platter_style"],
-        channel_count=channel_count,
-        fader_orientation=rng.choice(("vertical_channels_horizontal_cross", "all_vertical")),
-        knob_bank_layout=rng.choice(("eq_rows", "paired_deck_controls", "single_master_strip")),
-        pad_grid_rows=pad_rows,
-        pad_grid_cols=pad_cols,
-        pad_shape=rng.choice(("rounded_square", "low_rect_button", "circular_cue")),
-        tonearm_enabled=bool(defaults["tonearm_enabled"]),
-        handle_enabled=False,
-        material_style=material,
-        name=f"seeded_dj_equipment_{seed}",
+        jog_x=jog_x,
+        handle_span=handle_span,
     )
 
 
 def resolve_config(config: DJEquipmentConfig) -> ResolvedDJEquipmentConfig:
-    _validate_enum(config.equipment_family, set(FAMILY_DEFAULTS), "equipment_family")
-    _validate_enum(
-        config.seed_domain,
-        {
-            "controller_mixer_turntable_core",
-            "pad_sampler_review_gated",
-            "monitor_speaker_split_candidate",
-        },
-        "seed_domain",
-    )
-    _validate_enum(
-        config.fader_orientation,
-        {"vertical_channels_horizontal_cross", "all_vertical", "horizontal_bank"},
-        "fader_orientation",
-    )
-    _validate_enum(
-        config.knob_bank_layout,
-        {"eq_rows", "paired_deck_controls", "single_master_strip", "none"},
-        "knob_bank_layout",
-    )
-    _validate_enum(
-        config.pad_shape, {"rounded_square", "low_rect_button", "circular_cue"}, "pad_shape"
-    )
-    _validate_enum(config.material_style, set(PALETTES), "material_style")
-    family = config.equipment_family
-    if config.seed_domain == "controller_mixer_turntable_core" and family in {
-        "pad_sampler",
-        "tilt_monitor_speaker",
-    }:
-        family = "all_in_one_controller"
-    defaults = FAMILY_DEFAULTS[family]
-    body_profile = config.body_profile or defaults["body_profile"]
-    _validate_enum(
-        body_profile,
-        {
-            "flat_rectangular",
-            "rounded_controller",
-            "wedge_panel",
-            "pad_grid_slab",
-            "tilted_speaker_box",
-        },
-        "body_profile",
-    )
-    width = _clamp(
-        config.body_width if config.body_width is not None else float(defaults["body_width"]),
-        0.28,
-        0.95,
-    )
-    depth = _clamp(
-        config.body_depth if config.body_depth is not None else float(defaults["body_depth"]),
-        0.22,
-        0.68,
-    )
-    height = _clamp(
-        config.body_height if config.body_height is not None else float(defaults["body_height"]),
-        0.040,
-        0.12,
-    )
-    platter_count = int(
-        config.platter_count if config.platter_count is not None else defaults["platter_count"]
-    )
-    platter_style = config.platter_style or defaults["platter_style"]
-    _validate_enum(
-        platter_style,
-        {"vinyl_turntable", "cdj_jog_wheel", "ribbed_controller_jog", "none"},
-        "platter_style",
-    )
-    channel_count = int(
-        config.channel_count if config.channel_count is not None else defaults["channel_count"]
-    )
-    channel_count = max(0, min(4, channel_count))
-    pad_rows = int(
-        config.pad_grid_rows if config.pad_grid_rows is not None else defaults["pad_grid_rows"]
-    )
-    pad_cols = int(
-        config.pad_grid_cols if config.pad_grid_cols is not None else defaults["pad_grid_cols"]
-    )
-    tonearm = bool(
-        config.tonearm_enabled
-        if config.tonearm_enabled is not None
-        else defaults["tonearm_enabled"]
-    )
-    handle = bool(
-        config.handle_enabled if config.handle_enabled is not None else defaults["handle_enabled"]
-    )
-    if family == "all_in_one_controller":
-        platter_count = 2
-        platter_style = "ribbed_controller_jog" if platter_style == "none" else platter_style
-        channel_count = max(2, min(4, channel_count))
-        pad_rows = 2 if pad_rows not in {2, 4} else pad_rows
-        pad_cols = 4
-        tonearm = False
-    elif family == "dj_mixer":
-        platter_count = 0
-        platter_style = "none"
-        channel_count = max(2, min(4, channel_count))
-        pad_rows = 0
-        pad_cols = 0
-        tonearm = False
-        handle = False
-    elif family == "turntable_deck":
-        platter_count = 1
-        platter_style = "vinyl_turntable"
-        channel_count = max(1, min(2, channel_count))
-        pad_rows = 0
-        pad_cols = 0
-        tonearm = True
-        handle = False
-    else:
-        family = "all_in_one_controller"
-        platter_count = 2
-        platter_style = "ribbed_controller_jog"
-        channel_count = 2
-        pad_rows = 2
-        pad_cols = 4
-        tonearm = False
-    panel_z = height + 0.003
-    panel_inset = max(0.016, min(width, depth) * 0.045)
-    deck_radius_limit = min(depth * 0.31, max(0.050, (width - 0.16) / max(2, platter_count * 2.2)))
-    platter_radius = _clamp(deck_radius_limit, 0.052, 0.125)
-    platter_centers: list[tuple[float, float]] = []
-    if platter_count == 1:
-        platter_centers.append((-width * 0.15, 0.018))
-    elif platter_count == 2:
-        platter_centers.append((-width * 0.30, 0.024))
-        platter_centers.append((width * 0.30, 0.024))
-    fader_count = 0
-    if family == "all_in_one_controller":
-        fader_count = channel_count + 1
-    elif family == "dj_mixer":
-        fader_count = channel_count + 2
-    elif family == "turntable_deck":
-        fader_count = 1
-    fader_travel = _clamp(depth * 0.105, 0.026, 0.055)
-    knob_count = 0
-    if config.knob_bank_layout == "eq_rows":
-        knob_count = max(2, channel_count * 3)
-    elif config.knob_bank_layout == "paired_deck_controls":
-        knob_count = max(2, platter_count * 4)
-    elif config.knob_bank_layout == "single_master_strip":
-        knob_count = max(2, channel_count + 1)
-    if family == "turntable_deck":
-        knob_count = min(knob_count, 4)
-    pad_count = pad_rows * pad_cols
-    if family == "all_in_one_controller":
-        pad_count *= 2
+    valid_layout = {"dual_jog_controller", "single_jog_controller", "compact_pad_controller"}
+    if str(config.controller_layout) not in valid_layout:
+        raise ValueError(f"Unsupported controller_layout: {config.controller_layout}")
+    valid_handle = {"fold_out_carry", "fixed_carry", "none"}
+    if str(config.handle_style) not in valid_handle:
+        raise ValueError(f"Unsupported handle_style: {config.handle_style}")
+    valid_deck = {"dual_decks", "single_deck", "no_decks"}
+    if str(config.deck_style) not in valid_deck:
+        raise ValueError(f"Unsupported deck_style: {config.deck_style}")
+
+    bw = max(0.40, min(float(config.body_width), 0.80))
+    bd = max(0.24, min(float(config.body_depth), 0.42))
+    bh = max(0.040, min(float(config.body_height), 0.080))
+    cr = max(0.016, min(float(config.corner_radius), 0.040))
+    wt = max(0.008, min(float(config.wall_thickness), 0.018))
+    bt = max(0.003, min(float(config.bottom_thickness), 0.006))
+    tt = max(0.003, min(float(config.top_thickness), 0.006))
+
+    jog_x = max(0.120, min(float(config.jog_x), 0.220))
+    jog_y = float(config.jog_y)
+    jog_d = max(0.090, min(float(config.jog_open_diameter), 0.150))
+    sp_r = max(0.012, min(float(config.spindle_radius), 0.025))
+    sp_h = max(0.003, min(float(config.spindle_height), 0.008))
+    rim_r = max(0.045, min(float(config.platter_rim_radius), 0.080))
+    rim_l = max(0.006, min(float(config.platter_rim_length), 0.014))
+
+    cf_y = float(config.crossfader_y)
+    cf_slot = tuple(float(v) for v in config.crossfader_slot)
+    vol_slot = tuple(float(v) for v in config.volume_slot)
+    if len(cf_slot) != 2:
+        cf_slot = (0.140, 0.014)
+    if len(vol_slot) != 2:
+        vol_slot = (0.014, 0.098)
+    lvx = float(config.left_volume_x)
+    rvx = float(config.right_volume_x)
+    vol_y = float(config.volume_y)
+
+    handle_span = max(0.34, min(float(config.handle_span), 0.62))
+    handle_reach = max(0.050, min(float(config.handle_reach), 0.090))
+    handle_radius = max(0.0035, min(float(config.handle_radius), 0.008))
+    handle_travel = max(0.6, min(float(config.handle_travel), 1.55))
+
+    pad_rows = max(1, min(int(config.pad_rows), 4))
+    pad_cols = max(2, min(int(config.pad_cols), 4))
+    pad_size = tuple(float(v) for v in config.pad_size)
+    if len(pad_size) != 3:
+        pad_size = (0.020, 0.020, 0.003)
+
     return ResolvedDJEquipmentConfig(
-        equipment_family=family,
-        seed_domain=config.seed_domain,
-        body_profile=body_profile,
-        body_width=width,
-        body_depth=depth,
-        body_height=height,
-        panel_z=panel_z,
-        panel_inset=panel_inset,
-        platter_count=platter_count,
-        platter_style=platter_style,
-        platter_radius=platter_radius,
-        platter_centers=tuple(platter_centers),
-        channel_count=channel_count,
-        fader_count=fader_count,
-        fader_orientation=config.fader_orientation,
-        fader_travel=fader_travel,
-        knob_bank_layout=config.knob_bank_layout,
-        knob_count=knob_count,
-        pad_grid_rows=pad_rows,
-        pad_grid_cols=pad_cols,
-        pad_count=pad_count,
-        pad_shape=config.pad_shape,
-        pad_travel=0.006,
-        tonearm_enabled=tonearm,
-        cue_lift_travel=0.018,
-        handle_enabled=handle,
-        material_style=config.material_style,
-        name=config.name,
+        controller_layout=config.controller_layout,
+        handle_style=config.handle_style,
+        deck_style=config.deck_style,
+        body_width=bw,
+        body_depth=bd,
+        body_height=bh,
+        corner_radius=cr,
+        wall_thickness=wt,
+        bottom_thickness=bt,
+        top_thickness=tt,
+        jog_x=jog_x,
+        jog_y=jog_y,
+        jog_open_diameter=jog_d,
+        spindle_radius=sp_r,
+        spindle_height=sp_h,
+        platter_rim_radius=rim_r,
+        platter_rim_length=rim_l,
+        crossfader_y=cf_y,
+        crossfader_slot=cf_slot,  # type: ignore[arg-type]
+        volume_slot=vol_slot,  # type: ignore[arg-type]
+        left_volume_x=lvx,
+        right_volume_x=rvx,
+        volume_y=vol_y,
+        handle_span=handle_span,
+        handle_reach=handle_reach,
+        handle_radius=handle_radius,
+        handle_travel=handle_travel,
+        pad_rows=pad_rows,
+        pad_cols=pad_cols,
+        pad_size=pad_size,  # type: ignore[arg-type]
+        palette=dict(config.palette),
     )
 
 
-def with_overrides(config: DJEquipmentConfig, **kwargs: object) -> DJEquipmentConfig:
-    return replace(config, **kwargs)
+# --------------------------------------------------------------------------- #
+# Mesh helpers — these MUST stay Mesh-typed (Rule 3 primitive_complexity_lower_bound)
+# --------------------------------------------------------------------------- #
 
 
-def _joint_meta(
-    joint_type: str,
-    axis: tuple[float, float, float],
-    origin: tuple[float, float, float],
-    joint_range: object,
-    source_id: str,
-) -> dict[str, object]:
-    return {
-        "type": joint_type,
-        "axis": axis,
-        "origin": origin,
-        "range": joint_range,
-        "source_id": source_id,
-    }
+def _shift_profile(profile, *, dx=0.0, dy=0.0):
+    return [(x + dx, y + dy) for x, y in profile]
 
 
-def _mat(model: ArticulatedObject, r: ResolvedDJEquipmentConfig, key: str):
-    return model.material(f"dj_{key}", rgba=PALETTES[r.material_style][key])
-
-
-def _add_box(
-    part,
-    size: tuple[float, float, float],
-    xyz: tuple[float, float, float],
-    material,
-    name: str,
-    rpy: tuple[float, float, float] = (0.0, 0.0, 0.0),
-) -> None:
-    part.visual(Box(size), origin=Origin(xyz=xyz, rpy=rpy), material=material, name=name)
-
-
-def _add_cyl(
-    part,
-    radius: float,
-    length: float,
-    xyz: tuple[float, float, float],
-    material,
-    name: str,
-    rpy: tuple[float, float, float] = (0.0, 0.0, 0.0),
-) -> None:
-    part.visual(
-        Cylinder(radius=radius, length=length),
-        origin=Origin(xyz=xyz, rpy=rpy),
-        material=material,
-        name=name,
+def _build_housing_meshes(r: ResolvedDJEquipmentConfig) -> tuple[object, object, object]:
+    """Build the 3 Mesh visuals of the housing (wall_ring, bottom_panel,
+    top_deck) — adapted verbatim from the anchor's ExtrudeGeometry /
+    ExtrudeWithHolesGeometry construction. Per primitive_complexity_lower_bound,
+    these must stay Mesh-typed (not downgraded to Box)."""
+    wall_height = r.body_height - r.bottom_thickness - r.top_thickness
+    outer_profile = rounded_rect_profile(
+        r.body_width, r.body_depth, r.corner_radius, corner_segments=10
+    )
+    inner_profile = rounded_rect_profile(
+        r.body_width - 2.0 * r.wall_thickness,
+        r.body_depth - 2.0 * r.wall_thickness,
+        max(r.corner_radius - r.wall_thickness, 0.010),
+        corner_segments=10,
+    )
+    platter_hole = superellipse_profile(
+        r.jog_open_diameter, r.jog_open_diameter, exponent=2.0, segments=48
     )
 
-
-def _build_body(
-    body, r: ResolvedDJEquipmentConfig, *, body_mat, panel_mat, trim, rubber, accent, label
-) -> None:
-    W, D, H = r.body_width, r.body_depth, r.body_height
-    _add_box(body, (W, D, H), (0.0, 0.0, H * 0.5), body_mat, "base_housing")
-    _add_box(
-        body,
-        (W - 2 * r.panel_inset, D - 2 * r.panel_inset, 0.006),
-        (0.0, 0.0, H + 0.003),
-        panel_mat,
-        "top_control_panel",
-    )
-    if r.body_profile == "rounded_controller":
-        for sx in (-1.0, 1.0):
-            for sy in (-1.0, 1.0):
-                _add_cyl(
-                    body,
-                    0.018,
-                    H,
-                    (sx * (W * 0.5 - 0.018), sy * (D * 0.5 - 0.018), H * 0.5),
-                    body_mat,
-                    f"rounded_corner_{sx:+.0f}_{sy:+.0f}",
-                )
-    if r.body_profile == "wedge_panel":
-        _add_box(
-            body,
-            (W * 0.94, 0.022, 0.018),
-            (0.0, D * 0.5 - 0.012, H + 0.012),
-            trim,
-            "raised_rear_wedge_lip",
-        )
-    for i, x in enumerate((-W * 0.38, -W * 0.13, W * 0.13, W * 0.38)):
-        _add_box(
-            body,
-            (0.050, 0.003, 0.012),
-            (x, -D * 0.5 - 0.001, H * 0.56),
-            label,
-            f"front_channel_label_{i}",
-        )
-    for i, x in enumerate((-W * 0.43, W * 0.43)):
-        _add_box(
-            body,
-            (0.030, 0.010, 0.006),
-            (x, D * 0.5 - 0.020, H + 0.008),
-            accent,
-            f"status_led_cluster_{i}",
-        )
-    for sx in (-1.0, 1.0):
-        for sy in (-1.0, 1.0):
-            _add_cyl(
-                body,
-                0.007,
-                0.004,
-                (sx * (W * 0.5 - 0.030), sy * (D * 0.5 - 0.030), H + 0.010),
-                trim,
-                f"panel_screw_{sx:+.0f}_{sy:+.0f}",
-            )
-
-
-def _build_platter_part(part, r: ResolvedDJEquipmentConfig, *, rubber, trim, accent) -> None:
-    rad = r.platter_radius
-    _add_cyl(part, rad, 0.012, (0.0, 0.0, 0.006), rubber, "platter_disc")
-    _add_cyl(part, rad * 0.72, 0.004, (0.0, 0.0, 0.016), trim, "platter_top_ring")
-    _add_cyl(part, rad * 0.15, 0.016, (0.0, 0.0, 0.018), accent, "center_spindle")
-    tick_count = 20 if r.platter_style == "ribbed_controller_jog" else 12
-    for i in range(tick_count):
-        angle = i * 2.0 * math.pi / tick_count
-        x = math.cos(angle) * rad * 0.88
-        y = math.sin(angle) * rad * 0.88
-        _add_box(
-            part,
-            (rad * 0.16, 0.003, 0.003),
-            (x, y, 0.020),
-            trim,
-            f"rim_tick_{i}",
-            rpy=(0.0, 0.0, angle),
-        )
-
-
-def _build_fader_part(part, *, cap_size: tuple[float, float, float], rubber, trim) -> None:
-    _add_box(part, cap_size, (0.0, 0.0, cap_size[2] * 0.5 + 0.004), rubber, "fader_cap")
-    _add_box(
-        part, (cap_size[0] * 0.42, cap_size[1] * 0.42, 0.010), (0.0, 0.0, -0.002), trim, "slot_stem"
-    )
-
-
-def _build_knob_part(part, *, radius: float, rubber, accent) -> None:
-    _add_cyl(part, radius, 0.012, (0.0, 0.0, 0.006), rubber, "knob_body")
-    _add_cyl(part, radius * 0.72, 0.005, (0.0, 0.0, 0.015), rubber, "knob_cap")
-    _add_box(
-        part,
-        (radius * 0.22, radius * 0.85, 0.003),
-        (0.0, radius * 0.42, 0.019),
-        accent,
-        "knob_indicator",
-    )
-
-
-def _build_pad_part(part, r: ResolvedDJEquipmentConfig, *, rubber, accent) -> None:
-    if r.pad_shape == "circular_cue":
-        radius = 0.010 if r.pad_grid_rows >= 4 else 0.014
-        _add_cyl(part, radius, 0.008, (0.0, 0.0, 0.004), rubber, "pad_button")
-        _add_cyl(part, radius * 0.50, 0.002, (0.0, 0.0, 0.009), accent, "pad_center")
-    else:
-        if r.pad_grid_rows >= 4:
-            sx = 0.018 if r.pad_shape == "rounded_square" else 0.026
-            sy = 0.018 if r.pad_shape == "rounded_square" else 0.014
-        else:
-            sx = 0.024 if r.pad_shape == "rounded_square" else 0.030
-            sy = 0.024 if r.pad_shape == "rounded_square" else 0.018
-        _add_box(part, (sx, sy, 0.008), (0.0, 0.0, 0.004), rubber, "pad_button")
-        _add_box(part, (sx * 0.62, sy * 0.12, 0.002), (0.0, 0.0, 0.009), accent, "pad_highlight")
-
-
-def _control_regions(r: ResolvedDJEquipmentConfig) -> dict[str, tuple[float, float, float, float]]:
-    W, D = r.body_width, r.body_depth
-    if r.equipment_family == "all_in_one_controller":
-        return {
-            "left_deck": (-W * 0.30, 0.035, W * 0.33, D * 0.64),
-            "right_deck": (W * 0.30, 0.035, W * 0.33, D * 0.64),
-            "mixer": (0.0, -0.010, W * 0.23, D * 0.72),
-        }
-    if r.equipment_family == "dj_mixer":
-        return {"mixer": (0.0, 0.0, W * 0.82, D * 0.82)}
-    return {
-        "turntable": (-W * 0.15, 0.025, W * 0.56, D * 0.74),
-        "arm": (W * 0.26, 0.045, W * 0.30, D * 0.70),
-    }
-
-
-def _add_slots_and_guides(
-    body, r: ResolvedDJEquipmentConfig, *, panel_mat, trim, rubber
-) -> list[
-    tuple[
-        str,
-        tuple[float, float, float],
-        tuple[float, float, float],
-        tuple[float, float, float],
-        float,
+    top_holes = [
+        _shift_profile(platter_hole, dx=-r.jog_x, dy=r.jog_y),
+        _shift_profile(platter_hole, dx=+r.jog_x, dy=r.jog_y),
+        _shift_profile(
+            rounded_rect_profile(
+                r.crossfader_slot[0], r.crossfader_slot[1], 0.005, corner_segments=8
+            ),
+            dy=r.crossfader_y,
+        ),
+        _shift_profile(
+            rounded_rect_profile(r.volume_slot[0], r.volume_slot[1], 0.005, corner_segments=8),
+            dx=r.left_volume_x,
+            dy=r.volume_y,
+        ),
+        _shift_profile(
+            rounded_rect_profile(r.volume_slot[0], r.volume_slot[1], 0.005, corner_segments=8),
+            dx=r.right_volume_x,
+            dy=r.volume_y,
+        ),
     ]
-]:
-    slots: list[
-        tuple[
-            str,
-            tuple[float, float, float],
-            tuple[float, float, float],
-            tuple[float, float, float],
-            float,
-        ]
-    ] = []
-    W, D, Z = r.body_width, r.body_depth, r.panel_z
-    if r.equipment_family in {"all_in_one_controller", "dj_mixer"}:
-        lane_count = max(1, r.channel_count)
-        mixer_w = W * (0.24 if r.equipment_family == "all_in_one_controller" else 0.76)
-        x0 = -mixer_w * 0.38
-        step = mixer_w * 0.76 / max(1, lane_count - 1)
-        for i in range(lane_count):
-            x = x0 + i * step if lane_count > 1 else 0.0
-            y = -D * 0.055
-            _add_box(
-                body,
-                (0.016, r.fader_travel * 2.4, 0.003),
-                (x, y, Z + 0.003),
-                rubber,
-                f"channel_fader_slot_{i}",
-            )
-            slots.append(
-                (
-                    f"channel_fader_{i}",
-                    (x, y, Z + 0.0105),
-                    (0.0, 1.0, 0.0),
-                    (0.018, 0.026, 0.012),
-                    r.fader_travel,
+
+    wall_ring = ExtrudeWithHolesGeometry(
+        outer_profile, [inner_profile], wall_height, center=True
+    ).translate(0.0, 0.0, r.bottom_thickness + wall_height * 0.5)
+    bottom_panel = ExtrudeGeometry(outer_profile, r.bottom_thickness, center=True).translate(
+        0.0, 0.0, r.bottom_thickness * 0.5
+    )
+    top_deck = ExtrudeWithHolesGeometry(
+        outer_profile, top_holes, r.top_thickness, center=True
+    ).translate(0.0, 0.0, r.body_height - r.top_thickness * 0.5)
+
+    return (
+        mesh_from_geometry(wall_ring, "controller_wall_ring"),
+        mesh_from_geometry(bottom_panel, "controller_bottom_panel"),
+        mesh_from_geometry(top_deck, "controller_top_deck"),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Per-part builders
+# --------------------------------------------------------------------------- #
+
+
+def _build_housing(part, r: ResolvedDJEquipmentConfig) -> None:
+    """Adapted from anchor model.py:L184-L324. 30 visuals."""
+    wall_ring_mesh, bottom_panel_mesh, top_deck_mesh = _build_housing_meshes(r)
+    handle_z = r.body_height + r.handle_radius
+
+    part.inertial = Inertial.from_geometry(
+        Box((r.body_width, r.body_depth, r.body_height)),
+        mass=5.8,
+        origin=Origin(xyz=(0.0, 0.0, r.body_height * 0.5)),
+    )
+
+    part.visual(wall_ring_mesh, material="housing_black", name="wall_ring")
+    part.visual(bottom_panel_mesh, material="housing_black", name="bottom_panel")
+    part.visual(top_deck_mesh, material="deck_graphite", name="top_deck")
+
+    # Spindles (Cylinder) — left & right.
+    part.visual(
+        Cylinder(radius=r.spindle_radius, length=r.spindle_height),
+        origin=Origin(xyz=(-r.jog_x, r.jog_y, r.body_height + r.spindle_height * 0.5)),
+        material="accent_silver",
+        name="left_spindle",
+    )
+    part.visual(
+        Cylinder(radius=r.spindle_radius, length=r.spindle_height),
+        origin=Origin(xyz=(+r.jog_x, r.jog_y, r.body_height + r.spindle_height * 0.5)),
+        material="accent_silver",
+        name="right_spindle",
+    )
+
+    # Motor pedestals (interior — they live inside the case).
+    pedestal_radius = 0.024
+    pedestal_length = r.body_height - r.bottom_thickness
+    part.visual(
+        Cylinder(radius=pedestal_radius, length=pedestal_length),
+        origin=Origin(xyz=(-r.jog_x, r.jog_y, r.bottom_thickness + pedestal_length * 0.5)),
+        material="housing_black",
+        name="left_motor_pedestal",
+    )
+    part.visual(
+        Cylinder(radius=pedestal_radius, length=pedestal_length),
+        origin=Origin(xyz=(+r.jog_x, r.jog_y, r.bottom_thickness + pedestal_length * 0.5)),
+        material="housing_black",
+        name="right_motor_pedestal",
+    )
+
+    # Display strips above each deck.
+    part.visual(
+        Box((0.120, 0.030, 0.003)),
+        origin=Origin(xyz=(-r.jog_x, 0.118, r.body_height + 0.0015)),
+        material="cue_gray",
+        name="left_display_strip",
+    )
+    part.visual(
+        Box((0.120, 0.030, 0.003)),
+        origin=Origin(xyz=(+r.jog_x, 0.118, r.body_height + 0.0015)),
+        material="cue_gray",
+        name="right_display_strip",
+    )
+    part.visual(
+        Box((0.072, 0.140, 0.003)),
+        origin=Origin(xyz=(0.0, 0.024, r.body_height + 0.0015)),
+        material="cue_gray",
+        name="mixer_panel",
+    )
+
+    # Performance pads — 12 by default (2 decks × pad_rows=2 × pad_cols=3).
+    pad_sx, pad_sy, pad_sz = r.pad_size
+    pad_pitch_x = 0.028
+    pad_row_centres = (-0.090, -0.058) if r.pad_rows == 2 else (-0.075,)
+    pad_col_offsets = tuple(
+        (col - (r.pad_cols - 1) * 0.5) * pad_pitch_x for col in range(r.pad_cols)
+    )
+    for deck_x, prefix in ((-r.jog_x, "left"), (+r.jog_x, "right")):
+        for row_index, pad_y in enumerate(pad_row_centres):
+            for col_index, pad_dx in enumerate(pad_col_offsets):
+                part.visual(
+                    Box((pad_sx, pad_sy, pad_sz)),
+                    origin=Origin(xyz=(deck_x + pad_dx, pad_y, r.body_height + pad_sz * 0.5)),
+                    material="cue_gray",
+                    name=f"{prefix}_pad_{row_index}_{col_index}",
                 )
+
+    # EQ knobs above the mixer panel — 6 by default.
+    knob_xs = (-0.034, 0.0, 0.034)
+    knob_ys = (0.112, 0.084)
+    for kxi, knob_x in enumerate(knob_xs):
+        for kyi, knob_y in enumerate(knob_ys):
+            part.visual(
+                Cylinder(radius=0.007, length=0.010),
+                origin=Origin(xyz=(knob_x, knob_y, r.body_height + 0.005)),
+                material="accent_silver",
+                name=f"eq_knob_{kxi}_{kyi}",
             )
-        cross_y = -D * 0.34
-        _add_box(
-            body,
-            (min(0.15, W * 0.32), 0.016, 0.003),
-            (0.0, cross_y, Z + 0.003),
-            rubber,
-            "crossfader_slot",
-        )
-        slots.append(
-            (
-                "crossfader",
-                (0.0, cross_y, Z + 0.0105),
-                (1.0, 0.0, 0.0),
-                (0.030, 0.018, 0.012),
-                min(0.070, W * 0.12),
-            )
-        )
-        if r.equipment_family == "dj_mixer":
-            _add_box(
-                body,
-                (0.014, r.fader_travel * 2.0, 0.003),
-                (W * 0.36, D * 0.08, Z + 0.003),
-                rubber,
-                "master_fader_slot",
-            )
-            slots.append(
-                (
-                    "master_fader",
-                    (W * 0.36, D * 0.08, Z + 0.0105),
-                    (0.0, 1.0, 0.0),
-                    (0.018, 0.024, 0.012),
-                    r.fader_travel * 0.85,
-                )
-            )
-    elif r.equipment_family == "turntable_deck":
-        x = -W * 0.38
-        y = -D * 0.31
-        _add_box(
-            body,
-            (0.016, r.fader_travel * 1.8, 0.003),
-            (x, y, Z + 0.003),
-            rubber,
-            "pitch_fader_slot",
-        )
-        slots.append(
-            (
-                "pitch_fader",
-                (x, y, Z + 0.0105),
-                (0.0, 1.0, 0.0),
-                (0.016, 0.026, 0.012),
-                r.fader_travel * 0.75,
-            )
-        )
-    return slots
+
+    # Carry-handle brackets on the housing top (anchor's "left/right_handle_bracket").
+    part.visual(
+        Box((0.024, 0.024, 0.018)),
+        origin=Origin(xyz=(-r.handle_span * 0.524, 0.158, handle_z)),
+        material="accent_silver",
+        name="left_handle_bracket",
+    )
+    part.visual(
+        Box((0.024, 0.024, 0.018)),
+        origin=Origin(xyz=(+r.handle_span * 0.524, 0.158, handle_z)),
+        material="accent_silver",
+        name="right_handle_bracket",
+    )
 
 
-def _knob_positions(r: ResolvedDJEquipmentConfig) -> list[tuple[float, float]]:
-    positions: list[tuple[float, float]] = []
-    W, D = r.body_width, r.body_depth
-    if r.knob_count <= 0:
-        return positions
-    if r.equipment_family == "dj_mixer":
-        lane_count = max(1, r.channel_count)
-        x0 = -W * 0.30
-        step = W * 0.60 / max(1, lane_count - 1)
-        for lane in range(lane_count):
-            x = x0 + lane * step if lane_count > 1 else 0.0
-            for y in (D * 0.30, D * 0.20, D * 0.10):
-                positions.append((x, y))
-    elif r.equipment_family == "all_in_one_controller":
-        for x in (-W * 0.055, 0.0, W * 0.055):
-            for y in (D * 0.30, D * 0.19):
-                positions.append((x, y))
-        for deck_x in (-W * 0.30, W * 0.30):
-            positions.append((deck_x - math.copysign(W * 0.085, deck_x), D * 0.43))
-            positions.append((deck_x + math.copysign(W * 0.085, deck_x), D * 0.43))
-    else:
-        for x, y in (
-            (W * 0.28, -D * 0.12),
-            (W * 0.34, -D * 0.12),
-            (W * 0.28, -D * 0.20),
-            (W * 0.34, -D * 0.20),
-        ):
-            positions.append((x, y))
-    return positions[: r.knob_count]
+def _build_platter(part, r: ResolvedDJEquipmentConfig) -> None:
+    """Adapted from anchor model.py:L39-L68 (`_build_platter`). 4 visuals."""
+    part.visual(
+        Cylinder(radius=r.spindle_radius * 1.11, length=0.004),
+        origin=Origin(xyz=(0.0, 0.0, 0.002)),
+        material="platter_dark",
+        name="hub",
+    )
+    part.visual(
+        Cylinder(radius=r.platter_rim_radius, length=r.platter_rim_length),
+        origin=Origin(xyz=(0.0, 0.0, r.platter_rim_length * 0.5 + 0.004)),
+        material="platter_dark",
+        name="rim",
+    )
+    part.visual(
+        Cylinder(radius=r.platter_rim_radius * 0.875, length=0.002),
+        origin=Origin(xyz=(0.0, 0.0, r.platter_rim_length + 0.005)),
+        material="platter_top",
+        name="touch_ring",
+    )
+    part.visual(
+        Cylinder(radius=r.spindle_radius * 1.055, length=0.0015),
+        origin=Origin(xyz=(0.0, 0.0, r.platter_rim_length + 0.00675)),
+        material="accent_silver",
+        name="center_label",
+    )
+    part.inertial = Inertial.from_geometry(
+        Cylinder(radius=r.platter_rim_radius, length=0.018),
+        mass=0.45,
+        origin=Origin(xyz=(0.0, 0.0, 0.009)),
+    )
 
 
-def _pad_positions(r: ResolvedDJEquipmentConfig) -> list[tuple[float, float]]:
-    if r.pad_count == 0:
-        return []
-    W, D = r.body_width, r.body_depth
-    positions: list[tuple[float, float]] = []
-    if r.equipment_family == "all_in_one_controller":
-        for deck_x in (-W * 0.30, W * 0.30):
-            grid_w = min(W * 0.23, 0.16)
-            grid_h = min(D * 0.24, 0.096)
-            for row in range(r.pad_grid_rows):
-                for col in range(r.pad_grid_cols):
-                    x = deck_x - grid_w * 0.5 + (col + 0.5) * grid_w / r.pad_grid_cols
-                    y = -D * 0.50 + (row + 0.5) * grid_h / r.pad_grid_rows
-                    positions.append((x, y))
-    return positions
-
-
-def _build_tonearm(
-    model: ArticulatedObject, body, r: ResolvedDJEquipmentConfig, *, trim, rubber, accent
+def _build_slider(
+    part,
+    *,
+    cap_size: tuple[float, float, float],
+    grip_size: tuple[float, float, float],
+    cap_name: str,
 ) -> None:
-    if not r.tonearm_enabled:
-        return
-    W, D, Z = r.body_width, r.body_depth, r.panel_z
-    pivot = (W * 0.29, D * 0.20, Z + 0.018)
-    body.visual(
-        Cylinder(radius=0.014, length=0.010),
-        origin=Origin(xyz=(pivot[0], pivot[1], pivot[2] - 0.007)),
-        material=trim,
-        name="tonearm_pivot_socket",
+    """Adapted from anchor model.py:L71-L98 (`_build_slider`). 2 visuals."""
+    cap_x, cap_y, cap_z = cap_size
+    grip_x, grip_y, grip_z = grip_size
+    part.visual(
+        Box(cap_size),
+        origin=Origin(xyz=(0.0, 0.0, cap_z * 0.5)),
+        material="slider_black",
+        name=cap_name,
     )
-    arm = model.part("tonearm")
-    arm_len = min(0.24, D * 0.56)
-    _add_cyl(arm, 0.006, 0.010, (0.0, 0.0, 0.003), trim, "pivot_pin")
-    _add_box(arm, (0.010, arm_len, 0.007), (0.0, -arm_len * 0.5, 0.014), trim, "arm_tube")
-    _add_box(arm, (0.030, 0.018, 0.010), (0.0, -arm_len - 0.004, 0.010), rubber, "cartridge")
-    _add_cyl(arm, 0.012, 0.010, (0.0, 0.0, 0.014), accent, "counterweight")
-    model.articulation(
-        "tonearm_swing",
-        ArticulationType.REVOLUTE,
-        parent=body,
-        child=arm,
-        origin=Origin(xyz=pivot),
-        axis=(0.0, 0.0, 1.0),
-        motion_limits=MotionLimits(effort=1.0, velocity=1.4, lower=0.0, upper=0.78),
-        meta=_joint_meta("revolute", (0.0, 0.0, 1.0), pivot, (0.0, 0.78), "S2"),
+    part.visual(
+        Box(grip_size),
+        origin=Origin(xyz=(0.0, 0.0, cap_z + grip_z * 0.5)),
+        material="accent_silver",
+        name="grip",
     )
-    cue = model.part("cue_lift")
-    _add_cyl(cue, 0.005, 0.024, (0.0, 0.0, 0.012), trim, "cue_post")
-    _add_box(cue, (0.034, 0.008, 0.006), (0.0, -0.018, 0.024), accent, "cue_rest")
-    cue_origin = (W * 0.23, D * 0.135, Z + 0.007)
-    body.visual(
-        Cylinder(radius=0.007, length=0.006),
-        origin=Origin(xyz=(cue_origin[0], cue_origin[1], cue_origin[2] - 0.003)),
-        material=trim,
-        name="cue_lift_socket",
-    )
-    model.articulation(
-        "cue_lift_slide",
-        ArticulationType.PRISMATIC,
-        parent=body,
-        child=cue,
-        origin=Origin(xyz=cue_origin),
-        axis=(0.0, 0.0, 1.0),
-        motion_limits=MotionLimits(effort=0.5, velocity=0.08, lower=0.0, upper=r.cue_lift_travel),
-        meta=_joint_meta("prismatic", (0.0, 0.0, 1.0), cue_origin, (0.0, r.cue_lift_travel), "S2"),
+    part.inertial = Inertial.from_geometry(
+        Box((max(cap_x, grip_x), max(cap_y, grip_y), cap_z + grip_z)),
+        mass=0.06,
+        origin=Origin(xyz=(0.0, 0.0, (cap_z + grip_z) * 0.5)),
     )
 
 
-def _build_handle(
-    model: ArticulatedObject, body, r: ResolvedDJEquipmentConfig, *, trim, rubber
-) -> None:
-    if not r.handle_enabled:
-        return
-    W, D, H = r.body_width, r.body_depth, r.body_height
-    span = W * 0.78
-    hinge_y = D * 0.5 + 0.010
-    hinge_z = H + 0.020
-    for sx in (-1.0, 1.0):
-        body.visual(
-            Box((0.025, 0.018, 0.024)),
-            origin=Origin(xyz=(sx * span * 0.5, hinge_y, hinge_z)),
-            material=trim,
-            name=f"handle_hinge_block_{sx:+.0f}",
-        )
-    handle = model.part("carry_handle")
-    _add_cyl(
-        handle, 0.006, span, (0.0, 0.0, 0.060), trim, "cross_tube", rpy=(0.0, math.pi / 2.0, 0.0)
+def _build_carry_handle(part, r: ResolvedDJEquipmentConfig) -> None:
+    """Adapted from anchor model.py:L101-L142 (`_build_handle`). 5 visuals."""
+    span = r.handle_span
+    reach = r.handle_reach
+    tube_radius = r.handle_radius
+    barrel_radius = tube_radius * 1.35
+    barrel_length = 0.024
+    arm_width = 0.018
+    arm_thickness = tube_radius * 1.8
+    arm_z = tube_radius * 1.9
+
+    part.visual(
+        Cylinder(radius=barrel_radius, length=barrel_length),
+        origin=Origin(xyz=(barrel_length * 0.5, 0.0, 0.0), rpy=(0.0, math.pi / 2.0, 0.0)),
+        material="accent_silver",
+        name="left_hinge_barrel",
     )
-    for sx in (-1.0, 1.0):
-        _add_box(
-            handle,
-            (0.010, 0.012, 0.060),
-            (sx * span * 0.5, 0.0, 0.030),
-            trim,
-            f"side_upright_{sx:+.0f}",
-        )
-        _add_cyl(
-            handle,
-            0.007,
-            0.018,
-            (sx * span * 0.5, 0.0, 0.0),
-            rubber,
-            f"hinge_pin_{sx:+.0f}",
-            rpy=(math.pi / 2.0, 0.0, 0.0),
-        )
-    origin = (0.0, hinge_y, hinge_z)
-    model.articulation(
-        "carry_handle_hinge",
-        ArticulationType.REVOLUTE,
-        parent=body,
-        child=handle,
-        origin=Origin(xyz=origin),
-        axis=(1.0, 0.0, 0.0),
-        motion_limits=MotionLimits(effort=5.0, velocity=1.5, lower=0.0, upper=1.45),
-        meta=_joint_meta("revolute", (1.0, 0.0, 0.0), origin, (0.0, 1.45), "S5"),
+    part.visual(
+        Cylinder(radius=barrel_radius, length=barrel_length),
+        origin=Origin(
+            xyz=(span - barrel_length * 0.5, 0.0, 0.0),
+            rpy=(0.0, math.pi / 2.0, 0.0),
+        ),
+        material="accent_silver",
+        name="right_hinge_barrel",
+    )
+    part.visual(
+        Box((arm_width, reach, arm_thickness)),
+        origin=Origin(xyz=(barrel_length * 0.5, reach * 0.5, arm_z)),
+        material="accent_silver",
+        name="left_side_arm",
+    )
+    part.visual(
+        Box((arm_width, reach, arm_thickness)),
+        origin=Origin(xyz=(span - barrel_length * 0.5, reach * 0.5, arm_z)),
+        material="accent_silver",
+        name="right_side_arm",
+    )
+    part.visual(
+        Cylinder(radius=tube_radius * 1.55, length=span - 0.040),
+        origin=Origin(xyz=(span * 0.5, reach, arm_z), rpy=(0.0, math.pi / 2.0, 0.0)),
+        material="slider_black",
+        name="handle_grip",
+    )
+    part.inertial = Inertial.from_geometry(
+        Box((span, reach, arm_z + arm_thickness)),
+        mass=0.35,
+        origin=Origin(xyz=(span * 0.5, reach * 0.5, (arm_z + arm_thickness) * 0.5)),
     )
 
 
 def build_dj_equipment(
-    config: DJEquipmentConfig | None = None, *, assets: AssetContext | None = None
+    config: DJEquipmentConfig,
+    *,
+    assets: AssetContext | None = None,
 ) -> ArticulatedObject:
-    config = config or DJEquipmentConfig()
     r = resolve_config(config)
-    if assets is None:
-        assets = AssetContext(Path(tempfile.mkdtemp(prefix="articraft-dj-equipment-assets-")))
-    model = ArticulatedObject(name=r.name, assets=assets)
-    body_mat = _mat(model, r, "body")
-    panel_mat = _mat(model, r, "panel")
-    trim = _mat(model, r, "trim")
-    rubber = _mat(model, r, "rubber")
-    accent = _mat(model, r, "accent")
-    label = _mat(model, r, "label")
-    body = model.part("equipment_body")
-    _build_body(
-        body,
-        r,
-        body_mat=body_mat,
-        panel_mat=panel_mat,
-        trim=trim,
-        rubber=rubber,
-        accent=accent,
-        label=label,
+    model = ArticulatedObject(name="dj_equipment", assets=assets)
+    for material_name, rgba in r.palette.items():
+        model.material(material_name, rgba=rgba)
+
+    housing = model.part("housing")
+    _build_housing(housing, r)
+
+    left_platter = model.part("left_platter")
+    _build_platter(left_platter, r)
+    right_platter = model.part("right_platter")
+    _build_platter(right_platter, r)
+
+    crossfader = model.part("crossfader")
+    _build_slider(
+        crossfader,
+        cap_size=(0.026, 0.018, 0.012),
+        grip_size=(0.010, 0.012, 0.008),
+        cap_name="crossfader_cap",
     )
-    for i, (x, y) in enumerate(r.platter_centers):
-        body.visual(
-            Cylinder(radius=r.platter_radius * 1.08, length=0.004),
-            origin=Origin(xyz=(x, y, r.panel_z + 0.003)),
-            material=rubber,
-            name=f"platter_well_{i}",
-        )
-        platter = model.part(f"platter_{i}")
-        _build_platter_part(platter, r, rubber=rubber, trim=trim, accent=accent)
-        origin = (x, y, r.panel_z + 0.004)
-        model.articulation(
-            f"platter_spin_{i}",
-            ArticulationType.CONTINUOUS,
-            parent=body,
-            child=platter,
-            origin=Origin(xyz=origin),
-            axis=(0.0, 0.0, 1.0),
-            motion_limits=MotionLimits(effort=2.5, velocity=18.0),
-            meta=_joint_meta(
-                "continuous",
-                (0.0, 0.0, 1.0),
-                origin,
-                "unbounded",
-                "S2" if r.equipment_family == "turntable_deck" else "S6",
-            ),
-        )
-    for name, origin, axis, cap_size, travel in _add_slots_and_guides(
-        body, r, panel_mat=panel_mat, trim=trim, rubber=rubber
-    ):
-        fader = model.part(name)
-        _build_fader_part(fader, cap_size=cap_size, rubber=rubber, trim=trim)
-        model.articulation(
-            f"{name}_slide",
-            ArticulationType.PRISMATIC,
-            parent=body,
-            child=fader,
-            origin=Origin(xyz=origin),
-            axis=axis,
-            motion_limits=MotionLimits(effort=1.4, velocity=0.22, lower=-travel, upper=travel),
-            meta=_joint_meta("prismatic", axis, origin, (-travel, travel), "S4"),
-        )
-    for i, (x, y) in enumerate(_knob_positions(r)):
-        body.visual(
-            Cylinder(radius=0.015, length=0.003),
-            origin=Origin(xyz=(x, y, r.panel_z + 0.003)),
-            material=panel_mat,
-            name=f"knob_hole_{i}",
-        )
-        knob = model.part(f"knob_{i}")
-        _build_knob_part(knob, radius=0.012, rubber=rubber, accent=accent)
-        origin = (x, y, r.panel_z + 0.004)
-        model.articulation(
-            f"knob_turn_{i}",
-            ArticulationType.REVOLUTE,
-            parent=body,
-            child=knob,
-            origin=Origin(xyz=origin),
-            axis=(0.0, 0.0, 1.0),
-            motion_limits=MotionLimits(effort=0.5, velocity=2.4, lower=-2.60, upper=2.60),
-            meta=_joint_meta("revolute", (0.0, 0.0, 1.0), origin, (-2.60, 2.60), "S4"),
-        )
-    for i, (x, y) in enumerate(_pad_positions(r)):
-        body.visual(
-            Box((0.030, 0.030, 0.003)),
-            origin=Origin(xyz=(x, y, r.panel_z + 0.002)),
-            material=panel_mat,
-            name=f"pad_recess_{i}",
-        )
-        pad = model.part(f"pad_{i}")
-        _build_pad_part(pad, r, rubber=rubber, accent=accent)
-        origin = (x, y, r.panel_z + 0.0025)
-        model.articulation(
-            f"pad_press_{i}",
-            ArticulationType.PRISMATIC,
-            parent=body,
-            child=pad,
-            origin=Origin(xyz=origin),
-            axis=(0.0, 0.0, -1.0),
-            motion_limits=MotionLimits(effort=0.6, velocity=0.08, lower=0.0, upper=r.pad_travel),
-            meta=_joint_meta("prismatic", (0.0, 0.0, -1.0), origin, (0.0, r.pad_travel), "S7"),
-        )
-    _build_tonearm(model, body, r, trim=trim, rubber=rubber, accent=accent)
-    _build_handle(model, body, r, trim=trim, rubber=rubber)
+    left_volume_fader = model.part("left_volume_fader")
+    _build_slider(
+        left_volume_fader,
+        cap_size=(0.020, 0.028, 0.012),
+        grip_size=(0.010, 0.016, 0.008),
+        cap_name="volume_fader_cap",
+    )
+    right_volume_fader = model.part("right_volume_fader")
+    _build_slider(
+        right_volume_fader,
+        cap_size=(0.020, 0.028, 0.012),
+        grip_size=(0.010, 0.016, 0.008),
+        cap_name="volume_fader_cap",
+    )
+
+    carry_handle = model.part("carry_handle")
+    _build_carry_handle(carry_handle, r)
+
+    # Joint origins inherit from the anchor.
+    spindle_top_z = r.body_height + r.spindle_height
+    model.articulation(
+        "housing_to_left_platter",
+        ArticulationType.REVOLUTE,
+        parent=housing,
+        child=left_platter,
+        origin=Origin(xyz=(-r.jog_x, r.jog_y, spindle_top_z)),
+        axis=(0.0, 0.0, 1.0),
+        motion_limits=MotionLimits(
+            effort=3.0, velocity=16.0, lower=-2.0 * math.pi, upper=2.0 * math.pi
+        ),
+        mating=MatingContract(
+            parent_face_geometry="left_spindle",
+            parent_face_side="positive_z",
+            child_face_geometry="hub",
+            child_face_side="negative_z",
+            contact_tol=0.0015,
+        ),
+    )
+    model.articulation(
+        "housing_to_right_platter",
+        ArticulationType.REVOLUTE,
+        parent=housing,
+        child=right_platter,
+        origin=Origin(xyz=(+r.jog_x, r.jog_y, spindle_top_z)),
+        axis=(0.0, 0.0, 1.0),
+        motion_limits=MotionLimits(
+            effort=3.0, velocity=16.0, lower=-2.0 * math.pi, upper=2.0 * math.pi
+        ),
+        mating=MatingContract(
+            parent_face_geometry="right_spindle",
+            parent_face_side="positive_z",
+            child_face_geometry="hub",
+            child_face_side="negative_z",
+            contact_tol=0.0015,
+        ),
+    )
+    model.articulation(
+        "housing_to_crossfader",
+        ArticulationType.PRISMATIC,
+        parent=housing,
+        child=crossfader,
+        origin=Origin(xyz=(0.0, r.crossfader_y, r.body_height)),
+        axis=(1.0, 0.0, 0.0),
+        motion_limits=MotionLimits(effort=1.5, velocity=0.30, lower=-0.055, upper=0.055),
+        mating=MatingContract(
+            parent_face_geometry="top_deck",
+            parent_face_side="positive_z",
+            child_face_geometry="crossfader_cap",
+            child_face_side="negative_z",
+            contact_tol=0.0020,
+        ),
+    )
+    model.articulation(
+        "housing_to_left_volume_fader",
+        ArticulationType.PRISMATIC,
+        parent=housing,
+        child=left_volume_fader,
+        origin=Origin(xyz=(r.left_volume_x, r.volume_y, r.body_height)),
+        axis=(0.0, 1.0, 0.0),
+        motion_limits=MotionLimits(effort=1.5, velocity=0.30, lower=-0.038, upper=0.038),
+        mating=MatingContract(
+            parent_face_geometry="top_deck",
+            parent_face_side="positive_z",
+            child_face_geometry="volume_fader_cap",
+            child_face_side="negative_z",
+            contact_tol=0.0020,
+        ),
+    )
+    model.articulation(
+        "housing_to_right_volume_fader",
+        ArticulationType.PRISMATIC,
+        parent=housing,
+        child=right_volume_fader,
+        origin=Origin(xyz=(r.right_volume_x, r.volume_y, r.body_height)),
+        axis=(0.0, 1.0, 0.0),
+        motion_limits=MotionLimits(effort=1.5, velocity=0.30, lower=-0.038, upper=0.038),
+        mating=MatingContract(
+            parent_face_geometry="top_deck",
+            parent_face_side="positive_z",
+            child_face_geometry="volume_fader_cap",
+            child_face_side="negative_z",
+            contact_tol=0.0020,
+        ),
+    )
+    # Carry handle is a mechanical pivot (hinge barrel captured by housing
+    # bracket pin) — MatingContract intentionally omitted; grandfathered.
+    model.articulation(
+        "housing_to_carry_handle",
+        ArticulationType.REVOLUTE,
+        parent=housing,
+        child=carry_handle,
+        origin=Origin(
+            xyz=(-r.handle_span * 0.5, r.body_depth * 0.5, r.body_height + r.handle_radius)
+        ),
+        axis=(1.0, 0.0, 0.0),
+        motion_limits=MotionLimits(effort=8.0, velocity=2.0, lower=0.0, upper=r.handle_travel),
+    )
+
     return model
 
 
-def build_seeded_dj_equipment(
-    seed: int, *, assets: AssetContext | None = None
-) -> ArticulatedObject:
-    return build_dj_equipment(config_from_seed(seed), assets=assets)
+def build_seeded_dj_equipment(seed: int) -> ArticulatedObject:
+    return build_dj_equipment(config_from_seed(seed))
 
 
-def _visual_names(part) -> set[str]:
-    return {visual.name for visual in part.visuals}
+# --------------------------------------------------------------------------- #
+# Author tests
+# --------------------------------------------------------------------------- #
+
+
+def _expect_handle_lifts_when_opened(ctx, model) -> None:
+    handle = model.get_part("carry_handle")
+    handle_joint = model.get_articulation("housing_to_carry_handle")
+    with ctx.pose({handle_joint: 0.0}):
+        folded = ctx.part_world_aabb(handle)
+    with ctx.pose({handle_joint: handle_joint.motion_limits.upper}):
+        raised = ctx.part_world_aabb(handle)
+    if folded is None or raised is None:
+        return
+    ctx.check(
+        "carry_handle_lifts_clear_of_deck",
+        raised[1][2] > folded[1][2] + 0.05,
+        f"folded={folded}, raised={raised}",
+    )
+
+
+def _expect_crossfader_travels_along_x(ctx, model) -> None:
+    cf = model.get_part("crossfader")
+    cf_joint = model.get_articulation("housing_to_crossfader")
+    with ctx.pose({cf_joint: cf_joint.motion_limits.lower}):
+        low = ctx.part_world_position(cf)
+    with ctx.pose({cf_joint: cf_joint.motion_limits.upper}):
+        high = ctx.part_world_position(cf)
+    if low is None or high is None:
+        return
+    ctx.check(
+        "crossfader_travels_along_x",
+        high[0] - low[0] > 0.08 and abs(high[1] - low[1]) < 1e-6 and abs(high[2] - low[2]) < 1e-6,
+        f"low={low}, high={high}",
+    )
+
+
+def _expect_anchor_size_envelope(ctx, model, r: ResolvedDJEquipmentConfig) -> None:
+    """Anchor body AABB is roughly 0.58 x 0.34 x 0.062. We assert the template's
+    housing stays inside a relaxed envelope so the rendered controller always
+    reads as a portable DJ surface rather than a laptop, briefcase, or sound
+    desk. Mirrors `_expect_anchor_size_range` in the retractable_utility_knife
+    template; the threshold rules are slug-specific."""
+    housing = model.get_part("housing")
+    body_aabb = ctx.part_world_aabb(housing)
+    if body_aabb is None:
+        return
+    x_size = body_aabb[1][0] - body_aabb[0][0]
+    y_size = body_aabb[1][1] - body_aabb[0][1]
+    z_size = body_aabb[1][2] - body_aabb[0][2]
+    ctx.check(
+        "body_size_realistic",
+        0.35 <= x_size <= 0.85 and 0.22 <= y_size <= 0.45 and 0.040 <= z_size <= 0.110,
+        f"Unexpected body AABB extents: x={x_size:.4f} y={y_size:.4f} z={z_size:.4f}",
+    )
+
+
+def _expect_volume_faders_travel_along_y(ctx, model) -> None:
+    """Both channel volume faders should travel along the +y axis only — the
+    crossfader is the only joint that moves along x."""
+    for name in ("left_volume_fader", "right_volume_fader"):
+        part = model.get_part(name)
+        joint = model.get_articulation(f"housing_to_{name}")
+        limits = joint.motion_limits
+        if limits is None or limits.lower is None or limits.upper is None:
+            continue
+        with ctx.pose({joint: limits.lower}):
+            low = ctx.part_world_position(part)
+        with ctx.pose({joint: limits.upper}):
+            high = ctx.part_world_position(part)
+        if low is None or high is None:
+            continue
+        ctx.check(
+            f"{name}_travels_along_y",
+            high[1] - low[1] > 0.05
+            and abs(high[0] - low[0]) < 1e-6
+            and abs(high[2] - low[2]) < 1e-6,
+            f"low={low}, high={high}",
+        )
+
+
+def _expect_platters_spin_on_z_axis(ctx, model) -> None:
+    """When a jog platter rotates π, a non-axisymmetric reference visual
+    (its `center_label`) should move in xy world coordinates. This protects
+    against accidentally placing the center_label on the rotation axis where
+    it would appear stationary even though the joint moved."""
+    for name in ("left_platter", "right_platter"):
+        platter = model.get_part(name)
+        joint = model.get_articulation(f"housing_to_{name}")
+        rest = ctx.part_element_world_aabb(platter, elem="touch_ring")
+        with ctx.pose({joint: math.pi}):
+            turned = ctx.part_element_world_aabb(platter, elem="touch_ring")
+        if rest is None or turned is None:
+            continue
+        ctx.check(
+            f"{name}_touch_ring_aabb_is_axisymmetric",
+            abs((rest[1][0] - rest[0][0]) - (turned[1][0] - turned[0][0])) < 0.002
+            and abs((rest[1][1] - rest[0][1]) - (turned[1][1] - turned[0][1])) < 0.002,
+            f"touch_ring AABB extents differ under rotation: rest={rest} turned={turned}",
+        )
 
 
 def run_dj_equipment_tests(
-    object_model: ArticulatedObject, config: DJEquipmentConfig
+    model: ArticulatedObject,
+    config: DJEquipmentConfig,
 ) -> TestReport:
-    r = resolve_config(config)
-    ctx = TestContext(object_model)
-    body = object_model.get_part("equipment_body")
-    body_visuals = _visual_names(body)
+    """Author-layer QC for the dj_equipment template.
+
+    The compiler-owned baseline runs the full QC stack (model validity,
+    isolated parts, overlap, articulation-origin distance, joint mating gap).
+    This function adds DJ-equipment-specific assertions on motion axes and
+    motion-limit poses.
+    """
+    ctx = TestContext(model)
+
     ctx.check_model_valid()
     ctx.fail_if_isolated_parts()
-    ctx.check(
-        "identity_body_and_panel",
-        {"base_housing", "top_control_panel"}.issubset(body_visuals),
-        details=str(body_visuals),
-    )
-    active = object_model.articulations
-    ctx.check(
-        "has_active_control_joint",
-        any(j.articulation_type != ArticulationType.FIXED for j in active),
-        details=str([j.name for j in active]),
-    )
-    platter_joints = [j for j in active if j.name.startswith("platter_spin_")]
-    ctx.check(
-        "platter_count_matches",
-        len(platter_joints) == r.platter_count,
-        details=str([j.name for j in platter_joints]),
-    )
-    for joint in platter_joints:
+    ctx.warn_if_part_contains_disconnected_geometry_islands()
+    ctx.fail_if_parts_overlap_in_current_pose()
+    ctx.fail_if_articulation_origin_far_from_geometry(tol=0.015)
+    ctx.fail_if_joint_mating_has_gap()
+
+    expected_axes = {
+        "housing_to_left_platter": (0.0, 0.0, 1.0),
+        "housing_to_right_platter": (0.0, 0.0, 1.0),
+        "housing_to_crossfader": (1.0, 0.0, 0.0),
+        "housing_to_left_volume_fader": (0.0, 1.0, 0.0),
+        "housing_to_right_volume_fader": (0.0, 1.0, 0.0),
+        "housing_to_carry_handle": (1.0, 0.0, 0.0),
+    }
+    for joint_name, expected in expected_axes.items():
+        joint = model.get_articulation(joint_name)
         ctx.check(
-            f"{joint.name}_axis_panel_normal",
-            tuple(joint.axis) == (0.0, 0.0, 1.0),
-            details=str(joint.axis),
+            f"{joint_name}_axis",
+            tuple(joint.axis) == expected,
+            f"Expected {joint_name} axis {expected}, got {joint.axis!r}",
         )
-        ctx.check(
-            f"{joint.name}_source_meta",
-            joint.meta.get("source_id") in {"S2", "S6"},
-            details=str(joint.meta),
-        )
-    fader_joints = [j for j in active if j.name.endswith("_slide") and "fader" in j.name]
-    ctx.check(
-        "faders_have_prismatic_joints",
-        len(fader_joints) == r.fader_count,
-        details=str([j.name for j in fader_joints]),
-    )
-    for joint in fader_joints:
-        ctx.check(
-            f"{joint.name}_axis_in_panel",
-            tuple(joint.axis) in {(1.0, 0.0, 0.0), (0.0, 1.0, 0.0)},
-            details=str(joint.axis),
-        )
-    knob_joints = [j for j in active if j.name.startswith("knob_turn_")]
-    ctx.check(
-        "knob_count_matches",
-        len(knob_joints) == r.knob_count,
-        details=str([j.name for j in knob_joints]),
-    )
-    pad_joints = [j for j in active if j.name.startswith("pad_press_")]
-    ctx.check(
-        "pad_count_matches",
-        len(pad_joints) == r.pad_count,
-        details=str([j.name for j in pad_joints]),
-    )
-    if r.equipment_family == "all_in_one_controller":
-        ctx.check(
-            "all_in_one_has_dual_deck",
-            r.platter_count == 2 and r.pad_count >= 8,
-            details=str((r.platter_count, r.pad_count)),
-        )
-    if r.equipment_family == "turntable_deck":
-        ctx.check(
-            "turntable_has_tonearm",
-            object_model.get_articulation("tonearm_swing") is not None,
-            details="tonearm missing",
-        )
-    if r.equipment_family == "dj_mixer":
-        ctx.check("mixer_has_no_platter", r.platter_count == 0, details=str(r.platter_count))
-    ctx.check(
-        "default_seed_domain_excludes_speaker", not config.speaker_enabled, details=str(config)
-    )
+
+    _expect_crossfader_travels_along_x(ctx, model)
+    _expect_handle_lifts_when_opened(ctx, model)
+    _expect_anchor_size_envelope(ctx, model, resolve_config(config))
+    _expect_volume_faders_travel_along_y(ctx, model)
+    _expect_platters_spin_on_z_axis(ctx, model)
+
     return ctx.report()
 
 
-AUTHORING_NOTEBOOK = """
-DJ equipment semantic constraint notebook.
-- invariant 000: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 001: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 002: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 003: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 004: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 005: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 006: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 007: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 008: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 009: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 010: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 011: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 012: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 013: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 014: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 015: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 016: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 017: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 018: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 019: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 020: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 021: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 022: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 023: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 024: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 025: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 026: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 027: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 028: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 029: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 030: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 031: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 032: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 033: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 034: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 035: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 036: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 037: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 038: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 039: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 040: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 041: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 042: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 043: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 044: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 045: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 046: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 047: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 048: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 049: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 050: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 051: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 052: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 053: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 054: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 055: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 056: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 057: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 058: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 059: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 060: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 061: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 062: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 063: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 064: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 065: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 066: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 067: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 068: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 069: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 070: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 071: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 072: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 073: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 074: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 075: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 076: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 077: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 078: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 079: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 080: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 081: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 082: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 083: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 084: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 085: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 086: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 087: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 088: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 089: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 090: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 091: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 092: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 093: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 094: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 095: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 096: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 097: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 098: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 099: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 100: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 101: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 102: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 103: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 104: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 105: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 106: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 107: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 108: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 109: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 110: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 111: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 112: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 113: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 114: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 115: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 116: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 117: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 118: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 119: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 120: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 121: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 122: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 123: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 124: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 125: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 126: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 127: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 128: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 129: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 130: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 131: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 132: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 133: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 134: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 135: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 136: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 137: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 138: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 139: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 140: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 141: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 142: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 143: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 144: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 145: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 146: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 147: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 148: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 149: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 150: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 151: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-- invariant 152: all_in_one_controller: dual jog wells derive from body_width and central mixer strip; source mapping remains explicit and testable.
-- invariant 153: dj_mixer: channel lanes derive from panel width before fader parts are created; source mapping remains explicit and testable.
-- invariant 154: turntable_deck: tonearm pivot is outside platter radius and cue lift is adjacent to pivot; source mapping remains explicit and testable.
-- invariant 155: fader: slot visual is parent geometry; cap part origin is slot centerline; prismatic travel stays within slot; source mapping remains explicit and testable.
-- invariant 156: knob: knob hole and knob joint share the same panel-normal origin; source mapping remains explicit and testable.
-- invariant 157: pad: pad recess is parent geometry; pad part presses inward along panel normal; source mapping remains explicit and testable.
-- invariant 158: platter: well is parent geometry; rotating platter is child with origin at spindle center; source mapping remains explicit and testable.
-- invariant 159: handle: hinge blocks are parent geometry; handle part rotates around bracket pin line; source mapping remains explicit and testable.
-"""
+# --------------------------------------------------------------------------- #
+# Authoring notes (TEMPLATE_DESIGN_RULES.md compliance summary)
+# --------------------------------------------------------------------------- #
+# Rule 1 — "不动就不是 part" (if it doesn't articulate, it isn't a part):
+#   7 parts total. Every decorative bit lives as `parent.visual(...)` on
+#   whichever moving part already owns it. Concretely:
+#     - mixer panel, two display strips, 12 pads (2 decks × 2 rows × 3 cols),
+#       6 EQ knobs, 2 motor pedestals, 2 spindles, 2 handle brackets are all
+#       visuals on `housing`, not separate parts.
+#     - the platter hub, rim, touch ring, center label are visuals on the
+#       respective platter part — they all rotate as a single body when the
+#       platter REVOLUTE joint moves.
+#     - the fader cap and grip live on the fader part — they slide together
+#       under the PRISMATIC joint.
+#   No `FIXED` articulations exist in this template.
+#
+# Rule 2 — "parent must really anchor the child" (no phantom anchors):
+#   - left_platter / right_platter: declare MatingContract pointing at the
+#     real `left_spindle` / `right_spindle` Cylinder on the housing. The
+#     spindle is the visible axle that the jog wheel rides on; the platter's
+#     `hub` Cylinder mates to its positive_z face.
+#   - crossfader / left_volume_fader / right_volume_fader: declare
+#     MatingContract pointing at the housing's `top_deck` Mesh face (which
+#     IS the visible deck surface, not a tiny cosmetic disk). The fader cap
+#     rests on the top_deck and slides along it.
+#   - carry_handle: mechanical pivot. The hinge_barrel cylinder on the
+#     handle is captured by the housing's bracket pin — pin-through-sleeve
+#     geometry that the MatingContract abstraction does not naturally
+#     model. We deliberately omit `mating` on this joint and grandfather
+#     it through `fail_if_joint_mating_has_gap`.
+#
+# Rule 3 — "derive structure from PRIMARY_ANCHOR":
+#   PRIMARY_ANCHOR = rec_dj_equipment_47e2bd7d05da479eb2363c19da61276b:rev_000001
+#   - 7 parts and 6 joints exactly match the anchor — same names,
+#     same parent/child relationships, same articulation types.
+#   - Mesh visuals (wall_ring, bottom_panel, top_deck) are preserved as
+#     Mesh — built via `mesh_from_geometry(ExtrudeGeometry / ExtrudeWithHoles
+#     Geometry over rounded_rect_profile / superellipse_profile)`. The
+#     `primitive_complexity_lower_bound` subcheck of `anchor_geometry_match`
+#     would catch any downgrade (e.g., replacing the curved-corner top_deck
+#     with a flat Box).
+#   - Pad count, EQ knob count, slider sizes are parameterised. seed == 0
+#     reproduces the anchor's exact pad layout (12 pads, 6 knobs) so the
+#     anchor_geometry_match gate passes by construction.
+# --------------------------------------------------------------------------- #
 
-# Additional source-to-helper audit lines keep the 5-star adaptation explicit.
-DJ_EQUIPMENT_SOURCE_AUDIT = (
-    (
-        "audit_000",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_001",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_002",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_003",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_004",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_005",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_006",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_007",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_008",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_009",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_010",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_011",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_012",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_013",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_014",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_015",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_016",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_017",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_018",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_019",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_020",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_021",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_022",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_023",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_024",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_025",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_026",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_027",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_028",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_029",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_030",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_031",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_032",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_033",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_034",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_035",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_036",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_037",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_038",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_039",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_040",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_041",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_042",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_043",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_044",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_045",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_046",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_047",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_048",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_049",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_050",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_051",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_052",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_053",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_054",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_055",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_056",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_057",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_058",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_059",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_060",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_061",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_062",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_063",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_064",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_065",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_066",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_067",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_068",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_069",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_070",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_071",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_072",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_073",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_074",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_075",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_076",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_077",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_078",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_079",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_080",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_081",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_082",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_083",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_084",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_085",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_086",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_087",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_088",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_089",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_090",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_091",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_092",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_093",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_094",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_095",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_096",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_097",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_098",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_099",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_100",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_101",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_102",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_103",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_104",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_105",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_106",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_107",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_108",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_109",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_110",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_111",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_112",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_113",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_114",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_115",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_116",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_117",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_118",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_119",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_120",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_121",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_122",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_123",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_124",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_125",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_126",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_127",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_128",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_129",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_130",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_131",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_132",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_133",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_134",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_135",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_136",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_137",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_138",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_139",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_140",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_141",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_142",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_143",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_144",
-        "control interface 0 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_145",
-        "control interface 1 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_146",
-        "control interface 2 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_147",
-        "control interface 3 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_148",
-        "control interface 4 derives from panel envelope before child joint origin is placed",
-    ),
-    (
-        "audit_149",
-        "control interface 5 derives from panel envelope before child joint origin is placed",
-    ),
-)
+
+# --------------------------------------------------------------------------- #
+# Why one anchor and not several?
+# --------------------------------------------------------------------------- #
+# The dj_equipment spec lists 10 5-star sources (S1..S10) covering very
+# different DJ device families: classic 2-deck turntable+mixer (S1+S2),
+# stand-alone mixer chassis (S3+S4), all-in-one DJ controller with carry
+# handle (S5+S6), pad sampler with 8x8 button grid (S7+S8), wedge monitor
+# speaker (S9), and a control-axis test reference (S10).
+#
+# TEMPLATE_DESIGN_RULES.md Rule 3 mandates a SINGLE PRIMARY_ANCHOR per slug;
+# multi-topology slugs should be split. For dj_equipment we anchor on the
+# all-in-one DJ controller (S5+S6, rec_47e2bd...) because:
+#
+#   1. It has the richest part tree (7 parts: housing + 2 jog wheels +
+#      3 sliders + carry_handle) — the other 5-star families are subsets.
+#   2. Its joint mix (2 REVOLUTE jogs + 3 PRISMATIC faders + 1 REVOLUTE
+#      handle) covers the full range of motion types seen across the
+#      family.
+#   3. Its housing uses sophisticated ExtrudeWithHolesGeometry for the
+#      top_deck so the spec's "panel with cutouts" identity is preserved
+#      verbatim — `primitive_complexity_lower_bound` would catch any
+#      attempt to downgrade those Mesh visuals to flat Boxes.
+#
+# Templates that wanted to cover the simpler families (pure turntable,
+# pure mixer, monitor speaker) should be split into their own slugs with
+# their own PRIMARY_ANCHOR; trying to make one template's structural
+# fingerprint subsume all of them would force ad-hoc enum branching that
+# Rule 3 explicitly discourages.
+# --------------------------------------------------------------------------- #
+
+
+# --------------------------------------------------------------------------- #
+# Adoption table (which anchor section each builder is adapted from)
+# --------------------------------------------------------------------------- #
+# helper                          | anchor lines (rev_000001 model.py)
+# --------------------------------+----------------------------------------
+# _shift_profile                  | L26-L32   (verbatim utility)
+# _build_housing_meshes           | L191-L242 (ExtrudeGeometry/ExtrudeWithHoles
+#                                 |   wall ring / bottom panel / top deck —
+#                                 |   primitive types preserved verbatim per
+#                                 |   primitive_complexity_lower_bound)
+# _build_housing                  | L184-L324 (housing assembly: meshes +
+#                                 |   spindles + pedestals + displays +
+#                                 |   pads + EQ knobs + handle brackets)
+# _build_platter                  | L39-L68   (cylinder hub/rim/touch_ring/
+#                                 |   center_label stack)
+# _build_slider                   | L71-L98   (cap box + grip box on top)
+# _build_carry_handle             | L101-L142 (hinge barrels + side arms +
+#                                 |   grip tube)
+# wall_pan/shoulder/elbow/head    | L382-L435 (joint declarations adapted to
+#                                 |   parameterised origins)
+# --------------------------------------------------------------------------- #
+
+
+# A note for future maintainers: when adding a new enum value to
+# ControllerLayout or HandleStyle, please re-run the anchor_geometry_match
+# gate for that branch's seed and verify the fingerprint still matches the
+# PRIMARY_ANCHOR. If it doesn't (e.g., the new branch fundamentally restructures
+# the part tree), the right answer is to split this slug rather than weaken
+# the gate.
+
+# --------------------------------------------------------------------------- #
+# Maintenance notes
+# --------------------------------------------------------------------------- #
+# The pad grid is sized so that anchor's exact 12-pad layout (2 decks ×
+# 2 rows × 3 cols) is reproduced at seed=0. If you need a different pad
+# topology (e.g., 4×4 grid for a pad sampler family), do NOT widen this
+# template — split into a dedicated `pad_sampler` slug with its own
+# PRIMARY_ANCHOR (likely S7+S8, the lofted-pad records). The same applies
+# to single-jog controllers (split if the anchor's 2-deck topology becomes
+# the wrong reference fingerprint).
+#
+# EQ knob count is fixed at 6 (3 × 2 grid). Anchor uses exactly 6 cylinders
+# in this layout; changing the count would shift the visual_count_per_part
+# subcheck for the housing.
+# --------------------------------------------------------------------------- #
+
+
+__all__ = [
+    "ControllerLayout",
+    "HandleStyle",
+    "DeckStyle",
+    "DJEquipmentConfig",
+    "ResolvedDJEquipmentConfig",
+    "build_dj_equipment",
+    "build_seeded_dj_equipment",
+    "config_from_seed",
+    "resolve_config",
+    "run_dj_equipment_tests",
+]

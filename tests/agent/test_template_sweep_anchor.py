@@ -255,7 +255,8 @@ def test_compare_fails_when_template_introduces_extra_joint_topology() -> None:
     jt = next(sc for sc in report.subchecks if sc.name == "joint_topology")
     assert jt.status == "fail"
     extra = next(d for d in jt.deviations if d["kind"] == "extra_joints")
-    assert ["rotor", "knob_hole", "FIXED"] in extra["joints"]
+    joint_triples = [tuple(j) for j in extra["joints"]]
+    assert ("rotor", "knob_hole", "FIXED") in joint_triples
 
 
 def test_compare_fails_when_bbox_ratio_diverges_significantly() -> None:
