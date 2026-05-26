@@ -417,9 +417,19 @@ Validator 表必须可直接映射到后续测试代码。
 
 ### 4.6 自动调参闭环
 
+> **该节已由 [`TEMPLATE_AUTHORING_AGENT.md`](../TEMPLATE_AUTHORING_AGENT.md) 取代。** 新的强制循环是：
+>
+> ```bash
+> uv run articraft template compile-sweep <slug> --seeds 0-49 --json
+> ```
+>
+> 这个 CLI 在每个 seed 上跑同 record `target=full` 的 author `run_tests` + compiler baseline（包括 `fail_if_articulation_origin_far_from_geometry`），并聚合 `failure_clusters`、`coverage_gates`（line_floor / enum_coverage / adopted_source）、跨调用 `streak_count` 和 `escalation`。本节保留作为旧实现的参考，但**不得作为完成判据**：模板必须按 `TEMPLATE_AUTHORING_AGENT.md` §4 的停止条件验收。
+
+#### 历史描述（仅供参考）
+
 实现初稿后，agent 必须自动调到验收线，不得把调参默认交给用户。
 
-每一轮闭环：
+每一轮闭环（旧版手动列表，请用 `compile-sweep` 替代）：
 
 1. 运行 `uv run pytest tests/agent/test_<category_slug>_template.py`。
 2. 运行 `test "$(wc -l < agent/templates/<category_slug>.py)" -ge 1000`。
@@ -431,7 +441,7 @@ Validator 表必须可直接映射到后续测试代码。
 8. 检查语义约束图和预览是否一致：gasket 必须嵌在 slot，hinge 必须贴 hinge line，fan 必须嵌入 shroud/hub，divider 必须贴底且不压货物，control/handle/button 必须贴面板，不能有解释不清的悬空 visual。
 9. 如果任一项失败，直接修改模板和测试后重复本闭环。
 
-自动调参完成条件：
+旧版完成条件（同上，已被 `TEMPLATE_AUTHORING_AGENT.md` §4 取代）：
 
 - 单测通过。
 - 模板文件 `>= 1000` 行。
@@ -441,7 +451,7 @@ Validator 表必须可直接映射到后续测试代码。
 - 空间派生链可解释，且约束策略与类别拓扑匹配；活动件 closed pose 不悬空、不穿模。
 - `config_from_seed` 不采样未实现分支。
 - `resolve_config` 能校验、夹紧、降级非法或过宽组合。
-- 没有留下 TODO、人工手调建议或“后续再调”的完成状态。
+- 没有留下 TODO、人工手调建议或"后续再调"的完成状态。
 
 只有 spec 矛盾、必须用户决定拆分 slug、或需要用户在保真/覆盖之间取舍时，才允许暂停询问。
 

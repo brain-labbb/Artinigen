@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from agent.runner import create_workbench_draft_record
+from agent.template_sweep import (
+    DEFAULT_PASS_THRESHOLD,
+    DEFAULT_SEED_COUNT,
+    parse_seed_spec,
+    report_to_json,
+    run_sweep,
+    stderr_progress_reporter,
+    write_report,
+)
 from cli.common import add_data_root_argument, warn_if_post_commit_hook_missing
 from cli.external import _compile_record, _refresh_external_record, _validate_external_record
 from storage.collections import CollectionStore
@@ -94,26 +104,6 @@ def run_tests():
 
 object_model = build_object_model()
 """
-
-
-def parse_seed_spec(spec: str) -> list[int]:
-    seeds: list[int] = []
-    for chunk in spec.split(","):
-        part = chunk.strip()
-        if not part:
-            continue
-        if "-" in part:
-            start_text, end_text = part.split("-", 1)
-            start = int(start_text.strip())
-            end = int(end_text.strip())
-            if end < start:
-                raise ValueError(f"Invalid seed range: {part}")
-            seeds.extend(range(start, end + 1))
-        else:
-            seeds.append(int(part))
-    if not seeds:
-        raise ValueError("At least one seed is required")
-    return seeds
 
 
 def _write_template_model(model_path: Path, *, slug: str, stem: str, seed: int) -> None:
@@ -274,12 +264,139 @@ def _build_parser() -> argparse.ArgumentParser:
             help="Print the planned batch without creating records.",
         )
 
+    sweep = subparsers.add_parser(
+        "compile-sweep",
+        help="Run multi-seed full-baseline compile sweep for a procedural template.",
+    )
+    sweep.add_argument("slug", choices=sorted(TEMPLATE_REGISTRY.keys()))
+    sweep.add_argument(
+        "--seeds",
+        default=f"0-{DEFAULT_SEED_COUNT - 1}",
+        help=(f"Seed list/ranges; defaults to '0-{DEFAULT_SEED_COUNT - 1}' (DEFAULT_SEED_COUNT)."),
+    )
+    sweep.add_argument(
+        "--pass-threshold",
+        type=float,
+        default=DEFAULT_PASS_THRESHOLD,
+        help=(f"Minimum pass_rate required for verdict=pass (default {DEFAULT_PASS_THRESHOLD})."),
+    )
+    sweep.add_argument(
+        "--max-workers",
+        type=int,
+        default=None,
+        help=(
+            "ProcessPoolExecutor worker count. Defaults to min(len(seeds), 4); "
+            "use 1 to run sequentially in the current process."
+        ),
+    )
+    sweep.add_argument(
+        "--sdk-package", default="sdk", help="SDK package to load (defaults to 'sdk')."
+    )
+    sweep.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Optional file path to write the JSON report to (in addition to stdout).",
+    )
+    sweep.add_argument(
+        "--state-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Directory to persist per-slug streak state across sweeps. "
+            "Defaults to <repo_root>/.articraft/template_sweep_state when omitted. "
+            "Pass an empty string to disable streak tracking."
+        ),
+    )
+    sweep.add_argument(
+        "--line-floor",
+        type=int,
+        default=1000,
+        help="Minimum line count for the line_floor gate (default 1000).",
+    )
+    sweep.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress per-seed stderr progress lines.",
+    )
+
     return parser
+
+
+def _resolve_state_dir(repo_root: Path, override: Path | None) -> Path | None:
+    """Resolve the per-slug streak-state directory.
+
+    Passing an empty string on the CLI maps to override=Path('') which we treat
+    as 'disable streak tracking' (returns None). Otherwise default to
+    `<repo_root>/.articraft/template_sweep_state`.
+    """
+    if override is None:
+        return Path(repo_root) / ".articraft" / "template_sweep_state"
+    text = str(override).strip()
+    if not text:
+        return None
+    return Path(text)
+
+
+def compile_sweep(
+    *,
+    slug: str,
+    stem: str,
+    seeds: list[int],
+    pass_threshold: float,
+    max_workers: int | None,
+    sdk_package: str,
+    out_path: Path | None,
+    state_dir: Path | None,
+    line_floor: int,
+    quiet: bool,
+) -> int:
+    progress = None if quiet else stderr_progress_reporter(total=len(seeds))
+    try:
+        report = run_sweep(
+            slug=slug,
+            stem=stem,
+            seeds=seeds,
+            sdk_package=sdk_package,
+            pass_threshold=pass_threshold,
+            max_workers=max_workers,
+            progress=progress,
+            state_dir=state_dir,
+            line_floor=line_floor,
+        )
+    except (FileNotFoundError, AttributeError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    payload = report_to_json(report)
+    print(payload)
+    if out_path is not None:
+        write_report(report, out_path=out_path)
+    return 0 if report.verdict == "pass" else 1
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "compile-sweep":
+        try:
+            seeds = parse_seed_spec(args.seeds)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        state_dir = _resolve_state_dir(args.repo_root, args.state_dir)
+        return compile_sweep(
+            slug=args.slug,
+            stem=TEMPLATE_REGISTRY[args.slug],
+            seeds=seeds,
+            pass_threshold=float(args.pass_threshold),
+            max_workers=(None if args.max_workers is None else int(args.max_workers)),
+            sdk_package=str(args.sdk_package),
+            out_path=args.out,
+            state_dir=state_dir,
+            line_floor=int(args.line_floor),
+            quiet=bool(args.quiet),
+        )
 
     if args.command != "batch" or args.template_name not in TEMPLATE_REGISTRY:
         parser.error("Unsupported template command")

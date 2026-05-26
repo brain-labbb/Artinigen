@@ -17,6 +17,16 @@ def _write_isolated_part_model_script(
     allowed_part: str | None = None,
     disconnected_base: bool = False,
 ) -> None:
+    # Layout (z-up):
+    #   base    : visual at z-extent [0.00, 0.10] (centered at z=0.05)
+    #   support : link at world (0, 0, 0.10); visual offset (0,0,0.05) ->
+    #             world z-extent [0.10, 0.20]; joint base_to_support sits on the
+    #             shared face at z=0.10 (dist_parent=0, dist_child=0).
+    #   antenna : link at world (0, 0, 0.20); visual offset (0, 0, 0.055) ->
+    #             world z-extent [0.205, 0.305], leaving a 5 mm air gap above the
+    #             support top (z=0.20). The geometric gap > contact tol so the
+    #             part is reported isolated. The joint support_to_antenna sits
+    #             at z=0.20 (dist_parent=0, dist_child=0.005 < 0.015 baseline tol).
     base_visuals = [
         "base.visual(Box((0.1, 0.1, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.05)))",
     ]
@@ -37,22 +47,22 @@ def _write_isolated_part_model_script(
         "base = object_model.part('base')",
         *base_visuals,
         "support = object_model.part('support')",
-        "support.visual(Box((0.1, 0.1, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.15)))",
+        "support.visual(Box((0.1, 0.1, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.05)))",
         "antenna = object_model.part('antenna')",
-        "antenna.visual(Box((0.04, 0.04, 0.2)), origin=Origin(xyz=(0.0, 0.0, 0.1)))",
+        "antenna.visual(Box((0.04, 0.04, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.055)))",
         "object_model.articulation(",
         "    'base_to_support',",
         "    ArticulationType.FIXED,",
         "    parent=base,",
         "    child=support,",
-        "    origin=Origin(xyz=(0.0, 0.0, 0.0)),",
+        "    origin=Origin(xyz=(0.0, 0.0, 0.1)),",
         ")",
         "object_model.articulation(",
-        "    'base_to_antenna',",
+        "    'support_to_antenna',",
         "    ArticulationType.FIXED,",
-        "    parent=base,",
+        "    parent=support,",
         "    child=antenna,",
-        "    origin=Origin(xyz=(0.6, 0.0, 0.0)),",
+        "    origin=Origin(xyz=(0.0, 0.0, 0.1)),",
         ")",
         "",
         "def run_tests():",
@@ -390,6 +400,113 @@ def test_compile_urdf_report_unrelated_isolated_part_allowance_does_not_suppress
 
     with pytest.raises(RuntimeError, match="Isolated parts detected"):
         compile_urdf_report(script_path, run_checks=True, target="full")
+
+
+def _write_articulation_origin_gap_model_script(
+    script_path: Path,
+    *,
+    gap_distance: float,
+) -> None:
+    """Write a model where parent + child geometry are 1m apart along x, with the
+    articulation origin placed `gap_distance` along x in the parent frame.
+    When gap_distance is ~0.5m, both parent and child are ~0.5m from the joint origin."""
+    child_world_x = 1.0
+    child_visual_offset_x = -(child_world_x - gap_distance)
+    script_path.write_text(
+        "\n".join(
+            [
+                "from __future__ import annotations",
+                "",
+                "from sdk import (",
+                "    ArticulatedObject,",
+                "    ArticulationType,",
+                "    Box,",
+                "    MotionLimits,",
+                "    Origin,",
+                "    TestContext,",
+                ")",
+                "",
+                "object_model = ArticulatedObject(name='articulation_gap')",
+                "parent = object_model.part('parent')",
+                "parent.visual(Box((0.1, 0.1, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.0)))",
+                "child = object_model.part('child')",
+                f"child.visual(Box((0.1, 0.1, 0.1)), origin=Origin(xyz=({child_visual_offset_x}, 0.0, 0.0)))",
+                "object_model.articulation(",
+                "    'parent_to_child',",
+                "    ArticulationType.REVOLUTE,",
+                "    parent=parent,",
+                "    child=child,",
+                "    axis=(0.0, 1.0, 0.0),",
+                f"    origin=Origin(xyz=({gap_distance}, 0.0, 0.0)),",
+                "    motion_limits=MotionLimits(effort=1.0, velocity=1.0, lower=-1.0, upper=1.0),",
+                ")",
+                "",
+                "def run_tests():",
+                "    ctx = TestContext(object_model)",
+                "    return ctx.report()",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_compile_urdf_report_baseline_fails_for_articulation_origin_gap(tmp_path: Path) -> None:
+    script_path = tmp_path / "model.py"
+    _write_articulation_origin_gap_model_script(script_path, gap_distance=0.5)
+
+    with pytest.raises(RuntimeError, match="Articulation origin"):
+        compile_urdf_report(script_path, run_checks=True, target="full")
+
+
+def test_compile_urdf_report_baseline_passes_for_close_articulation_origin(tmp_path: Path) -> None:
+    script_path = tmp_path / "model.py"
+    # parent extent x=[-0.05, 0.05]; joint origin x=0.005 lies inside parent geometry.
+    # child link at world (0.005, 0, 0); child visual offset puts its world extent
+    # around x=[0.955, 1.055], so dist_child ~ 0.95m -> too big.
+    # Use a tiny gap_distance so joint origin sits inside parent AND child geometry.
+    # Parent extent [-0.05, 0.05]; child link at world (0.01,0,0); child visual offset
+    # = -(1.0 - 0.01) = -0.99 -> child visual world center = (0.01 + -0.99) = -0.98.
+    # That puts child far from joint origin. Use a different construction: place parent
+    # and child both close to the joint origin.
+    script_path.write_text(
+        "\n".join(
+            [
+                "from __future__ import annotations",
+                "",
+                "from sdk import (",
+                "    ArticulatedObject,",
+                "    ArticulationType,",
+                "    Box,",
+                "    MotionLimits,",
+                "    Origin,",
+                "    TestContext,",
+                ")",
+                "",
+                "object_model = ArticulatedObject(name='articulation_close')",
+                "parent = object_model.part('parent')",
+                "parent.visual(Box((0.1, 0.1, 0.1)), origin=Origin(xyz=(-0.05, 0.0, 0.0)))",
+                "child = object_model.part('child')",
+                "child.visual(Box((0.1, 0.1, 0.1)), origin=Origin(xyz=(0.05, 0.0, 0.0)))",
+                "object_model.articulation(",
+                "    'parent_to_child',",
+                "    ArticulationType.REVOLUTE,",
+                "    parent=parent,",
+                "    child=child,",
+                "    axis=(0.0, 1.0, 0.0),",
+                "    origin=Origin(xyz=(0.0, 0.0, 0.0)),",
+                "    motion_limits=MotionLimits(effort=1.0, velocity=1.0, lower=-1.0, upper=1.0),",
+                ")",
+                "",
+                "def run_tests():",
+                "    ctx = TestContext(object_model)",
+                "    return ctx.report()",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    report = compile_urdf_report(script_path, run_checks=True, target="full")
+    assert "<robot" in report.urdf_xml
 
 
 def test_compile_urdf_report_fails_when_model_has_multiple_root_parts(tmp_path: Path) -> None:
