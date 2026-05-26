@@ -7,6 +7,7 @@ from pathlib import Path
 
 from agent.runner import create_workbench_draft_record
 from agent.template_sweep import (
+    DEFAULT_COMPILE_TIMEOUT_S,
     DEFAULT_PASS_THRESHOLD,
     DEFAULT_SEED_COUNT,
     parse_seed_spec,
@@ -264,6 +265,21 @@ def _build_parser() -> argparse.ArgumentParser:
             help="Print the planned batch without creating records.",
         )
 
+    fp = subparsers.add_parser(
+        "anchor-fingerprint",
+        help=(
+            "Extract the geometry fingerprint of a 5-star anchor record so it can be "
+            "diffed against a template's seed=0 fingerprint."
+        ),
+    )
+    fp.add_argument(
+        "anchor",
+        help="Anchor reference, e.g. 'rec_ceiling_fan_xxx' or 'rec_ceiling_fan_xxx:rev_000001'.",
+    )
+    fp.add_argument(
+        "--indent", type=int, default=2, help="JSON indentation (default 2; 0 for compact)."
+    )
+
     sweep = subparsers.add_parser(
         "compile-sweep",
         help="Run multi-seed full-baseline compile sweep for a procedural template.",
@@ -315,6 +331,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Minimum line count for the line_floor gate (default 1000).",
     )
     sweep.add_argument(
+        "--compile-timeout",
+        type=float,
+        default=DEFAULT_COMPILE_TIMEOUT_S,
+        help=(
+            "Per-seed wall-time budget in seconds. Each seed compile runs in a "
+            "fresh subprocess that is SIGKILL'd on timeout; the seed is marked "
+            "compile_timeout in the JSON. Set to 0 to disable timeouts (legacy "
+            f"in-process ProcessPool path). Default {DEFAULT_COMPILE_TIMEOUT_S:.0f}s."
+        ),
+    )
+    sweep.add_argument(
         "--quiet",
         action="store_true",
         help="Suppress per-seed stderr progress lines.",
@@ -349,6 +376,7 @@ def compile_sweep(
     out_path: Path | None,
     state_dir: Path | None,
     line_floor: int,
+    compile_timeout_s: float,
     quiet: bool,
 ) -> int:
     progress = None if quiet else stderr_progress_reporter(total=len(seeds))
@@ -363,6 +391,7 @@ def compile_sweep(
             progress=progress,
             state_dir=state_dir,
             line_floor=line_floor,
+            compile_timeout_s=compile_timeout_s,
         )
     except (FileNotFoundError, AttributeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
@@ -377,6 +406,20 @@ def compile_sweep(
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "anchor-fingerprint":
+        import json as _json
+
+        from agent.template_sweep_anchor import extract_fingerprint_from_anchor
+
+        try:
+            fp = extract_fingerprint_from_anchor(args.anchor, repo_root=args.repo_root)
+        except (FileNotFoundError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        indent = None if int(args.indent) <= 0 else int(args.indent)
+        print(_json.dumps(fp.to_dict(), indent=indent))
+        return 0
 
     if args.command == "compile-sweep":
         try:
@@ -395,6 +438,7 @@ def main(argv: list[str] | None = None) -> int:
             out_path=args.out,
             state_dir=state_dir,
             line_floor=int(args.line_floor),
+            compile_timeout_s=float(args.compile_timeout),
             quiet=bool(args.quiet),
         )
 

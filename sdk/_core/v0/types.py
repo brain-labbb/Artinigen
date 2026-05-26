@@ -341,6 +341,74 @@ class Part:
         raise ValidationError(f"Unknown visual on part {self.name!r}: {name!r}")
 
 
+_FACE_SIDES = frozenset(
+    {
+        "positive_x",
+        "negative_x",
+        "positive_y",
+        "negative_y",
+        "positive_z",
+        "negative_z",
+    }
+)
+
+
+@dataclass(frozen=True)
+class MatingContract:
+    """Declares which surfaces of a joint's parent and child parts should kiss.
+
+    Goes one level finer than `fail_if_articulation_origin_far_from_geometry`:
+    not just "joint origin is near both parts' geometry" but "the specific
+    mating face on the parent visual and the specific mating face on the child
+    visual are within `contact_tol` of each other in world coordinates at the
+    closed pose".
+
+    `parent_face_geometry` / `child_face_geometry` are visual names assigned
+    via `part.visual(..., name="...")`. `parent_face_side` / `child_face_side`
+    pick which axis-aligned face of that visual is the mating surface, one of:
+    {positive_x, negative_x, positive_y, negative_y, positive_z, negative_z}.
+
+    Templates should declare a MatingContract on every joint they intend to
+    have "tight" contact; the compiler-owned baseline then verifies the
+    contract via `fail_if_joint_mating_has_gap`. Joints without a mating
+    contract are grandfathered (the check is skipped for that joint).
+    """
+
+    parent_face_geometry: str
+    parent_face_side: str
+    child_face_geometry: str
+    child_face_side: str
+    contact_tol: float = 0.001
+
+    def __post_init__(self) -> None:
+        pfg = str(self.parent_face_geometry).strip()
+        cfg = str(self.child_face_geometry).strip()
+        if not pfg:
+            raise ValidationError("MatingContract.parent_face_geometry is required")
+        if not cfg:
+            raise ValidationError("MatingContract.child_face_geometry is required")
+        pfs = str(self.parent_face_side).strip().lower()
+        cfs = str(self.child_face_side).strip().lower()
+        if pfs not in _FACE_SIDES:
+            raise ValidationError(
+                f"MatingContract.parent_face_side must be one of {sorted(_FACE_SIDES)}, got {pfs!r}"
+            )
+        if cfs not in _FACE_SIDES:
+            raise ValidationError(
+                f"MatingContract.child_face_side must be one of {sorted(_FACE_SIDES)}, got {cfs!r}"
+            )
+        tol = float(self.contact_tol)
+        if not (tol >= 0.0):
+            raise ValidationError(
+                f"MatingContract.contact_tol must be >= 0 (got {self.contact_tol!r})"
+            )
+        object.__setattr__(self, "parent_face_geometry", pfg)
+        object.__setattr__(self, "parent_face_side", pfs)
+        object.__setattr__(self, "child_face_geometry", cfg)
+        object.__setattr__(self, "child_face_side", cfs)
+        object.__setattr__(self, "contact_tol", tol)
+
+
 @dataclass(eq=False)
 class Articulation:
     name: str
@@ -352,6 +420,7 @@ class Articulation:
     motion_limits: Optional[MotionLimits] = None
     motion_properties: Optional[MotionProperties] = None
     mimic: Optional[Mimic] = None
+    mating: Optional[MatingContract] = None
     meta: Dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:

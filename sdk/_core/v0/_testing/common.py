@@ -22,6 +22,7 @@ from ..geometry_qc import (
     default_overlap_volume_tol_from_env,
     find_geometry_overlaps,
     find_geometry_overlaps_in_poses,
+    find_joint_mating_findings,
     find_joint_origin_distance_findings,
     find_part_geometry_connectivity_findings,
     find_unsupported_parts,

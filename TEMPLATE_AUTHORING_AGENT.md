@@ -9,6 +9,12 @@ It replaces the manual ad-hoc loop in
 section 4.6 with a CLI-structured one. The spec workflow (sections 2 and 3 of
 `agent_workflow.md`) is unchanged; this doc only governs **TEMPLATE_AFTER_REVIEW**.
 
+**Before writing the first line of code, read [`TEMPLATE_DESIGN_RULES.md`](TEMPLATE_DESIGN_RULES.md).**
+That document defines three hard rules — "不动就不是 part", "parent must
+really anchor the child", and "derive structure from a single
+PRIMARY_ANCHOR" — that are mechanically enforced by the gates below.
+Violating any of them prevents `verdict=pass`.
+
 The single source of truth for whether a template is done is:
 
 ```bash
@@ -17,10 +23,22 @@ uv run articraft template compile-sweep <slug> --seeds 0-49 --json
 
 You may not declare a template complete on the strength of `pytest`,
 `scripts/check_template_qc.py`, or eyeballing previews alone. The sweep CLI
-runs the same full compile pipeline (author `run_tests` + compiler baseline
-including the new `fail_if_articulation_origin_far_from_geometry` check) per
-seed that records go through, plus three coverage gates and a cross-call
-streak/escalation signal that catches the loop bouncing on the same root cause.
+runs the same full compile pipeline records go through. Specifically, the
+compiler-owned baseline now runs:
+
+- `check_model_valid` / `check_single_root_part` / `check_mesh_assets_ready`
+  (model validity)
+- `fail_if_isolated_parts` (geometric connectivity)
+- `fail_if_parts_overlap_in_current_pose` (closed-pose overlap)
+- `fail_if_articulation_origin_far_from_geometry(tol=0.015)` (joint origin
+  not in air)
+- `fail_if_joint_mating_has_gap` (every joint with a declared
+  `MatingContract` has its parent/child mating faces within `contact_tol` in
+  world coordinates — catches the dj_knob "decoration floats above panel"
+  pattern Rule 2 forbids)
+
+…plus the coverage gates listed in §3 (line_floor, anchor_geometry_match,
+and the grandfathered enum_coverage / adopted_source slots).
 
 ---
 
@@ -78,9 +96,10 @@ am bouncing on the same root cause."
     }
   ],
   "coverage_gates": {
-    "line_floor":     { "status": "pass" | "fail", "details": {...}, "reason": "..." },
-    "enum_coverage":  { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." },
-    "adopted_source": { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." }
+    "line_floor":            { "status": "pass" | "fail",              "details": {...}, "reason": "..." },
+    "enum_coverage":         { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." },
+    "adopted_source":        { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." },
+    "anchor_geometry_match": { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." }
   },
   "escalation": {
     "required": false,
@@ -156,6 +175,9 @@ recent sweep:
 - `verdict == "pass"`
 - `pass_rate >= 0.95`
 - `coverage_gates.line_floor.status == "pass"`
+- `coverage_gates.anchor_geometry_match.status == "pass"` (or `"skipped"`
+  only if the slug is grandfathered legacy code; new templates must declare
+  `primary_anchor` and pass).
 - `coverage_gates.enum_coverage.status in {"pass", "skipped"}`
 - `coverage_gates.adopted_source.status in {"pass", "skipped"}`
 - You have visually inspected previews for at least seeds `0, 1, 2` using
@@ -163,7 +185,7 @@ recent sweep:
   and confirmed they look like the category and have no obvious
   identity/proportion/closed-pose problems.
 
-The first five are mechanical and surfaced in the JSON. The sixth still
+The first six are mechanical and surfaced in the JSON. The seventh still
 requires your judgment because no compiler check answers "does this look
 like a <category>." Always do it.
 

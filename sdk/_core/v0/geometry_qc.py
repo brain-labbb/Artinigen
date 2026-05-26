@@ -328,6 +328,25 @@ class PartGeometryConnectivityFinding:
 
 
 @dataclass(frozen=True)
+class JointMatingGapFinding:
+    """One articulation whose MatingContract resolves to two face centers that
+    are farther apart in world coordinates than the declared contact_tol."""
+
+    joint: str
+    parent: str
+    child: str
+    parent_face_geometry: str
+    parent_face_side: str
+    child_face_geometry: str
+    child_face_side: str
+    parent_face_world: Vec3
+    child_face_world: Vec3
+    distance: float
+    contact_tol: float
+    reason: str = ""
+
+
+@dataclass(frozen=True)
 class _MeshComponentCollision:
     local_aabb: AABB
     shape: object
@@ -1590,6 +1609,203 @@ def find_joint_origin_distance_findings(
                     tol=float(tol),
                 )
             )
+    return findings
+
+
+_FACE_SIDE_TO_AXIS = {
+    "positive_x": (0, +1),
+    "negative_x": (0, -1),
+    "positive_y": (1, +1),
+    "negative_y": (1, -1),
+    "positive_z": (2, +1),
+    "negative_z": (2, -1),
+}
+
+
+def _face_center_in_geom_frame(local_aabb: AABB, face_side: str) -> Vec3:
+    """Return the (x, y, z) center of the named axis-aligned face of an AABB,
+    in the geometry's local frame."""
+    (min_x, min_y, min_z), (max_x, max_y, max_z) = local_aabb
+    cx = 0.5 * (min_x + max_x)
+    cy = 0.5 * (min_y + max_y)
+    cz = 0.5 * (min_z + max_z)
+    axis_idx, sign = _FACE_SIDE_TO_AXIS[face_side]
+    point = [cx, cy, cz]
+    point[axis_idx] = (
+        (max_x, max_y, max_z)[axis_idx] if sign > 0 else (min_x, min_y, min_z)[axis_idx]
+    )
+    return (float(point[0]), float(point[1]), float(point[2]))
+
+
+def _find_visual_by_name(part: object, visual_name: str) -> Optional[object]:
+    for visual in getattr(part, "visuals", []) or []:
+        if getattr(visual, "name", None) == visual_name:
+            return visual
+    return None
+
+
+def find_joint_mating_findings(
+    model: object,
+    *,
+    asset_root: Optional[Path] = None,
+    validate_model: bool = True,
+) -> List[JointMatingGapFinding]:
+    """Resolve every articulation's MatingContract (if declared) to a pair of
+    world-frame face centers and report ones whose distance exceeds the
+    contract's contact_tol. Joints without a mating field are skipped
+    (grandfathered).
+    """
+    compiled_model = compile_object_model_with_exact_collisions(
+        model,  # type: ignore[arg-type]
+        asset_root=asset_root,
+        validate=validate_model,
+    )
+    resolved_asset_root = resolve_asset_root(asset_root, compiled_model, model)
+    links, joints = _resolve_model_links_and_joints(compiled_model)
+    if not links or not joints:
+        return []
+
+    links_by_name = {
+        name: link for link in links if isinstance((name := getattr(link, "name", None)), str)
+    }
+
+    try:
+        part_world = compute_part_world_transforms(compiled_model, {})
+    except Exception:
+        return []
+
+    findings: list[JointMatingGapFinding] = []
+    obj_cache: Dict[Path, AABB] = {}
+
+    for joint in joints:
+        mating = getattr(joint, "mating", None)
+        if mating is None:
+            continue
+        joint_name = getattr(joint, "name", None) or "<unnamed>"
+        parent_name = getattr(joint, "parent", None)
+        child_name = getattr(joint, "child", None)
+        if not isinstance(parent_name, str) or not isinstance(child_name, str):
+            continue
+        parent_part = links_by_name.get(parent_name)
+        child_part = links_by_name.get(child_name)
+        if parent_part is None or child_part is None:
+            continue
+
+        parent_visual = _find_visual_by_name(parent_part, mating.parent_face_geometry)
+        child_visual = _find_visual_by_name(child_part, mating.child_face_geometry)
+        if parent_visual is None:
+            findings.append(
+                JointMatingGapFinding(
+                    joint=joint_name,
+                    parent=parent_name,
+                    child=child_name,
+                    parent_face_geometry=mating.parent_face_geometry,
+                    parent_face_side=mating.parent_face_side,
+                    child_face_geometry=mating.child_face_geometry,
+                    child_face_side=mating.child_face_side,
+                    parent_face_world=(0.0, 0.0, 0.0),
+                    child_face_world=(0.0, 0.0, 0.0),
+                    distance=float("inf"),
+                    contact_tol=float(mating.contact_tol),
+                    reason=(
+                        f"parent visual {mating.parent_face_geometry!r} not found on part "
+                        f"{parent_name!r}"
+                    ),
+                )
+            )
+            continue
+        if child_visual is None:
+            findings.append(
+                JointMatingGapFinding(
+                    joint=joint_name,
+                    parent=parent_name,
+                    child=child_name,
+                    parent_face_geometry=mating.parent_face_geometry,
+                    parent_face_side=mating.parent_face_side,
+                    child_face_geometry=mating.child_face_geometry,
+                    child_face_side=mating.child_face_side,
+                    parent_face_world=(0.0, 0.0, 0.0),
+                    child_face_world=(0.0, 0.0, 0.0),
+                    distance=float("inf"),
+                    contact_tol=float(mating.contact_tol),
+                    reason=(
+                        f"child visual {mating.child_face_geometry!r} not found on part "
+                        f"{child_name!r}"
+                    ),
+                )
+            )
+            continue
+
+        try:
+            parent_geom = getattr(parent_visual, "geometry", None)
+            child_geom = getattr(child_visual, "geometry", None)
+            if parent_geom is None or child_geom is None:
+                continue
+            parent_aabb = _geometry_local_aabb(
+                parent_geom, asset_root=resolved_asset_root, _obj_cache=obj_cache
+            )
+            child_aabb = _geometry_local_aabb(
+                child_geom, asset_root=resolved_asset_root, _obj_cache=obj_cache
+            )
+        except Exception as exc:  # noqa: BLE001 — record as a finding so the agent can fix
+            findings.append(
+                JointMatingGapFinding(
+                    joint=joint_name,
+                    parent=parent_name,
+                    child=child_name,
+                    parent_face_geometry=mating.parent_face_geometry,
+                    parent_face_side=mating.parent_face_side,
+                    child_face_geometry=mating.child_face_geometry,
+                    child_face_side=mating.child_face_side,
+                    parent_face_world=(0.0, 0.0, 0.0),
+                    child_face_world=(0.0, 0.0, 0.0),
+                    distance=float("inf"),
+                    contact_tol=float(mating.contact_tol),
+                    reason=f"could not compute geometry AABB: {type(exc).__name__}: {exc}",
+                )
+            )
+            continue
+
+        parent_face_geom = _face_center_in_geom_frame(parent_aabb, mating.parent_face_side)
+        child_face_geom = _face_center_in_geom_frame(child_aabb, mating.child_face_side)
+
+        parent_visual_origin = getattr(parent_visual, "origin", Origin())
+        child_visual_origin = getattr(child_visual, "origin", Origin())
+
+        parent_visual_tf = _mat4_mul(
+            part_world.get(parent_name, _identity4()),
+            _origin_to_mat4(parent_visual_origin),
+        )
+        child_visual_tf = _mat4_mul(
+            part_world.get(child_name, _identity4()),
+            _origin_to_mat4(child_visual_origin),
+        )
+
+        parent_face_world = _mat4_vec3(parent_visual_tf, parent_face_geom)
+        child_face_world = _mat4_vec3(child_visual_tf, child_face_geom)
+
+        dx = parent_face_world[0] - child_face_world[0]
+        dy = parent_face_world[1] - child_face_world[1]
+        dz = parent_face_world[2] - child_face_world[2]
+        distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+
+        if distance > float(mating.contact_tol):
+            findings.append(
+                JointMatingGapFinding(
+                    joint=joint_name,
+                    parent=parent_name,
+                    child=child_name,
+                    parent_face_geometry=mating.parent_face_geometry,
+                    parent_face_side=mating.parent_face_side,
+                    child_face_geometry=mating.child_face_geometry,
+                    child_face_side=mating.child_face_side,
+                    parent_face_world=parent_face_world,
+                    child_face_world=child_face_world,
+                    distance=float(distance),
+                    contact_tol=float(mating.contact_tol),
+                )
+            )
+
     return findings
 
 

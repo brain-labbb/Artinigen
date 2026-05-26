@@ -15,6 +15,7 @@ from .types import (
     Geometry,
     Inertial,
     Material,
+    MatingContract,
     Mesh,
     Mimic,
     MotionLimits,
@@ -150,6 +151,7 @@ class ArticulatedObject:
         motion_limits: Optional[MotionLimits] = None,
         motion_properties: Optional[MotionProperties] = None,
         mimic: Optional[Mimic] = None,
+        mating: Optional[MatingContract] = None,
         meta: Optional[Dict[str, object]] = None,
     ) -> Articulation:
         try:
@@ -171,6 +173,7 @@ class ArticulatedObject:
             motion_limits=motion_limits,
             motion_properties=motion_properties,
             mimic=mimic,
+            mating=mating,
             meta=dict(meta or {}),
         )
         self.articulations.append(articulation)

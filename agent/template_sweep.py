@@ -23,6 +23,8 @@ import concurrent.futures
 import dataclasses
 import importlib
 import json
+import subprocess
+import sys
 import tempfile
 import time
 from dataclasses import dataclass, field
@@ -35,6 +37,7 @@ from agent.models import CompileSignal
 
 DEFAULT_PASS_THRESHOLD = 0.95
 DEFAULT_SEED_COUNT = 50
+DEFAULT_COMPILE_TIMEOUT_S = 60.0
 
 # Same shape as cli.template.GENERIC_MODEL_TEMPLATE; duplicated here to avoid a
 # circular import between cli.template and agent.template_sweep. If the canonical
@@ -266,16 +269,123 @@ def _compile_one(slug: str, stem: str, seed: int, sdk_package: str) -> SeedOutco
     )
 
 
+_SUBPROCESS_WORKER_SOURCE = """
+import json
+import sys
+import traceback
+from agent.template_sweep import _compile_one
+try:
+    outcome = _compile_one({slug!r}, {stem!r}, {seed}, {sdk_package!r})
+    sys.stdout.write(json.dumps(outcome.to_dict()))
+except BaseException as exc:
+    sys.stderr.write(traceback.format_exc())
+    raise
+"""
+
+
+def _seed_outcome_from_dict(payload: dict) -> SeedOutcome:
+    return SeedOutcome(
+        seed=int(payload["seed"]),
+        verdict=str(payload["verdict"]),
+        config=dict(payload.get("config") or {}),
+        failure_type=payload.get("failure_type"),
+        failure_type_normalized=payload.get("failure_type_normalized"),
+        failure_details=payload.get("failure_details"),
+        elapsed_s=float(payload.get("elapsed_s") or 0.0),
+    )
+
+
+def _timeout_outcome(seed: int, timeout_s: float) -> SeedOutcome:
+    return SeedOutcome(
+        seed=seed,
+        verdict="fail",
+        config={},
+        failure_type=f"compile_timeout({timeout_s:.0f}s)",
+        failure_type_normalized="compile_timeout",
+        failure_details=(
+            f"per-seed compile exceeded the {timeout_s:.0f}s wall-time budget "
+            "and the worker subprocess was SIGKILL'd. Likely cause: a geometry "
+            "QC step (fcl distance / trimesh boolean) entered a non-terminating "
+            "loop on degenerate geometry produced by this seed."
+        ),
+        elapsed_s=float(timeout_s),
+    )
+
+
+def _subprocess_crash_outcome(seed: int, returncode: int, stderr: str) -> SeedOutcome:
+    return SeedOutcome(
+        seed=seed,
+        verdict="fail",
+        config={},
+        failure_type=f"subprocess_crash(rc={returncode})",
+        failure_type_normalized="subprocess_crash",
+        failure_details=stderr[:2000] if stderr else f"non-zero return code {returncode}",
+        elapsed_s=0.0,
+    )
+
+
+def _compile_one_via_subprocess(
+    slug: str,
+    stem: str,
+    seed: int,
+    sdk_package: str,
+    *,
+    timeout_s: float,
+    repo_root: Path,
+) -> SeedOutcome:
+    """Run a single (slug, seed) compile in a fresh Python subprocess with a hard
+    wall-time timeout. On timeout, the subprocess is SIGKILL'd and a synthetic
+    `compile_timeout` SeedOutcome is returned so the sweep can continue past
+    templates that hang inside non-Python-interruptible QC code (e.g. fcl)."""
+    code = _SUBPROCESS_WORKER_SOURCE.format(
+        slug=slug, stem=stem, seed=seed, sdk_package=sdk_package
+    )
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            cwd=str(repo_root),
+        )
+    except subprocess.TimeoutExpired:
+        return _timeout_outcome(seed, timeout_s)
+    if proc.returncode != 0:
+        return _subprocess_crash_outcome(seed, proc.returncode, proc.stderr)
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        return _subprocess_crash_outcome(
+            seed,
+            0,
+            f"could not decode worker JSON: {exc}\nstdout preview: {proc.stdout[:500]!r}",
+        )
+    return _seed_outcome_from_dict(payload)
+
+
 def _run_seeds_sequential(
     slug: str,
     stem: str,
     seeds: Iterable[int],
     sdk_package: str,
     progress: Callable[[SeedOutcome], None] | None = None,
+    *,
+    compile_timeout_s: float = 0.0,
+    repo_root: Path | None = None,
 ) -> list[SeedOutcome]:
     outcomes: list[SeedOutcome] = []
     for seed in seeds:
-        outcome = _compile_one(slug, stem, seed, sdk_package)
+        if compile_timeout_s > 0.0:
+            outcome = _compile_one_via_subprocess(
+                slug,
+                stem,
+                seed,
+                sdk_package,
+                timeout_s=compile_timeout_s,
+                repo_root=repo_root or Path(__file__).resolve().parents[1],
+            )
+        else:
+            outcome = _compile_one(slug, stem, seed, sdk_package)
         outcomes.append(outcome)
         if progress is not None:
             progress(outcome)
@@ -289,8 +399,58 @@ def _run_seeds_parallel(
     sdk_package: str,
     max_workers: int,
     progress: Callable[[SeedOutcome], None] | None = None,
+    *,
+    compile_timeout_s: float = 0.0,
+    repo_root: Path | None = None,
 ) -> list[SeedOutcome]:
+    """Parallel seed runner.
+
+    When `compile_timeout_s > 0`, each seed compile happens inside a fresh
+    subprocess invoked via `subprocess.run(..., timeout=...)`. The parent
+    parallelizes those via a ThreadPoolExecutor (threads block on .run()'s
+    pipe), and SIGKILLs the subprocess on timeout — bulletproof against
+    non-interruptible C-level hangs in geometry QC.
+
+    When `compile_timeout_s == 0`, the legacy ProcessPoolExecutor path is used
+    (faster on healthy templates, but a single hung seed will block one worker
+    indefinitely).
+    """
     outcomes: dict[int, SeedOutcome] = {}
+
+    if compile_timeout_s > 0.0:
+        root = repo_root or Path(__file__).resolve().parents[1]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_map = {
+                executor.submit(
+                    _compile_one_via_subprocess,
+                    slug,
+                    stem,
+                    seed,
+                    sdk_package,
+                    timeout_s=compile_timeout_s,
+                    repo_root=root,
+                ): seed
+                for seed in seeds
+            }
+            for future in concurrent.futures.as_completed(future_map):
+                seed = future_map[future]
+                try:
+                    outcome = future.result()
+                except Exception as exc:  # noqa: BLE001 — should not happen now, but be safe
+                    outcome = SeedOutcome(
+                        seed=seed,
+                        verdict="fail",
+                        config={},
+                        failure_type=f"thread_error:{type(exc).__name__}",
+                        failure_type_normalized="thread_error",
+                        failure_details=str(exc),
+                        elapsed_s=0.0,
+                    )
+                outcomes[seed] = outcome
+                if progress is not None:
+                    progress(outcome)
+        return [outcomes[seed] for seed in seeds]
+
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         future_map = {
             executor.submit(_compile_one, slug, stem, seed, sdk_package): seed for seed in seeds
@@ -327,12 +487,15 @@ def run_sweep(
     progress: Callable[[SeedOutcome], None] | None = None,
     state_dir: Path | None = None,
     line_floor: int = 1000,
+    compile_timeout_s: float = 0.0,
 ) -> SweepReport:
     """Run a multi-seed compile sweep and return the structured report.
 
     `max_workers=1` (or `None` when there is a single seed) runs sequentially in
-    the current process. Anything else uses a ProcessPoolExecutor so the SDK's
-    `runpy` execution lock doesn't serialize the sweep.
+    the current process. Anything else uses a ProcessPoolExecutor (in-process
+    workers) by default, or a ThreadPool+subprocess scheme when
+    `compile_timeout_s > 0` so each seed has a hard wall-time budget enforced
+    via SIGKILL.
     """
     if not seeds:
         raise ValueError("seeds must contain at least one entry")
@@ -344,9 +507,26 @@ def run_sweep(
     started = time.monotonic()
     workers = max_workers if max_workers is not None else min(len(seeds), 4)
     if workers <= 1 or len(seeds) == 1:
-        outcomes = _run_seeds_sequential(slug, stem, seeds, sdk_package, progress)
+        outcomes = _run_seeds_sequential(
+            slug,
+            stem,
+            seeds,
+            sdk_package,
+            progress,
+            compile_timeout_s=compile_timeout_s,
+            repo_root=repo_root,
+        )
     else:
-        outcomes = _run_seeds_parallel(slug, stem, seeds, sdk_package, workers, progress)
+        outcomes = _run_seeds_parallel(
+            slug,
+            stem,
+            seeds,
+            sdk_package,
+            workers,
+            progress,
+            compile_timeout_s=compile_timeout_s,
+            repo_root=repo_root,
+        )
     elapsed = time.monotonic() - started
 
     passed_seeds = [o.seed for o in outcomes if o.verdict == "pass"]

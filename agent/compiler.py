@@ -55,6 +55,7 @@ _BASELINE_ARTICULATION_ORIGIN_TOL = 0.015
 _AUTOMATED_BASELINE_ARTICULATION_ORIGIN_CHECK_NAME = (
     f"fail_if_articulation_origin_far_from_geometry(tol={_BASELINE_ARTICULATION_ORIGIN_TOL:.4g})"
 )
+_AUTOMATED_BASELINE_MATING_CHECK_NAME = "fail_if_joint_mating_has_gap"
 _AUTOMATED_BASELINE_DEFAULT_CHECK_NAMES = frozenset(
     {
         "check_model_valid",
@@ -64,6 +65,7 @@ _AUTOMATED_BASELINE_DEFAULT_CHECK_NAMES = frozenset(
         _AUTOMATED_BASELINE_WARNING_CHECK_NAME,
         "fail_if_parts_overlap_in_current_pose()",
         _AUTOMATED_BASELINE_ARTICULATION_ORIGIN_CHECK_NAME,
+        _AUTOMATED_BASELINE_MATING_CHECK_NAME,
     }
 )
 _MODEL_EXECUTION_LOCK = threading.Lock()
@@ -1209,6 +1211,7 @@ def _run_compiler_owned_baseline_tests(
     ctx.warn_if_part_contains_disconnected_geometry_islands()
     ctx.fail_if_parts_overlap_in_current_pose()
     ctx.fail_if_articulation_origin_far_from_geometry(tol=_BASELINE_ARTICULATION_ORIGIN_TOL)
+    ctx.fail_if_joint_mating_has_gap()
     baseline_report = ctx.report()
     return _build_test_report(
         type(baseline_report),

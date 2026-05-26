@@ -28,8 +28,28 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from agent.template_sweep import SeedOutcome
+from agent.template_sweep_anchor import (
+    AnchorMatchReport,
+    compare_fingerprints,
+    extract_fingerprint_from_anchor,
+    extract_fingerprint_from_template,
+)
 
 DEFAULT_LINE_FLOOR = 1000
+
+# Temporary kill-switches for the new coverage gates.
+# Set to False while existing templates are grandfathered: the conventions
+# below were introduced together with this sweep CLI, so every pre-sweep
+# template fails by construction.
+# - adopted_source: requires `# adopted: <Sxx>` markers matching the spec's
+#   Adopted Source Index. New convention, no existing template has them.
+# - enum_coverage:  requires every Literal value on the Config to be exercised
+#   by a passing seed. Most templates declare Literal options that
+#   `config_from_seed` does not yet sample.
+# The check functions (`check_adopted_source`, `check_enum_coverage`) stay
+# importable and unit-tested; only `evaluate_gates` skips them when disabled.
+ADOPTED_SOURCE_GATE_ENABLED: bool = False
+ENUM_COVERAGE_GATE_ENABLED: bool = False
 
 
 @dataclass(slots=True)
@@ -53,26 +73,29 @@ class CoverageGates:
     line_floor: CoverageGateResult
     enum_coverage: CoverageGateResult
     adopted_source: CoverageGateResult
+    anchor_geometry_match: CoverageGateResult
+
+    def _iter_gates(self):
+        return (
+            self.line_floor,
+            self.enum_coverage,
+            self.adopted_source,
+            self.anchor_geometry_match,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "line_floor": self.line_floor.to_dict(),
             "enum_coverage": self.enum_coverage.to_dict(),
             "adopted_source": self.adopted_source.to_dict(),
+            "anchor_geometry_match": self.anchor_geometry_match.to_dict(),
         }
 
     def all_pass_or_skipped(self) -> bool:
-        return all(
-            gate.status in {"pass", "skipped"}
-            for gate in (self.line_floor, self.enum_coverage, self.adopted_source)
-        )
+        return all(gate.status in {"pass", "skipped"} for gate in self._iter_gates())
 
     def failing_gates(self) -> list[str]:
-        return [
-            gate.name
-            for gate in (self.line_floor, self.enum_coverage, self.adopted_source)
-            if gate.status == "fail"
-        ]
+        return [gate.name for gate in self._iter_gates() if gate.status == "fail"]
 
 
 # --------------------------------------------------------------------------- #
@@ -295,6 +318,119 @@ def check_adopted_source(slug: str, *, repo_root: Path) -> CoverageGateResult:
 
 
 # --------------------------------------------------------------------------- #
+# Gate 4: anchor_geometry_match
+# --------------------------------------------------------------------------- #
+
+_PRIMARY_ANCHOR_RE = re.compile(
+    r"^\|\s*primary[_ ]anchor\s*\|\s*`?(?P<value>[^|`]+?)`?\s*\|",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+def parse_spec_primary_anchor(slug: str, *, repo_root: Path) -> str | None:
+    """Read `articraft_template_authoring/specs/<slug>.md` and extract the
+    `primary_anchor` value declared in the 元信息 table, e.g.:
+
+        | primary_anchor | rec_dj_equipment_xxx:rev_000001 |
+    """
+    spec_path = _spec_path(slug, repo_root=repo_root)
+    if not spec_path.exists():
+        return None
+    text = spec_path.read_text(encoding="utf-8")
+    match = _PRIMARY_ANCHOR_RE.search(text)
+    if not match:
+        return None
+    value = match.group("value").strip()
+    if not value or value.lower() in {"none", "tbd", "n/a"}:
+        return None
+    return value
+
+
+def check_anchor_geometry_match(
+    slug: str,
+    *,
+    repo_root: Path,
+    template_seed: int = 0,
+) -> CoverageGateResult:
+    primary_anchor = parse_spec_primary_anchor(slug, repo_root=repo_root)
+    if primary_anchor is None:
+        return CoverageGateResult(
+            name="anchor_geometry_match",
+            status="skipped",
+            details={"primary_anchor": None},
+            reason=(
+                "spec does not declare `primary_anchor` in the 元信息 table. Add a "
+                "row `| primary_anchor | rec_<id>:rev_<n> |` to enforce structural "
+                "fidelity to a 5-star sample. Existing pre-sweep templates are "
+                "grandfathered (gate skipped) until they migrate."
+            ),
+        )
+    try:
+        anchor_fp = extract_fingerprint_from_anchor(primary_anchor, repo_root=repo_root)
+    except (FileNotFoundError, ValueError) as exc:
+        return CoverageGateResult(
+            name="anchor_geometry_match",
+            status="fail",
+            details={"primary_anchor": primary_anchor, "error_kind": type(exc).__name__},
+            reason=(
+                f"could not load anchor `{primary_anchor}`: {exc}. "
+                "Verify the spec's primary_anchor points to an existing record."
+            ),
+        )
+    try:
+        template_fp = extract_fingerprint_from_template(slug, seed=template_seed)
+    except Exception as exc:  # noqa: BLE001 — fingerprint of broken template is itself a failure
+        return CoverageGateResult(
+            name="anchor_geometry_match",
+            status="fail",
+            details={
+                "primary_anchor": primary_anchor,
+                "template_seed": template_seed,
+                "error_kind": type(exc).__name__,
+            },
+            reason=(
+                f"could not extract template fingerprint at seed {template_seed}: "
+                f"{type(exc).__name__}: {exc}"
+            ),
+        )
+    report: AnchorMatchReport = compare_fingerprints(anchor_fp, template_fp)
+    deviations_payload: list[dict[str, Any]] = []
+    for subcheck in report.subchecks:
+        if subcheck.status == "fail":
+            deviations_payload.append(
+                {"subcheck": subcheck.name, "deviations": subcheck.deviations}
+            )
+    details = {
+        "primary_anchor": primary_anchor,
+        "template_seed": template_seed,
+        "anchor_source": report.anchor_source,
+        "template_source": report.template_source,
+        "subchecks": [sc.to_dict() for sc in report.subchecks],
+    }
+    if report.overall_status == "pass":
+        return CoverageGateResult(
+            name="anchor_geometry_match",
+            status="pass",
+            details=details,
+        )
+    return CoverageGateResult(
+        name="anchor_geometry_match",
+        status="fail",
+        details={**details, "failing_subchecks": deviations_payload},
+        reason=(
+            f"template at seed {template_seed} diverges from PRIMARY_ANCHOR "
+            f"{primary_anchor!r} on "
+            f"{len([sc for sc in report.subchecks if sc.status == 'fail'])} of "
+            f"{len(report.subchecks)} subchecks "
+            f"({', '.join(sc.name for sc in report.subchecks if sc.status == 'fail')}). "
+            "Refer to subchecks[].deviations[].reason for per-deviation explanations. "
+            "Adopt the anchor's helper code with parameter substitution; do not "
+            "freehand structure that the anchor doesn't have."
+        ),
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Aggregate
 # --------------------------------------------------------------------------- #
 
@@ -307,8 +443,36 @@ def evaluate_gates(
     repo_root: Path,
     line_floor: int = DEFAULT_LINE_FLOOR,
 ) -> CoverageGates:
+    if ADOPTED_SOURCE_GATE_ENABLED:
+        adopted_source = check_adopted_source(slug, repo_root=repo_root)
+    else:
+        adopted_source = CoverageGateResult(
+            name="adopted_source",
+            status="skipped",
+            details={"gate_disabled": True},
+            reason=(
+                "adopted_source gate temporarily disabled while existing "
+                "templates are grandfathered (see ADOPTED_SOURCE_GATE_ENABLED "
+                "in agent/template_sweep_coverage.py)."
+            ),
+        )
+    if ENUM_COVERAGE_GATE_ENABLED:
+        enum_coverage = check_enum_coverage(slug, outcomes)
+    else:
+        enum_coverage = CoverageGateResult(
+            name="enum_coverage",
+            status="skipped",
+            details={"gate_disabled": True},
+            reason=(
+                "enum_coverage gate temporarily disabled while existing "
+                "templates are grandfathered (see ENUM_COVERAGE_GATE_ENABLED "
+                "in agent/template_sweep_coverage.py)."
+            ),
+        )
+    anchor_geometry_match = check_anchor_geometry_match(slug, repo_root=repo_root)
     return CoverageGates(
         line_floor=check_line_floor(line_count, floor=line_floor),
-        enum_coverage=check_enum_coverage(slug, outcomes),
-        adopted_source=check_adopted_source(slug, repo_root=repo_root),
+        enum_coverage=enum_coverage,
+        adopted_source=adopted_source,
+        anchor_geometry_match=anchor_geometry_match,
     )

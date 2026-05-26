@@ -201,6 +201,70 @@ def test_run_sweep_raises_when_template_missing(tmp_path: Path) -> None:
         )
 
 
+def test_timeout_outcome_helper_produces_compile_timeout_failure_type() -> None:
+    from agent.template_sweep import _timeout_outcome
+
+    outcome = _timeout_outcome(seed=7, timeout_s=30.0)
+    assert outcome.verdict == "fail"
+    assert outcome.seed == 7
+    assert outcome.failure_type_normalized == "compile_timeout"
+    assert "30s" in outcome.failure_type or "30s" in outcome.failure_details
+
+
+def test_compile_one_via_subprocess_returns_timeout_when_worker_hangs(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Force a hanging worker by replacing the subprocess source with an
+    infinite loop; verify the parent SIGKILLs and returns a compile_timeout
+    outcome instead of blocking."""
+    from agent import template_sweep
+    from agent.template_sweep import _compile_one_via_subprocess
+
+    monkeypatch.setattr(
+        template_sweep,
+        "_SUBPROCESS_WORKER_SOURCE",
+        "import time\nwhile True: time.sleep(0.1)\n",
+    )
+
+    outcome = _compile_one_via_subprocess(
+        slug="any_slug",
+        stem="any_stem",
+        seed=99,
+        sdk_package="sdk",
+        timeout_s=1.5,
+        repo_root=tmp_path,
+    )
+    assert outcome.verdict == "fail"
+    assert outcome.failure_type_normalized == "compile_timeout"
+    assert outcome.seed == 99
+    assert outcome.elapsed_s >= 1.5
+
+
+def test_compile_one_via_subprocess_returns_crash_on_non_zero_rc(
+    monkeypatch, tmp_path: Path
+) -> None:
+    from agent import template_sweep
+    from agent.template_sweep import _compile_one_via_subprocess
+
+    monkeypatch.setattr(
+        template_sweep,
+        "_SUBPROCESS_WORKER_SOURCE",
+        "import sys\nsys.stderr.write('explicit failure')\nsys.exit(2)\n",
+    )
+
+    outcome = _compile_one_via_subprocess(
+        slug="any_slug",
+        stem="any_stem",
+        seed=11,
+        sdk_package="sdk",
+        timeout_s=10.0,
+        repo_root=tmp_path,
+    )
+    assert outcome.verdict == "fail"
+    assert outcome.failure_type_normalized == "subprocess_crash"
+    assert "explicit failure" in (outcome.failure_details or "")
+
+
 def test_report_to_json_round_trip(monkeypatch, tmp_path: Path) -> None:
     def fake_compile_one(slug: str, stem: str, seed: int, sdk_package: str) -> SeedOutcome:
         return SeedOutcome(

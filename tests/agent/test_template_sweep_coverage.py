@@ -209,6 +209,10 @@ def test_evaluate_gates_aggregates(monkeypatch, tmp_path: Path) -> None:
         shape: Literal["a", "b"]
 
     monkeypatch.setattr("agent.template_sweep_coverage._input_config_class", lambda slug: FakeCfg)
+    # enum_coverage / adopted_source are currently grandfathered (skipped).
+    # Force them on for this test so we still cover the pass path.
+    monkeypatch.setattr("agent.template_sweep_coverage.ADOPTED_SOURCE_GATE_ENABLED", True)
+    monkeypatch.setattr("agent.template_sweep_coverage.ENUM_COVERAGE_GATE_ENABLED", True)
 
     gates = evaluate_gates(
         slug="demo",
@@ -230,6 +234,7 @@ def test_evaluate_gates_reports_failures(monkeypatch, tmp_path: Path) -> None:
         shape: Literal["a", "b"]
 
     monkeypatch.setattr("agent.template_sweep_coverage._input_config_class", lambda slug: FakeCfg)
+    monkeypatch.setattr("agent.template_sweep_coverage.ENUM_COVERAGE_GATE_ENABLED", True)
 
     gates = evaluate_gates(
         slug="demo",
@@ -242,3 +247,23 @@ def test_evaluate_gates_reports_failures(monkeypatch, tmp_path: Path) -> None:
     assert "line_floor" in failing
     assert "enum_coverage" in failing
     assert gates.all_pass_or_skipped() is False
+
+
+def test_evaluate_gates_skips_disabled_enum_coverage_by_default(
+    monkeypatch, tmp_path: Path
+) -> None:
+    @dataclass
+    class FakeCfg:
+        shape: Literal["a", "b"]
+
+    monkeypatch.setattr("agent.template_sweep_coverage._input_config_class", lambda slug: FakeCfg)
+    gates = evaluate_gates(
+        slug="demo",
+        line_count=1200,
+        outcomes=[_outcome(0, "pass", {"shape": "a"})],  # b would be missing
+        repo_root=tmp_path,
+        line_floor=1000,
+    )
+    assert gates.enum_coverage.status == "skipped"
+    assert gates.adopted_source.status == "skipped"
+    assert gates.all_pass_or_skipped() is True

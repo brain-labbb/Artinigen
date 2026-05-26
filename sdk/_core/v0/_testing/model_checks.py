@@ -25,6 +25,7 @@ from .common import (
     default_overlap_volume_tol_from_env,
     find_geometry_overlaps,
     find_geometry_overlaps_in_poses,
+    find_joint_mating_findings,
     find_joint_origin_distance_findings,
     find_part_geometry_connectivity_findings,
     find_unsupported_parts,
@@ -161,6 +162,68 @@ class TestContextModelCheckMixin:
             tol=tol_f,
             reason=reason,
             check_name=name or f"warn_if_articulation_origin_far_from_geometry(tol={tol_f:.4g})",
+            warn_only=True,
+        )
+
+    def _check_joint_mating_has_gap_impl(
+        self,
+        *,
+        check_name: str,
+        warn_only: bool = False,
+    ) -> bool:
+        record = self._record_warning_check if warn_only else self._record
+        findings = find_joint_mating_findings(
+            self.model,
+            asset_root=self._asset_root(),
+            validate_model=not self._model_validated_strict,
+        )
+        if not findings:
+            return record(check_name, True)
+
+        failures: List[str] = []
+        for finding in findings:
+            if finding.distance == math.inf and finding.reason:
+                failures.append(
+                    f"joint={finding.joint!r} parent={finding.parent!r} "
+                    f"child={finding.child!r} mating_error: {finding.reason}"
+                )
+                continue
+            failures.append(
+                f"joint={finding.joint!r} parent={finding.parent!r}/"
+                f"{finding.parent_face_geometry!r}:{finding.parent_face_side} "
+                f"child={finding.child!r}/{finding.child_face_geometry!r}:"
+                f"{finding.child_face_side} distance={finding.distance:.4g}m "
+                f"tol={finding.contact_tol:.4g}m"
+            )
+        preview = "\n".join(failures[:10])
+        more = "" if len(failures) <= 10 else f"\n... ({len(failures) - 10} more)"
+        return record(
+            check_name,
+            False,
+            f"Joint mating-face gaps detected:\n{preview}{more}",
+        )
+
+    def fail_if_joint_mating_has_gap(
+        self,
+        *,
+        name: Optional[str] = None,
+    ) -> bool:
+        """Verify every articulation with a declared MatingContract has its
+        parent/child mating faces within `contact_tol` of each other in world
+        coordinates at the closed pose. Joints without a mating contract are
+        skipped (grandfathered)."""
+        return self._check_joint_mating_has_gap_impl(
+            check_name=name or "fail_if_joint_mating_has_gap",
+            warn_only=False,
+        )
+
+    def warn_if_joint_mating_has_gap(
+        self,
+        *,
+        name: Optional[str] = None,
+    ) -> bool:
+        return self._check_joint_mating_has_gap_impl(
+            check_name=name or "warn_if_joint_mating_has_gap",
             warn_only=True,
         )
 
