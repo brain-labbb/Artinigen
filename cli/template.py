@@ -26,6 +26,37 @@ DEFAULT_PROVIDER_BY_AGENT = {
 # inside that module: the template MUST export `build_<stem>`, `config_from_seed`, and
 # `run_<stem>_tests`.
 TEMPLATE_REGISTRY: dict[str, str] = {
+    "barrier_gate_boom": "barrier_gate",
+    "barrier_gate_leaf_gate": "barrier_gate",
+    "bicycle_crankset_and_pedal_assembly": "bicycle_crankset",
+    "blender_countertop": "blender",
+    "immersion_blender": "blender",
+    "box_fan_with_control_knob": "box_fan",
+    "camcorder_with_flipout_screen": "camcorder",
+    "camera_flash": "camera_flash",
+    "camera_lens": "camera_lens",
+    "cannon": "cannon",
+    "cantilever_articulated_arm": "cantilever_arm",
+    "cctv_mast_with_pantilt_camera_head": "cctv_mast_camera",
+    "ceiling_fan": "ceiling_fan",
+    "ceiling_light_fixture_adjustable": "ceiling_light",
+    "chest_freezer_with_hinged_lid": "chest_freezer",
+    "coaxial_rotary_stack": "coaxial_rotary_stack",
+    "crane_tower": "crane_tower",
+    "desk_with_drawer": "desk_with_drawer",
+    "desk_with_drawer_card_catalog": "desk_with_drawer",
+    "desktop_monitor_with_tilt_swivel_stand": "desktop_monitor",
+    "monitor_mount": "monitor_mount",
+    "desktop_pc_tower": "desktop_pc_tower",
+    "display_freezer_with_sliding_glass_lids": "display_freezer",
+    "dj_equipment": "dj_equipment",
+    "drone": "drone",
+    "graphics_card_with_cooling_fans": "graphics_card",
+    "louvered_shutter_assembly": "louvered_shutter",
+    "retractable_utility_knife": "retractable_utility_knife",
+    "screwcap_bottle": "screwcap_bottle",
+    "screwin_light_bulb_with_socket": "screwin_light_bulb_with_socket",
+    "serial_elbow_arm": "serial_elbow_arm",
     "ferris_wheel": "ferris_wheel",
     "sliding_window": "sliding_window",
     "tackle_box_with_simple_hinged_lid": "tackle_box",
@@ -193,6 +224,25 @@ def batch_template(
 
     print(f"batch completed successfully for {len(seeds)} seed(s)")
     return 0
+
+
+def batch_ferris_wheel(
+    repo_root: Path,
+    *,
+    seeds: list[int],
+    agent: str,
+    category_slug: str | None,
+    dry_run: bool,
+) -> int:
+    return batch_template(
+        repo_root,
+        slug="ferris_wheel",
+        stem=TEMPLATE_REGISTRY["ferris_wheel"],
+        seeds=seeds,
+        agent=agent,
+        category_slug=category_slug,
+        dry_run=dry_run,
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:

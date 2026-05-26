@@ -1,8 +1,8 @@
 # Articraft 新类别模板生成工作流
 
-本文件定义 agent 如何从 Articraft-10K 的新类别生成 spec、如何等待人工审核、以及审核后如何基于 spec 和已有模板代码落地新模板。
+本文件定义 agent 如何从 Articraft-10K 的新类别生成 spec、如何等待人工审核、以及审核后如何基于 spec、旧 11 个 gold-standard 模板方法和已有模板代码落地新模板。
 
-核心原则：**先 spec，后模板；审核前不写代码；Spec 阶段必须枚举并完整阅读目标类别全部 5 星样本；最终 spec 只引用被采纳为模板依据的源码片段；写代码时以审核后的 spec 和其中被采纳的 5 星样本源码片段为主实现来源，已有 11 个模板代码只作为骨架、SDK 用法、测试风格和相似写法参考。**
+核心原则：**先 spec，后模板；审核前不写代码；Spec 阶段必须枚举并完整阅读目标类别全部 5 星样本；最终 spec 只引用被采纳为模板依据的源码片段；写代码时以审核后的 spec 和其中被采纳的 5 星样本源码片段为主实现来源，`MATURE_TEMPLATE_METHOD.md` 决定如何达到旧 11 个 gold-standard 模板的成熟度，旧 11 个模板代码作为 gold-standard 骨架/SDK/测试风格参考，新造 20+ 模板作为二级经验参考。**
 
 ---
 
@@ -42,15 +42,17 @@ cli/template.py
 该阶段目标：
 
 ```text
-审核后的 spec + 被采纳的 5 星样本源码片段（主实现来源） + 已有 11 个模板代码（骨架/SDK/测试风格参考） -> 新 model.py 模板 + 测试 + registry
+审核后的 spec + 被采纳的 5 星样本源码片段（主实现来源） + `MATURE_TEMPLATE_METHOD.md`（参数化成熟度方法） + 旧 11 个 gold-standard 模板代码（骨架/SDK/测试风格参考） + 新 20+ 模板（二级经验参考） -> 新 model.py 模板 + 测试 + registry
 ```
 
 每个新模板必须同时参考：
 
 1. 审核后的 `specs/<category_slug>.md`。
 2. spec 中标注并被采纳的 5 星样本 `model.py:Lx-Ly` 代码片段。
-3. 已有 11 个模板代码：`agent/templates/*.py`，仅用于文件骨架、SDK 写法、`resolve_config` / `_build_*` 组织方式、palette、joint metadata、validator 和测试风格对齐。
-4. 本文件的通用模板要求、编码约定、已有模板写法参考表、测试规约。
+3. `MATURE_TEMPLATE_METHOD.md`：用于判断是否拆分/收窄、如何把五星样本代码参数化、如何写 `config_from_seed` / `resolve_config` / 空间约束 / builder / joint metadata / QC / 自动调参闭环。
+4. 旧 11 个 gold-standard 模板代码，仅用于文件骨架、SDK 写法、`resolve_config` / `_build_*` 组织方式、palette、joint metadata、validator 和测试风格对齐。
+5. 新造 20+ 模板，可以作为二级参考，学习拆分经验、seed domain、已修 QC/预览问题、相近 helper 和测试断言。
+6. 本文件的通用模板要求、编码约定、已有模板写法参考表、测试规约。
 
 ---
 
@@ -92,7 +94,7 @@ cli/template.py
 - 结构清晰、part 树稳定的实现。
 - 关节定义正确，axis / origin / range 明确的实现。
 - 参数化程度较高，容易改写成模板的实现。
-- 与已有 11 个模板 SDK 用法接近的实现。
+- 与旧 11 个 gold-standard 模板 SDK 用法接近的实现。
 - 能代表类别核心身份，而不是单样本装饰变体的实现。
 
 不采纳：
@@ -215,22 +217,23 @@ cli/template.py
 
 ```md
 ## 组合逻辑（Composition Logic）
-1. 先生成 spine/envelope。
-2. 再根据 spine 派生所有子件尺寸。
-3. 活动件挂在对应父件上。
-4. 装饰件作为 visual 子件挂载。
+1. 先识别主约束基准：envelope / spine / rail / hinge line / axis / socket / contact plane / symmetry plane / linkage pivots。
+2. 根据类别拓扑选择约束策略：盒体分舱 / 框架支撑 / 导轨滑移 / 铰链扫掠 / 嵌套伸缩 / 径向排布 / 折叠连杆 / 接地支撑 / 镜像配对。
+3. 再根据该基准派生所有子件数量、尺寸、origin、orientation 和 clearance。
+4. 活动件挂在对应父件上，并从同一约束链派生 joint origin / range。
+5. 装饰件作为 visual 子件挂载。
 ```
 
 ### 2.9 写已有模板写法参考
 
-从本文件的「已有模板写法参考表」选择 pattern 名。该字段只回答一个问题：**新模板写代码时，旧 11 个模板里哪些文件最适合参考写法**。
+从本文件的「已有模板写法参考表」选择 pattern 名。该字段只回答一个问题：**新模板写代码时，旧 11 个 gold-standard 模板和可用二级参考里哪些文件最适合参考写法**。
 
 ```md
 ## 已有模板写法参考
 prismatic_slide / revolute_hinge / handle_grip
 ```
 
-注意：这个字段不是部件来源表，不决定新模板应该包含哪些实体部件。真正写入新模板的部件、关节和关键参数，必须来自审核后 spec 的 `部件（Parts）`、`关节（Joints）`、`参数范围汇总`，并优先回溯 `采用源码索引（Adopted Source Index）` 中的 5 星样本 `model.py:Lx-Ly`。旧 11 个模板只教 agent 怎么组织代码、怎么调用 SDK、怎么写 `resolve_config` / `_build_*`、怎么写 joint metadata 和测试。
+注意：这个字段不是部件来源表，不决定新模板应该包含哪些实体部件。真正写入新模板的部件、关节和关键参数，必须来自审核后 spec 的 `部件（Parts）`、`关节（Joints）`、`参数范围汇总`，并优先回溯 `采用源码索引（Adopted Source Index）` 中的 5 星样本 `model.py:Lx-Ly`。旧 11 个 gold-standard 模板教 agent 怎么组织代码、怎么调用 SDK、怎么写 `resolve_config` / `_build_*`、怎么写 joint metadata 和测试；新 20+ 模板可作为二级参考，帮助学习相近类别拆分、seed domain、已修问题和测试覆盖；`MATURE_TEMPLATE_METHOD.md` 教 agent 如何把五星样本代码参数化到旧 11 个模板成熟度。
 
 ### 2.10 写 Validator
 
@@ -335,30 +338,122 @@ Validator 表必须可直接映射到后续测试代码。
 - `采用源码索引` 只包含被采纳为模板依据的片段。
 - `部件多样性审计` 已覆盖核心部件。
 - 审计中标为“需要离散参数”的部件，在 `参数范围汇总` 中确实有对应 `*_shape / *_style / *_profile / *_variant / *_layout` 参数。
-- 已有模板写法参考字段只用于选择旧模板骨架和相似写法，不作为部件实现的优先来源。
+- 已有模板写法参考字段只用于选择旧 11 个 gold-standard 模板骨架、相似写法和可用二级参考，不作为部件实现的优先来源。
 
-### 4.2 选择已有模板骨架
+### 4.2 读取成熟模板方法并决定拆分 / 收窄
 
-从已有 11 个模板代码中选 1–3 个最接近的新类别骨架。注意：已有模板的作用是提供代码组织、SDK 用法、`resolve_config` / `_build_*` 拆分方式、palette、validator 和测试风格；不是优先部件实现来源。
+读取 `MATURE_TEMPLATE_METHOD.md`，先判断审核后的 spec 是否过宽。
 
-### 4.3 回溯被采纳的 5 星样本源码片段
+必须检查：
+
+- 是否存在多个不兼容主运动 spine。
+- root 坐标系、主承载件、joint chain 是否能共享。
+- `Part Diversity Audit` 中的拓扑差异是否大到需要拆分 slug。
+- `config_from_seed` 是否能只采样已实现且测试覆盖的稳定子域。
+- `resolve_config` 是否能合法化和派生所有互斥组合，而不是把非法组合留给 builder。
+
+如果需要拆分，先给出拆分建议和每个子模板的 seed domain；不要把互斥机构硬塞进一个大模板。
+
+### 4.3 选择旧 11 个 gold-standard 模板骨架
+
+从旧 11 个 gold-standard 模板代码中选 1–3 个最接近的新类别骨架。注意：旧模板的作用是提供代码组织、SDK 用法、`resolve_config` / `_build_*` 拆分方式、palette、validator 和测试风格；不是优先部件实现来源。新生成但尚未人工验收的模板不能作为成熟度参考。
+
+### 4.3.1 选择新 20+ 模板二级参考
+
+可再选择 0–2 个相近的新模板作为二级参考。
+
+允许参考：
+
+- 拆分 slug 的经验。
+- `config_from_seed` 如何限制稳定 seed domain。
+- `resolve_config` 如何处理宽 spec 的降级。
+- 已修过的 QC / 预览问题。
+- 相近 helper 的局部写法和测试断言。
+
+禁止参考：
+
+- 用新模板定义成熟度下限。
+- 复制未验收的新模板粗糙结构。
+- 用新模板替代 spec 中采纳的 5 星样本源码片段。
+- 因为新模板能跑通而跳过当前模板的自动调参闭环。
+
+### 4.4 回溯被采纳的 5 星样本源码片段
 
 根据 spec 中 `采用源码索引`、Parts / Joints / 参数表标注的 `model.py:Lx-Ly` 读取被采纳代码片段。该步骤是模板实现的主来源。
 
-### 4.4 编写 `agent/templates/<category_slug>.py`
+该步骤必须产出源码改编映射：
+
+- adopted source id -> 对应模板 helper。
+- adopted source id -> 对应 required / optional part。
+- adopted source id -> 对应 joint type / axis / origin / range。
+- 五星样本中的几何常量 -> `Config` 参数或 `ResolvedConfig` 派生量。
+- 五星样本中的父子关系 / closed pose -> 模板装配顺序和 origin 公式。
+- 五星样本中的承载基准 / 导轨 / 铰链 / 轴线 / 接地点 / 对称关系 -> `resolve_config` 中采用的约束策略。
+
+如果某个核心 part 或 joint 没有 source mapping，则不得进入 builder 实现。
+
+### 4.5 编写 `agent/templates/<category_slug>.py`
 
 要求：
 
-- 整体文件结构、命名、SDK 用法与已有 11 个模板一致。
+- 整体文件结构、命名、SDK 用法与旧 11 个 gold-standard 模板一致。
 - 关键几何部件、关节和参数逻辑优先从 spec 中被采纳的 5 星样本片段改编。
-- 已有 11 个模板只用于包装成统一代码结构、补齐 SDK 写法、validator 风格和相似 pattern 的组织方式，不得覆盖 spec 中已采纳的源码片段。
+- 旧 11 个 gold-standard 模板只用于包装成统一代码结构、补齐 SDK 写法、validator 风格和相似 pattern 的组织方式，不得覆盖 spec 中已采纳的源码片段。
+- 新 20+ 模板只作为二级经验参考；可吸收同类修复经验，但不得降低本模板的验收线。
+- 模板文件必须 `>= 1000` 行。1000 行是最低保险线，不是上限；行数达标仍需满足源码改编、空间约束、joint 语义和 QC。
 - 所有关键尺寸、计数、关节参数都以函数参数暴露，并有默认值。
-- `resolve_config` 负责所有尺寸耦合与派生关系。
+- `config_from_seed` 只采样当前实现且测试覆盖的稳定子域。
+- `resolve_config` 负责 enum 校验、范围夹紧、别名/legacy 兼容、互斥组合降级、所有尺寸耦合与派生关系。
+- `resolve_config` 必须采用拓扑匹配的约束设计：先确定外壳 / frame / base / rail / hinge line / axis / socket / contact plane / symmetry plane 等主约束基准，再派生子件数量、尺寸、origin、orientation 和 joint range，避免悬空和穿模。抽屉柜 envelope-first 只是一个例子，不可机械套用到所有类别。
+- 进入 `_build_*` 前必须建立语义约束图：核心 part / joint 需要明确 `source -> parent -> interface -> derived placement -> motion story -> invariant`。不能把五星样本中的 gasket、hinge、guide shoe、hub、socket、divider、control 等当成独立视觉件随机摆放。
+- 接口件优先从父基准派生：滑轨类先 rail slot 再 gasket / guide shoe / lid origin；铰链类先 hinge line/barrel 再门板和 pivot；旋转类先 hub/shaft/opening 再 fan/platter/blades；伸缩类先 socket/overlap 再 stage range；支撑类先 contact plane 再脚/轮/支架。
 - `_build_*` 只负责几何落地，不再随机关键尺寸。
 - 每个活动件必须有 joint metadata。
+- 每个真实 joint 必须有 motion story：父件、子件、closed pose、运动方向、语义约束，并用测试检查 type / axis / origin / range。
 - 非可动装饰优先 `parent.visual(...)`。
 - palette 必须命名，不允许裸 RGB 随机。
 - 对 `Part Diversity Audit` 中标为需要离散参数的核心部件，必须实现对应 shape/style/profile/variant/layout 分支。
+- 测试必须覆盖 seed domain、关键 joint、关键 visual、离散多样性分支和模板内 QC。
+
+### 4.6 自动调参闭环
+
+实现初稿后，agent 必须自动调到验收线，不得把调参默认交给用户。
+
+每一轮闭环：
+
+1. 运行 `uv run pytest tests/agent/test_<category_slug>_template.py`。
+2. 运行 `test "$(wc -l < agent/templates/<category_slug>.py)" -ge 1000`。
+3. 运行 `uv run python scripts/check_template_qc.py --slugs <category_slug> --seeds 0-2`。
+4. 运行 `uv run python scripts/render_template_previews.py --slugs <category_slug> --seeds 0-2`。
+5. 打开预览图，检查类别身份、比例、装配、closed pose、活动件、导轨/铰链/套筒是否可信。
+6. 对照 spec 中采用的 5 星样本 `model.py:Lx-Ly`，确认关键部件和 joint 没有被旧模板写法替代。
+7. 检查拓扑约束派生链：子件数量、尺寸、origin、orientation、joint range 是否由该类别的主约束基准约束，而不是独立随机。抽屉柜用 envelope-first；滑轨用 rail；铰链件用 hinge line；伸缩件用 socket/overlap；旋转件用 hub/axis；支撑件用 contact plane。
+8. 检查语义约束图和预览是否一致：gasket 必须嵌在 slot，hinge 必须贴 hinge line，fan 必须嵌入 shroud/hub，divider 必须贴底且不压货物，control/handle/button 必须贴面板，不能有解释不清的悬空 visual。
+9. 如果任一项失败，直接修改模板和测试后重复本闭环。
+
+自动调参完成条件：
+
+- 单测通过。
+- 模板文件 `>= 1000` 行。
+- QC 通过，或存在已解释且安全的例外。
+- 预览图由 agent 检查通过，且 seed 0-2 有结构差异。
+- 核心 part / joint 有 adopted source mapping。
+- 空间派生链可解释，且约束策略与类别拓扑匹配；活动件 closed pose 不悬空、不穿模。
+- `config_from_seed` 不采样未实现分支。
+- `resolve_config` 能校验、夹紧、降级非法或过宽组合。
+- 没有留下 TODO、人工手调建议或“后续再调”的完成状态。
+
+只有 spec 矛盾、必须用户决定拆分 slug、或需要用户在保真/覆盖之间取舍时，才允许暂停询问。
+
+### 4.7 多类别模板实现节奏
+
+如果用户一次给出多个类别：
+
+- SPEC_ONLY 可以批量处理。
+- TEMPLATE_AFTER_REVIEW 默认一次只实现 1 个模板。
+- 只有同一大类拆分出的高度相似子模板，才允许 2-3 个一组实现。
+- 每个模板必须先通过单测、QC、预览自检和必要自动修复，再进入下一个模板。
+- 禁止一次性生成 20/30 个未验收模板，然后依赖用户逐个手调。
 
 ---
 
@@ -382,10 +477,20 @@ Validator 表必须可直接映射到后续测试代码。
 
 - spec 未经人工审核确认。
 - 实现模板时没有读取审核后的 spec。
-- 实现模板时没有打开现有 11 个模板代码作为风格和 SDK 用法参考。
+- 实现模板时没有读取 `MATURE_TEMPLATE_METHOD.md`。
+- 实现模板时没有打开旧 11 个 gold-standard 模板代码作为风格和 SDK 用法参考。
+- 实现模板时完全忽略可用的新 20+ 同类二级参考，导致重复踩已修过的 seed/QC/预览问题。
 - 实现模板时没有回溯 spec 中被采纳的 5 星样本 `model.py:Lx-Ly` 片段。
+- 实现模板时只是看过五星样本，没有把对应源码片段实际适配到 helper / part / joint。
+- 模板文件低于 1000 行，且没有用户明确豁免。
 - 实现模板时没有落实 `Part Diversity Audit` 中要求的离散参数。
+- spec 明显过宽但没有拆分/收窄，也没有限制 `config_from_seed` 的稳定子域。
+- 一次性生成大量模板，未逐个测试、QC、预览或人工确认。
+- 测试/QC/预览发现问题后停止并要求用户手调，而不是自行修复。
+- 子件尺寸、origin、orientation 或 joint range 独立随机，没有从类别主约束基准派生，或把抽屉柜 envelope 公式机械套到不匹配拓扑，导致悬空/穿模风险。
+- `_build_*` 中随机关键尺寸或决定高层 layout。
 - 活动件缺少 joint metadata：`type / axis / origin / range`。
+- joint 没有基于部件语义确定 type、axis、origin、range，导致运动方向或铰链/滑轨位置错误。
 - 生成结果出现漂浮件、严重穿模、关节轴错误、类别身份丢失。
 
 ---
@@ -395,11 +500,21 @@ Validator 表必须可直接映射到后续测试代码。
 | 项 | 要求 |
 |---|---|
 | seed | 给定 seed 后生成结果可复现 |
+| line floor | `agent/templates/<slug>.py` 至少 1000 行；1000 是下限不是上限 |
+| 五星源码改编 | 核心 helper / part / joint 必须能追溯到 adopted 5 星源码片段 |
 | part naming | 零件命名稳定，不随随机采样混乱 |
 | joint metadata | 每个活动件必须有 joint type / axis / origin / range |
 | diversity | 不能只靠颜色变化，必须有结构级随机；关键部件若存在定性形态差异，必须显式表达 |
 | 参数语义 | 连续参数表达尺度 / 比例 / 厚度 / 角度；离散参数表达形态 / 轮廓 / 布局 / 风格 |
-| 已有模板参考表语义 | 该表是「已有模板写法参考 + 工程风格 anchor」，不是可 import 的库，也不是新模板部件来源 |
+| 空间约束 | 先识别类别拓扑和主约束基准，再选择对应约束策略派生数量、尺寸、origin、orientation 和 joint range；抽屉柜 envelope-first 只是其中一种 |
+| joint 语义 | 先理解真实运动语义，再确定 type、axis、origin、range，并测试运动方向 |
+| 拆分 / 收窄 | 主运动 spine 或 joint chain 不兼容时，优先拆分 slug；若暂不拆分，`config_from_seed` 必须只采样稳定子域 |
+| config_from_seed | 只负责可复现采样，且只采样已实现、已测试的布局和参数组合 |
+| resolve_config | 负责 enum 校验、范围夹紧、legacy alias、互斥组合降级、尺寸和 joint 派生 |
+| builder | `_build_*` 只消费 resolved config 和 assets；不随机关键尺寸，不决定高层 layout |
+| 自动调参 | agent 必须运行测试、QC、预览、自检、修复、重复；用户不是默认调参器 |
+| gold-standard 参考语义 | 旧 11 个模板是成熟度和工程风格 anchor，不是可 import 的部件库，也不是新模板部件来源 |
+| 二级参考语义 | 新 20+ 模板可参考拆分、seed domain、测试和已修问题，但不能定义成熟度或替代 5 星源码 |
 | 非可动子件挂载 | 非可动装饰 / 嵌入件优先用 `parent.visual(...)`，不创建独立 part 或 FIXED articulation |
 | 测试规约 | 单测只跑单样本结构、关节、几何自洽；数据集级覆盖率放 batch validator 或 reviewer 抽样 |
 
@@ -407,11 +522,11 @@ Validator 表必须可直接映射到后续测试代码。
 
 ## 7. 已有模板写法参考表
 
-下表用于帮助 agent 在已有 11 个旧模板里定位相似写法。它不是部件库，也不是可 import 的代码符号。
+下表用于帮助 agent 在旧 11 个 gold-standard 模板和可用二级参考里定位相似写法。它不是部件库，也不是可 import 的代码符号。
 
-**边界必须清楚：旧模板教 agent 怎么写模板；审核后的新 spec 决定新模板写什么部件。**
+**边界必须清楚：旧 11 个 gold-standard 模板教 agent 怎么写成熟模板；新 20+ 模板可提供二级经验参考；审核后的新 spec 决定新模板写什么部件；`MATURE_TEMPLATE_METHOD.md` 决定如何达到旧 11 个模板成熟度。**
 
-| 写法参考项 | 中文 | 适合参考的旧模板 | 具体参考位置 |
+| 写法参考项 | 中文 | 适合参考的 gold-standard 模板 | 具体参考位置 |
 |---|---|---|---|
 | prismatic_slide | 直线滑轨写法 | Sliding Window / Refrigerator drawer / Rolling Toolbox | `agent/templates/sliding_window.py` `_build_sash` |
 | revolute_hinge | 旋转铰链写法 | Tackle Box / Refrigerator / Step Ladder / Stand Mixer | `agent/templates/refrigerator_with_hinged_doors.py` `_build_door_visuals` |
@@ -431,10 +546,10 @@ Validator 表必须可直接映射到后续测试代码。
 
 使用约定：
 
-1. 本表只作为旧模板写法参考，不替代 spec 中被采纳的 5 星样本源码片段。
+1. 本表只作为旧 11 个 gold-standard 模板写法参考和新 20+ 模板二级经验参考，不替代 spec 中被采纳的 5 星样本源码片段。
 2. 若 spec 已经提供某个部件 / 关节 / 参数的 `model.py:Lx-Ly` 来源，必须优先改编该源码片段。
-3. 打开对应旧模板代码时，只学习文件组织、SDK 调用方式、helper 拆分、joint metadata 写法、palette 与 validator 风格。
-4. 只有当 spec 中的 5 星源码片段缺少某个通用工程写法时，才允许从旧模板借用相似 helper 的写法，并按新类别尺寸、轴向、palette 重新校准。
+3. 打开对应 gold-standard 模板代码时，只学习文件组织、SDK 调用方式、helper 拆分、joint metadata 写法、palette 与 validator 风格。
+4. 只有当 spec 中的 5 星源码片段缺少某个通用工程写法时，才允许从旧 11 个模板借用相似 helper 的写法，并按新类别尺寸、轴向、palette 重新校准。
 
 ---
 
@@ -451,5 +566,5 @@ Validator 表必须可直接映射到后续测试代码。
 - [ ] 若观察到定性外形差异，参数表中已加入对应 `*_shape / *_style / *_profile / *_variant / *_layout`。
 - [ ] 若没有观察到部件多样性，审计中记录 `observed_variation = none`。
 - [ ] 若只观察到尺寸 / 比例 / 厚度 / 角度 / 行程变化，审计中说明连续参数为什么足够。
-- [ ] 已有模板写法参考字段只用于旧模板写法参考，不是部件来源。
+- [ ] 已有模板写法参考字段只用于旧 11 个 gold-standard 模板写法参考和新 20+ 模板二级经验参考，不是部件来源。
 - [ ] 审核状态仍为 pending，不得进入模板实现阶段。

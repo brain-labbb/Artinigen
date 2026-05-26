@@ -65,9 +65,44 @@ function syncLoadedMeshVisibility(root: THREE.Object3D, showCollisionMeshes: boo
   });
 }
 
+function computeVisualBounds(root: THREE.Object3D): THREE.Box3 | null {
+  const bounds = new THREE.Box3();
+  let hasVisualGeometry = false;
+
+  root.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) {
+      return;
+    }
+    if (child.userData.articraftVisual !== true) {
+      return;
+    }
+    const geometry = child.geometry;
+    if (!geometry) {
+      return;
+    }
+    if (!geometry.boundingBox) {
+      geometry.computeBoundingBox();
+    }
+    if (!geometry.boundingBox) {
+      return;
+    }
+    const worldBounds = geometry.boundingBox.clone().applyMatrix4(child.matrixWorld);
+    if (!hasVisualGeometry) {
+      bounds.copy(worldBounds);
+      hasVisualGeometry = true;
+      return;
+    }
+    bounds.union(worldBounds);
+  });
+
+  return hasVisualGeometry ? bounds : null;
+}
+
 function normalizeRobotGroupToGroundOrigin(robotGroup: THREE.Group): void {
   robotGroup.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(robotGroup);
+  // Use visual bounds to place the rendered object on the ground plane.
+  // Hidden collision meshes can extend below visuals and make objects appear floating.
+  const box = computeVisualBounds(robotGroup) ?? new THREE.Box3().setFromObject(robotGroup);
   if (box.isEmpty()) {
     return;
   }
