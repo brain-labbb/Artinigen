@@ -79,6 +79,20 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     "revolving_door": "revolving_door",
     "simple_aframe_step_ladder": "simple_aframe_step_ladder",
     "stand_mixer": "stand_mixer",
+    # Pre-registered for in-progress modular templates (specs approved; .py may
+    # not exist yet — registry only builds CLI choices, the module is imported
+    # lazily at compile-sweep time, so unwritten slugs are safe here).
+    "single_revolute_hinge": "single_revolute_hinge",
+    "threestage_telescoping_slide": "threestage_telescoping_slide",
+    "twojoint_prismatic_chain": "twojoint_prismatic_chain",
+    "twojoint_revolute_chain": "twojoint_revolute_chain",
+    "usb_drive_with_swivel_cover": "usb_drive_with_swivel_cover",
+    "wheelbarrow": "wheelbarrow",
+    "wheelie_bin_with_hinged_lid": "wheelie_bin_with_hinged_lid",
+    "wind_turbine": "wind_turbine",
+    "zippo_lighter": "zippo_lighter",
+    "robotic_arms": "robotic_arms",
+    "robotic_leg": "robotic_leg",
 }
 
 GENERIC_MODEL_TEMPLATE = """from __future__ import annotations
