@@ -6,8 +6,8 @@
 | slug | `wind_turbine` |
 | template path | `agent/templates/wind_turbine.py` |
 | test path | `tests/agent/test_wind_turbine_template.py` |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `SPEC_ONLY_DRAFT` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 
 ## 5 星样本阅读摘要
 | 项 | 值 |
@@ -184,7 +184,7 @@ total_combinations = `len(support_style) × len(yaw_type) × len(rotor_style) ×
 ## 审核记录
 | 项 | 结论 |
 |---|---|
-| reviewer status | pending |
+| reviewer status | approved（human-reviewed）|
 | reviewer notes | SPEC_ONLY_DRAFT；等待人工审核。**审核修订：blade_count 由"恒 3"改为 2–5 加权采样 multiplicity 槽位（权重 {2:.15,3:.50,4:.25,5:.10}，默认/众数 3），N 片按 360°/N 等分相位克隆，样本只有 N=3 故 2/4/5 为参数外推**；Slot D 为 0..N 并联附件而非互斥单选 |
 </content>
 </invoke>

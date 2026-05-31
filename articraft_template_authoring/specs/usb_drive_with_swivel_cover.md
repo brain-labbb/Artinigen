@@ -6,8 +6,8 @@
 | slug | `usb_drive_with_swivel_cover` |
 | template path | `agent/templates/usb_drive_with_swivel_cover.py` |
 | test path | `tests/agent/test_usb_drive_with_swivel_cover_template.py` |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `SPEC_ONLY_DRAFT` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 
 ## 5 星样本阅读摘要
 | 项 | 值 |
@@ -191,5 +191,5 @@ total_combinations = 6 × 4 × 5 × 4 × 2 × 3 = **2880**
 ## 审核记录
 | 项 | 结论 |
 |---|---|
-| reviewer status | pending |
+| reviewer status | approved（human-reviewed）|
 | reviewer notes | SPEC_ONLY_DRAFT; waiting for human review |

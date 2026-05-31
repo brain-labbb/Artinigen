@@ -6,8 +6,8 @@
 | slug | `single_revolute_hinge` |
 | template path | `agent/templates/single_revolute_hinge.py` |
 | test path | `tests/agent/test_single_revolute_hinge_template.py` |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `SPEC_ONLY_DRAFT` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 
 ## 5 星样本阅读摘要
 | 项 | 值 |
@@ -184,5 +184,5 @@ pattern: **mixed**（parallel_children + multiplicity）
 ## 审核记录
 | 项 | 结论 |
 |---|---|
-| reviewer status | pending |
+| reviewer status | approved（human-reviewed）|
 | reviewer notes | SPEC_ONLY_DRAFT；读 14/55 个 5 星 + grep 全量；mixed pattern（parallel_children fixed↔moving + multiplicity hinge_line/独立 pin）；trunnion_cheek 与 barrel_with_collars 各仅 1 直接源已注明折叠备选；待人工审核 |

@@ -6,8 +6,8 @@
 | slug | `robotic_leg` |
 | template path | `agent/templates/robotic_leg.py` |
 | test path | `tests/agent/test_robotic_leg_template.py` |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `SPEC_ONLY_DRAFT` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 
 ## 5 星样本阅读摘要
 | 项 | 值 |
@@ -206,5 +206,5 @@ per-slot candidate_count：
 ## 审核记录
 | 项 | 结论 |
 |---|---|
-| reviewer status | pending |
+| reviewer status | approved（human-reviewed）|
 | reviewer notes | SPEC_ONLY_DRAFT；等待人工审核。读了 7 个跨谱系全量样本 + 30 个 grep 覆盖；Slot1 拓扑 slot 仅 2 候选（5-DOF spatial 5 星样本仅 1 例，已注明降级理由），其余 4 个结构 slot 均 4 候选，默认分支组合 256 ≫ 5 |

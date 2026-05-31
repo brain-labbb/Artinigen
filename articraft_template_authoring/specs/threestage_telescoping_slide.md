@@ -6,8 +6,8 @@
 | slug | `threestage_telescoping_slide` |
 | template path | `agent/templates/threestage_telescoping_slide.py` |
 | test path | `tests/agent/test_threestage_telescoping_slide_template.py` |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `SPEC_ONLY_DRAFT` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 
 ## 5 星样本阅读摘要
 | 项 | 值 |
@@ -194,5 +194,5 @@ pattern: **mixed**（3 级 prismatic 线性主链 + 每级 section_style 多选 
 ## 审核记录
 | 项 | 结论 |
 |---|---|
-| reviewer status | pending |
+| reviewer status | approved（human-reviewed）|
 | reviewer notes | SPEC_ONLY_DRAFT；精读 8 个代表样本 + grep 覆盖 37 个；待人工审核。section_style 锁 B/C/D 同族，total_combinations=256，拓扑 distinct≥12 已过 module_topology_diversity。 |

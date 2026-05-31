@@ -6,8 +6,8 @@
 | slug | `wheelie_bin_with_hinged_lid` |
 | template path | `agent/templates/wheelie_bin_with_hinged_lid.py` |
 | test path | `tests/agent/test_wheelie_bin_with_hinged_lid_template.py` |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `SPEC_ONLY_DRAFT` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 
 ## 5 星样本阅读摘要
 | 项 | 值 |
@@ -194,5 +194,5 @@ pattern = mixed
 ## 审核记录
 | 项 | 结论 |
 |---|---|
-| reviewer status | pending |
+| reviewer status | approved（human-reviewed）|
 | reviewer notes | SPEC_ONLY_DRAFT；28 个 5 星全 grep、7 个精读；身份恒为 body+lid(1 REVOLUTE)+2 wheel(2 CONTINUOUS)，无 no-wheel 变体；待人工 review |

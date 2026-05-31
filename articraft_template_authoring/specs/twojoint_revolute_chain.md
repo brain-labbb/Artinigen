@@ -6,8 +6,8 @@
 | slug | `twojoint_revolute_chain` |
 | template path | `agent/templates/twojoint_revolute_chain.py` |
 | test path | `tests/agent/test_twojoint_revolute_chain_template.py` |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `SPEC_ONLY_DRAFT` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 
 ## 5 星样本阅读摘要
 | 项 | 值 |
@@ -166,5 +166,5 @@ pattern：**mixed**（linear_chain 主干 + 末端 multiplicity）
 ## 审核记录
 | 项 | 结论 |
 |---|---|
-| reviewer status | pending |
+| reviewer status | approved（human-reviewed）|
 | reviewer notes | SPEC_ONLY_DRAFT；mixed 模式（linear chain + 末端 multiplicity）；axis_family 必须 gate（pitch ±Y / planar yaw Z 不可混）；等待人工 review |

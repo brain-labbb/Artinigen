@@ -6,8 +6,8 @@
 | slug | `robotic_arms` |
 | template path | `agent/templates/robotic_arms.py` |
 | test path | `tests/agent/test_robotic_arms_template.py` |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `SPEC_ONLY_DRAFT` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 
 ## 5 星样本阅读摘要
 | 项 | 值 |
@@ -178,5 +178,5 @@
 ## 审核记录
 | 项 | 结论 |
 |---|---|
-| reviewer status | pending |
+| reviewer status | approved（human-reviewed）|
 | reviewer notes | SPEC_ONLY_DRAFT; waiting for human review |

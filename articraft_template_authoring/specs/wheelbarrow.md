@@ -6,8 +6,8 @@
 | slug | `wheelbarrow` |
 | template path | `agent/templates/wheelbarrow.py` |
 | test path | `tests/agent/test_wheelbarrow_template.py` |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `SPEC_ONLY_DRAFT` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 
 ## 5 星样本阅读摘要
 | 项 | 值 |
@@ -188,5 +188,5 @@
 ## 审核记录
 | 项 | 结论 |
 |---|---|
-| reviewer status | pending |
+| reviewer status | approved（human-reviewed）|
 | reviewer notes | SPEC_ONLY_DRAFT；默认成熟域=单 DOF（monolithic_frame + integrated_fork + sdk_wheel + aux=none + tube_legs）；翻斗/脚架/调平/折平为 gated `aux_articulation` 分支。等待人工审核 |

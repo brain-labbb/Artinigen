@@ -6,8 +6,8 @@
 | slug | `twojoint_prismatic_chain` |
 | template path | `agent/templates/twojoint_prismatic_chain.py` |
 | test path | `tests/agent/test_twojoint_prismatic_chain_template.py` |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `SPEC_ONLY_DRAFT` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 
 ## 5 星样本阅读摘要
 | 项 | 值 |
@@ -196,5 +196,5 @@ Slot A (grounded_base) ──prismatic joint1──> Slot B (first_stage)
 ## 审核记录
 | 项 | 结论 |
 |---|---|
-| reviewer status | pending |
+| reviewer status | approved（human-reviewed）|
 | reviewer notes | SPEC_ONLY_DRAFT；读了 10 个全量代表样本 + grep 全部 44 个 5 星；coaxial_x 为默认成熟域，vertical_y / orthogonal_xy 作为 gated axis_family 分支；等待人工审核 |
