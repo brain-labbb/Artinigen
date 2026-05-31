@@ -128,12 +128,13 @@ spec `approved` 后进入实现阶段。
   - `slot_choices_for_seed(seed) -> list[tuple[str, str]]`
   - `run_<slug>_tests(model, config) -> TestReport`
 
-- `tests/agent/test_<slug>_template.py` 必须含：
-  - seed 可复现测试
-  - seed=0 = anchor 组合测试
-  - 所有 module 组合 build 成功测试（loop 整个 slot×module 网格）
-  - 拓扑多样性测试（seeds 0-N 内 ≥某阈值的 distinct picks）
-  - 每槽位的 invalid module rejection 测试
+- `tests/agent/test_<slug>_template.py` **可选**（非验收必需）。验收只看
+  compile-sweep；per-template 测试默认被 `template_asset` marker 排除（见
+  `tests/agent/conftest.py`），批量造模板时不写。仅当模板定稿、要长期锁结构
+  时才写，且只覆盖 sweep 抽样覆盖不到的两项：
+  - 所有 module 组合 build 成功（loop 整个 slot×module 网格——sweep 只抽样，
+    冷门组合可能永远抽不到）
+  - seed=0 = anchor 组合（sweep 不验证这一条）
 
 - 如果模板用了非显然的 pattern（mid_arm 倍数、parallel children），
   在 `<slug>.py` 文件头注释里写清。
@@ -145,8 +146,9 @@ spec `approved` 后进入实现阶段。
 bug 修干净，再上 20 seed 验证 edge case，能省 30-50% 的总时间。
 
 ```bash
-# 1. 单元测试
-uv run --group dev pytest tests/agent/test_<slug>_template.py -q
+# 验收只靠 compile-sweep,无 pytest 步骤。若写了可选的 per-template 回归测试,
+# 用 `uv run --group dev pytest -m template_asset tests/agent/test_<slug>_template.py -q`
+# 单独跑,它默认不在 sweep 流程里。
 
 # 2a. 快速 5 seed sweep — 用来打掉 anchor / 主流模块组合 / 基础 mating 的 bug
 uv run articraft template compile-sweep <slug> --seeds 0-4 \
@@ -182,8 +184,7 @@ uv run articraft template batch <slug> --seeds 0-9 --agent claude-code
 
 ### 3.4 完工标准
 
-- pytest 全过
-- sweep verdict=pass, pass_rate ≥ 0.85, diversity ≥ 5
+- sweep verdict=pass, pass_rate ≥ 0.85, diversity ≥ 5（**唯一验收门**，不要求 pytest）
 - 10 seed batch 全部 compile 成功
 - 自检过一遍 viewer 的 10 个 seed，**没有明显几何错误**（关节悬空、
   部件穿模、视觉断片）
@@ -215,7 +216,6 @@ uv run articraft template batch <slug> --seeds 0-9 --agent claude-code
 - slug: <category_slug>
 - spec: articraft_template_authoring/specs/<slug>.md
 - template: agent/templates/<slug>.py (NNNN lines)
-- tests: tests/agent/test_<slug>_template.py (M passed)
 - sweep: verdict=pass, pass_rate=X.XX, distinct_topologies=K
 - batch: 10/10 seeds compiled to viewer (record IDs ...)
 - per-seed picks: <seed 0..9 的 slot_choices_for_seed 一行一个>

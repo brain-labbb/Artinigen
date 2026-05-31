@@ -240,12 +240,15 @@ When adding a new modular template `<slug>`, produce:
    - `slot_choices_for_seed(seed) -> list[tuple[str, str]]`
    - `run_<slug>_tests(model, config) -> TestReport`
    - `__modular__ = True`
-2. **`tests/agent/test_<slug>_template.py`** — must include:
-   - Seed reproducibility test
-   - Seed=0 equals anchor combination test
-   - All-combinations-build test (loop the entire slot×module grid)
-   - Topology diversity test (≥7 distinct picks in first 10 seeds)
-   - Invalid module rejection test per slot
+2. **`tests/agent/test_<slug>_template.py`** — OPTIONAL. The authoritative
+   acceptance signal is `compile-sweep`, not pytest; per-template tests are
+   auto-tagged `template_asset` and excluded from the default pytest run (see
+   `tests/agent/conftest.py`). Skip it while batch-authoring. Write one only
+   when a finished template must be locked against future regressions, and
+   then only for the two things the sweep's sampling cannot cover:
+   - All-combinations-build test (loop the entire slot×module grid — the
+     sweep only samples seeds, so a rare combo may never be hit)
+   - Seed=0 equals anchor combination test (the sweep does not assert this)
 3. **`articraft_template_authoring/specs/<slug>.md`** — spec doc.
    Replace the single `primary_anchor` field with a `topology_variants`
    table listing each module and its source record.
@@ -254,11 +257,11 @@ When adding a new modular template `<slug>`, produce:
 
 ## Validation contract — must pass before declaring done
 
-```bash
-# 1. Unit tests
-uv run --group dev pytest tests/agent/test_<slug>_template.py -q
+The compile sweep is the ONLY acceptance gate (per CLAUDE.md). pytest is not
+required — there may be no per-template test at all.
 
-# 2. Compile sweep (50 seeds across 4 parallel processes)
+```bash
+# Compile sweep (50 seeds across 4 parallel processes)
 uv run articraft template compile-sweep <slug> --seeds 0-49 \
     --quiet --out /tmp/sw_<slug>.json
 ```
