@@ -97,6 +97,7 @@ class TestContextModelCheckMixin:
         reason: Optional[str],
         check_name: str,
         warn_only: bool = False,
+        bbox_relative: float = 0.0,
     ) -> bool:
         record = self._record_warning_check if warn_only else self._record
         tol_f = _normalize_joint_origin_tol(tol)
@@ -110,6 +111,7 @@ class TestContextModelCheckMixin:
             self.model,
             asset_root=self._asset_root(),
             tol=tol_f,
+            bbox_relative=float(bbox_relative),
             validate_model=not self._model_validated_strict,
         )
 
@@ -135,6 +137,7 @@ class TestContextModelCheckMixin:
         self,
         *,
         tol: float = _JOINT_ORIGIN_TOL_DEFAULT,
+        bbox_relative: float = 0.0,
         reason: Optional[str] = None,
         name: Optional[str] = None,
     ) -> bool:
@@ -143,6 +146,7 @@ class TestContextModelCheckMixin:
             tol=tol_f,
             reason=reason,
             check_name=name or f"fail_if_articulation_origin_far_from_geometry(tol={tol_f:.4g})",
+            bbox_relative=float(bbox_relative),
         )
 
     def warn_if_articulation_origin_far_from_geometry(
@@ -277,6 +281,17 @@ class TestContextModelCheckMixin:
             contact_tol=float(tol),
             validate_model=not self._model_validated_strict,
         )
+
+        allowed_parts = set(self._allow_disconnected_islands)
+        if allowed_parts:
+            allowed_findings = [f for f in findings if str(f.part) in allowed_parts]
+            findings = [f for f in findings if str(f.part) not in allowed_parts]
+            if allowed_findings:
+                allowed_names = sorted({str(f.part) for f in allowed_findings})
+                self.warn(
+                    "Disconnected geometry islands allowed by justification: "
+                    + ", ".join(repr(name) for name in allowed_names)
+                )
 
         failures: List[str] = []
         for finding in findings:

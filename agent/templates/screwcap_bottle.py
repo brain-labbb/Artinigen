@@ -1,4 +1,14 @@
-"""Procedural template for category `screwcap_bottle`."""
+"""Screwcap bottle modular template.
+
+Slot graph:
+  body -> thread -> cap
+
+The body slot establishes the coaxial Z bottle/neck datum. The thread slot
+adds the external neck thread to that same body part and re-exports the neck
+interface. The cap slot emits the moving cap group and owns the screw motion:
+either a simple coaxial spin or the threaded turn + axial lift model from the
+5-star samples.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +19,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from agent.templates._modular import (
+    InterfaceSpec,
+    ModuleBuild,
+    ModuleBuildContext,
+    SlotSpec,
+    assemble,
+)
 from sdk import (
     ArticulatedObject,
     ArticulationType,
@@ -26,11 +43,12 @@ from sdk import (
     tube_from_spline_points,
 )
 
-BottleProfile = Literal[
-    "cylindrical_water", "slender_cosmetic", "wide_jar", "rugged_rect", "squeeze_bottle"
-]
-CapStyle = Literal["smooth", "knurled", "ribbed", "rugged_windowed", "tethered"]
-ThreadRepresentation = Literal["helical", "banded"]
+__modular__ = True
+
+
+BodyModule = Literal["compact_lathe", "segmented_body", "rugged_utility"]
+ThreadModule = Literal["helical_thread", "banded_thread", "stacked_finish"]
+CapModule = Literal["ribbed_shell", "knurled_shell", "tethered_utility"]
 ScrewMotionModel = Literal["simple_spin", "threaded_turn_lift"]
 MaterialStyle = Literal["clear_plastic", "amber_lab", "sports_smoke"]
 
@@ -47,14 +65,25 @@ SOURCE_IDS = {
     "S10": "data/records/rec_screwcap_bottle_6b2c1386d07447bfa26806abf78b4935/revisions/rev_000001/model.py:L35-L126",
     "S11": "data/records/rec_screwcap_bottle_6b2c1386d07447bfa26806abf78b4935/revisions/rev_000001/model.py:L140-L255",
 }
+
 SOURCE_ADAPTATION_MAP = {
-    "body_lathe_shell": ("S1", "S2", "S5", "S10", "S11"),
-    "neck_finish": ("S2", "S5", "S8", "S11"),
-    "helical_thread": ("S4", "S5", "S7", "S8"),
-    "cap_shell": ("S3", "S5", "S7", "S11"),
-    "cap_lift_spin": ("S6", "S9"),
+    "body.compact_lathe": ("S4", "S5"),
+    "body.segmented_body": ("S10", "S11"),
+    "body.rugged_utility": ("S1", "S2", "S8"),
+    "thread.helical_thread": ("S4", "S5", "S7", "S8"),
+    "thread.banded_thread": ("S2", "S3"),
+    "thread.stacked_finish": ("S10", "S11"),
+    "cap.ribbed_shell": ("S5", "S6"),
+    "cap.knurled_shell": ("S3", "S7", "S8"),
+    "cap.tethered_utility": ("S3",),
+    "motion.threaded_turn_lift": ("S6", "S9"),
 }
-PALETTES = {
+
+BODY_MODULES: tuple[BodyModule, ...] = ("compact_lathe", "segmented_body", "rugged_utility")
+THREAD_MODULES: tuple[ThreadModule, ...] = ("helical_thread", "banded_thread", "stacked_finish")
+CAP_MODULES: tuple[CapModule, ...] = ("ribbed_shell", "knurled_shell", "tethered_utility")
+
+PALETTES: dict[str, dict[str, tuple[float, float, float, float]]] = {
     "clear_plastic": {
         "body": (0.72, 0.84, 0.92, 0.55),
         "cap": (0.08, 0.10, 0.12, 1.0),
@@ -81,26 +110,25 @@ PALETTES = {
 
 @dataclass(frozen=True)
 class ScrewcapBottleConfig:
-    bottle_profile: BottleProfile = "cylindrical_water"
-    cap_style: CapStyle = "knurled"
-    thread_representation: ThreadRepresentation = "helical"
+    body_module: BodyModule | None = None
+    thread_module: ThreadModule | None = None
+    cap_module: CapModule | None = None
     screw_motion_model: ScrewMotionModel = "threaded_turn_lift"
     material_style: MaterialStyle = "clear_plastic"
-    body_height: float = 0.185
-    body_radius: float = 0.040
-    neck_height: float = 0.034
-    thread_pitch: float = 0.0042
-    thread_turns: float = 1.8
+    body_height: float = 0.151
+    body_radius: float = 0.038
+    neck_height: float = 0.027
+    thread_pitch: float = 0.0064
+    thread_turns: float = 1.6
     thread_clearance: float = 0.0012
-    has_tether: bool = False
     name: str = "reference_screwcap_bottle"
 
 
 @dataclass(frozen=True)
 class ResolvedScrewcapBottleConfig:
-    bottle_profile: BottleProfile
-    cap_style: CapStyle
-    thread_representation: ThreadRepresentation
+    body_module: BodyModule
+    thread_module: ThreadModule
+    cap_module: CapModule
     screw_motion_model: ScrewMotionModel
     material_style: MaterialStyle
     body_height: float
@@ -114,111 +142,130 @@ class ResolvedScrewcapBottleConfig:
     thread_height: float
     thread_travel: float
     thread_radius: float
+    thread_clearance: float
     cap_inner_radius: float
     cap_outer_radius: float
-    cap_height: float
     cap_skirt_height: float
-    top_thickness: float
+    cap_height: float
     knurl_count: int
-    has_tether: bool
+    palette: dict[str, tuple[float, float, float, float]]
     name: str
 
 
 def config_from_seed(seed: int) -> ScrewcapBottleConfig:
+    if seed == 0:
+        return ScrewcapBottleConfig(
+            body_module="compact_lathe",
+            thread_module="helical_thread",
+            cap_module="ribbed_shell",
+            screw_motion_model="threaded_turn_lift",
+            material_style="clear_plastic",
+            body_height=0.151,
+            body_radius=0.038,
+            neck_height=0.027,
+            thread_pitch=0.0064,
+            thread_turns=1.6,
+            thread_clearance=0.0012,
+            name="reference_screwcap_bottle",
+        )
+
     rng = random.Random(seed)
-    profile = rng.choice(
-        ("cylindrical_water", "slender_cosmetic", "wide_jar", "rugged_rect", "squeeze_bottle")
-    )
+    body_module = rng.choice(BODY_MODULES)
     radius_range = {
-        "wide_jar": (0.048, 0.074),
-        "slender_cosmetic": (0.026, 0.044),
-        "rugged_rect": (0.036, 0.060),
-        "squeeze_bottle": (0.032, 0.055),
-        "cylindrical_water": (0.032, 0.060),
-    }[profile]
+        "compact_lathe": (0.032, 0.044),
+        "segmented_body": (0.036, 0.052),
+        "rugged_utility": (0.042, 0.066),
+    }[body_module]
+    height_range = {
+        "compact_lathe": (0.135, 0.185),
+        "segmented_body": (0.175, 0.255),
+        "rugged_utility": (0.205, 0.305),
+    }[body_module]
     return ScrewcapBottleConfig(
-        bottle_profile=profile,
-        cap_style=rng.choice(("smooth", "knurled", "ribbed", "rugged_windowed", "tethered")),
-        thread_representation=rng.choice(("helical", "banded")),
-        screw_motion_model="threaded_turn_lift" if rng.random() < 0.78 else "simple_spin",
-        material_style=rng.choice(("clear_plastic", "amber_lab", "sports_smoke")),
-        body_height=round(rng.uniform(0.130, 0.330), 3),
+        body_module=body_module,
+        thread_module=rng.choice(THREAD_MODULES),
+        cap_module=rng.choice(CAP_MODULES),
+        screw_motion_model="threaded_turn_lift" if rng.random() < 0.76 else "simple_spin",
+        material_style=rng.choice(tuple(PALETTES)),
+        body_height=round(rng.uniform(*height_range), 3),
         body_radius=round(rng.uniform(*radius_range), 3),
-        neck_height=round(rng.uniform(0.024, 0.058), 3),
-        thread_pitch=round(rng.uniform(0.0028, 0.0056), 4),
+        neck_height=round(rng.uniform(0.022, 0.060), 3),
+        thread_pitch=round(rng.uniform(0.0028, 0.0064), 4),
         thread_turns=round(rng.uniform(1.2, 2.8), 2),
-        thread_clearance=round(rng.uniform(0.0008, 0.0022), 4),
-        has_tether=rng.random() < 0.25,
+        thread_clearance=round(rng.uniform(0.0008, 0.0024), 4),
         name=f"seeded_screwcap_bottle_{seed}",
     )
 
 
 def resolve_config(config: ScrewcapBottleConfig) -> ResolvedScrewcapBottleConfig:
-    if config.bottle_profile not in {
-        "cylindrical_water",
-        "slender_cosmetic",
-        "wide_jar",
-        "rugged_rect",
-        "squeeze_bottle",
-    }:
-        raise ValueError(f"Unsupported bottle_profile: {config.bottle_profile}")
-    if config.cap_style not in {"smooth", "knurled", "ribbed", "rugged_windowed", "tethered"}:
-        raise ValueError(f"Unsupported cap_style: {config.cap_style}")
-    if config.thread_representation not in {"helical", "banded"}:
-        raise ValueError(f"Unsupported thread_representation: {config.thread_representation}")
+    body_module = config.body_module or "compact_lathe"
+    thread_module = config.thread_module or "helical_thread"
+    cap_module = config.cap_module or "ribbed_shell"
+    if body_module not in BODY_MODULES:
+        raise ValueError(f"Unsupported body_module: {body_module}")
+    if thread_module not in THREAD_MODULES:
+        raise ValueError(f"Unsupported thread_module: {thread_module}")
+    if cap_module not in CAP_MODULES:
+        raise ValueError(f"Unsupported cap_module: {cap_module}")
     if config.screw_motion_model not in {"simple_spin", "threaded_turn_lift"}:
         raise ValueError(f"Unsupported screw_motion_model: {config.screw_motion_model}")
     if config.material_style not in PALETTES:
         raise ValueError(f"Unsupported material_style: {config.material_style}")
-    if not 0.11 <= config.body_height <= 0.36:
-        raise ValueError("body_height must be in [0.11, 0.36]")
-    if not 0.023 <= config.body_radius <= 0.080:
-        raise ValueError("body_radius must be in [0.023, 0.080]")
-    if not 0.018 <= config.neck_height <= 0.070:
-        raise ValueError("neck_height must be in [0.018, 0.070]")
-    if not 0.002 <= config.thread_pitch <= 0.007:
-        raise ValueError("thread_pitch must be in [0.002, 0.007]")
-    if not 1.0 <= config.thread_turns <= 3.5:
-        raise ValueError("thread_turns must be in [1.0, 3.5]")
-    shoulder_height = min(config.body_height * 0.18, 0.045)
-    neck_radius = config.body_radius * (0.34 if config.bottle_profile != "wide_jar" else 0.48)
-    thread_height = config.thread_pitch * config.thread_turns + 0.004
-    neck_height = max(config.neck_height, thread_height + 0.006)
-    thread_travel = config.thread_pitch * config.thread_turns
-    thread_radius = neck_radius + 0.0011
-    cap_inner_radius = thread_radius + config.thread_clearance + 0.0011
-    grip_depth = 0.0025 if config.cap_style in {"knurled", "ribbed"} else 0.0012
-    cap_outer_radius = cap_inner_radius + 0.0032 + grip_depth
-    cap_skirt_height = max(thread_height + 0.006, neck_height * 0.82)
-    top_thickness = max(0.004, cap_outer_radius * 0.18)
-    cap_height = cap_skirt_height + top_thickness
-    neck_base_z = config.body_height - shoulder_height * 0.52
+
+    body_height = _clamp(config.body_height, 0.120, 0.340)
+    body_radius = _clamp(config.body_radius, 0.025, 0.075)
+    shoulder_height = min(max(body_height * 0.16, 0.020), 0.050)
+    neck_radius_ratio = 0.48 if body_module == "segmented_body" else 0.40
+    if body_module == "rugged_utility":
+        neck_radius_ratio = 0.36
+    neck_radius = body_radius * neck_radius_ratio
+    thread_pitch = _clamp(config.thread_pitch, 0.002, 0.007)
+    thread_turns = _clamp(config.thread_turns, 1.0, 3.5)
+    thread_height = thread_pitch * thread_turns + 0.004
+    neck_height = max(_clamp(config.neck_height, 0.018, 0.070), thread_height + 0.006)
+    thread_travel = thread_pitch * thread_turns
+    thread_radius = neck_radius + max(0.0009, body_radius * 0.026)
+    thread_clearance = _clamp(config.thread_clearance, 0.0008, 0.0030)
+    cap_inner_radius = thread_radius + thread_clearance + 0.0010
+    grip_depth = 0.0026 if cap_module in {"knurled_shell", "tethered_utility"} else 0.0014
+    cap_outer_radius = cap_inner_radius + max(0.0030, body_radius * 0.075) + grip_depth
+    cap_skirt_height = max(thread_height + 0.008, neck_height * 0.84)
+    cap_height = cap_skirt_height + max(0.004, cap_outer_radius * 0.15)
+    neck_base_z = body_height - shoulder_height * 0.45
     return ResolvedScrewcapBottleConfig(
-        config.bottle_profile,
-        config.cap_style,
-        config.thread_representation,
-        config.screw_motion_model,
-        config.material_style,
-        config.body_height,
-        config.body_radius,
-        shoulder_height,
-        neck_radius,
-        neck_height,
-        neck_base_z,
-        config.thread_pitch,
-        config.thread_turns,
-        thread_height,
-        thread_travel,
-        thread_radius,
-        cap_inner_radius,
-        cap_outer_radius,
-        cap_height,
-        cap_skirt_height,
-        top_thickness,
-        max(16, int(cap_outer_radius / 0.003)),
-        config.has_tether or config.cap_style == "tethered",
-        config.name,
+        body_module=body_module,
+        thread_module=thread_module,
+        cap_module=cap_module,
+        screw_motion_model=config.screw_motion_model,
+        material_style=config.material_style,
+        body_height=body_height,
+        body_radius=body_radius,
+        shoulder_height=shoulder_height,
+        neck_radius=neck_radius,
+        neck_height=neck_height,
+        neck_base_z=neck_base_z,
+        thread_pitch=thread_pitch,
+        thread_turns=thread_turns,
+        thread_height=thread_height,
+        thread_travel=thread_travel,
+        thread_radius=thread_radius,
+        thread_clearance=thread_clearance,
+        cap_inner_radius=cap_inner_radius,
+        cap_outer_radius=cap_outer_radius,
+        cap_skirt_height=cap_skirt_height,
+        cap_height=cap_height,
+        knurl_count=max(18, int(cap_outer_radius / 0.0017)),
+        palette=dict(PALETTES[config.material_style]),
+        name=config.name,
     )
+
+
+def _clamp(value: float, lower: float, upper: float) -> float:
+    return max(lower, min(upper, value))
+
+
+def _mesh(geometry, assets: AssetContext, name: str):
+    return mesh_from_geometry(geometry, assets.mesh_path(name))
 
 
 def _helix_points(
@@ -227,10 +274,10 @@ def _helix_points(
     z_start: float,
     pitch: float,
     turns: float,
-    phase: float = 0.0,
+    phase: float = math.pi / 5.0,
     samples_per_turn: int = 34,
 ) -> list[tuple[float, float, float]]:
-    sample_count = max(4, int(math.ceil(turns * samples_per_turn)))
+    sample_count = max(8, int(math.ceil(turns * samples_per_turn)))
     return [
         (
             radius * math.cos(phase + math.tau * turns * i / sample_count),
@@ -241,321 +288,633 @@ def _helix_points(
     ]
 
 
-def _mesh(geometry, assets: AssetContext, name: str):
-    return mesh_from_geometry(geometry, assets.mesh_path(name))
+def _body_interface(r: ResolvedScrewcapBottleConfig) -> InterfaceSpec:
+    return InterfaceSpec(
+        interface_name="neck_axis",
+        part_name="bottle_body",
+        visual_name="neck_finish",
+        face_side="positive_z",
+        anchor_local=(0.0, 0.0, r.neck_base_z + r.neck_height),
+        face_extents_uv=(r.neck_radius * 2.0, r.neck_radius * 2.0),
+        contact_tol=0.002,
+    )
 
 
-def _body_profiles(r: ResolvedScrewcapBottleConfig):
-    R, H = r.body_radius, r.body_height
+def _compact_profiles(r: ResolvedScrewcapBottleConfig):
+    R = r.body_radius
+    H = r.body_height
     neck_r = r.neck_radius
-    if r.bottle_profile == "wide_jar":
-        outer = [
-            (R * 0.72, 0.000),
-            (R, 0.010),
-            (R, H * 0.70),
-            (R * 0.86, H * 0.82),
-            (neck_r * 1.32, r.neck_base_z),
-            (neck_r, r.neck_base_z + r.neck_height),
-        ]
-    elif r.bottle_profile == "slender_cosmetic":
-        outer = [
-            (R * 0.70, 0.000),
-            (R * 0.94, 0.014),
-            (R, H * 0.78),
-            (R * 0.70, r.neck_base_z),
-            (neck_r, r.neck_base_z + r.neck_height),
-        ]
-    else:
-        outer = [
-            (R * 0.74, 0.000),
-            (R, 0.012),
-            (R, H - r.shoulder_height),
-            (R * 0.78, r.neck_base_z),
-            (neck_r, r.neck_base_z + r.neck_height),
-        ]
-    inner = [(max(0.001, rr - 0.0026), z + (0.002 if z < 0.005 else 0.0)) for rr, z in outer]
+    outer = [
+        (R * 0.26, 0.000),
+        (R * 0.95, 0.004),
+        (R, 0.012),
+        (R, H - r.shoulder_height),
+        (R * 0.90, H - r.shoulder_height * 0.60),
+        (neck_r * 1.08, r.neck_base_z),
+        (neck_r, r.neck_base_z + r.neck_height),
+    ]
+    inner = [
+        (0.000, 0.005),
+        (R * 0.84, 0.011),
+        (R * 0.86, H - r.shoulder_height * 1.05),
+        (neck_r * 0.82, r.neck_base_z),
+        (neck_r * 0.80, r.neck_base_z + r.neck_height - 0.001),
+    ]
     return outer, inner
 
 
-def _add_thread_visual(
-    part,
-    r: ResolvedScrewcapBottleConfig,
-    assets: AssetContext,
-    material,
+def _segmented_profiles(r: ResolvedScrewcapBottleConfig):
+    R = r.body_radius
+    H = r.body_height
+    neck_r = r.neck_radius
+    outer = [
+        (R * 0.30, 0.000),
+        (R * 0.86, 0.006),
+        (R * 0.98, H * 0.18),
+        (R, H * 0.58),
+        (R * 0.94, H * 0.74),
+        (neck_r * 1.55, H - r.shoulder_height),
+        (neck_r * 1.08, r.neck_base_z),
+        (neck_r, r.neck_base_z + r.neck_height),
+    ]
+    inner = [
+        (0.000, 0.007),
+        (R * 0.76, 0.014),
+        (R * 0.88, H * 0.20),
+        (R * 0.90, H * 0.66),
+        (neck_r * 1.10, r.neck_base_z),
+        (neck_r * 0.78, r.neck_base_z + r.neck_height - 0.001),
+    ]
+    return outer, inner
+
+
+def _rugged_profiles(r: ResolvedScrewcapBottleConfig):
+    R = r.body_radius
+    H = r.body_height
+    neck_r = r.neck_radius
+    outer = [
+        (R * 0.72, 0.000),
+        (R, 0.014),
+        (R * 1.02, H * 0.64),
+        (R * 0.92, H - r.shoulder_height),
+        (neck_r * 1.42, r.neck_base_z),
+        (neck_r, r.neck_base_z + r.neck_height),
+    ]
+    inner = [
+        (0.000, 0.008),
+        (R * 0.82, 0.014),
+        (R * 0.86, H * 0.62),
+        (neck_r * 1.05, r.neck_base_z),
+        (neck_r * 0.78, r.neck_base_z + r.neck_height - 0.001),
+    ]
+    return outer, inner
+
+
+def _emit_body_shell(
+    ctx: ModuleBuildContext,
     *,
-    internal: bool,
-    name: str,
-    z_offset: float,
+    profiles,
+    shell_name: str,
+    mesh_name: str,
 ) -> None:
-    if r.thread_representation == "helical":
-        radius = (r.cap_inner_radius - 0.0006) if internal else r.thread_radius
-        part.visual(
-            _mesh(
-                tube_from_spline_points(
-                    _helix_points(
-                        radius=radius,
-                        z_start=z_offset,
-                        pitch=r.thread_pitch,
-                        turns=r.thread_turns,
-                        phase=math.pi / 5.0,
-                    ),
-                    radius=0.00075,
-                    samples_per_segment=3,
-                    radial_segments=12,
-                    cap_ends=True,
-                ),
-                assets,
-                f"{name}.obj",
-            ),
-            material=material,
-            name=name,
-        )
-    else:
-        for i in range(max(2, int(r.thread_turns * 2))):
-            z = z_offset + 0.004 + i * r.thread_pitch * 0.85
-            part.visual(
-                _mesh(
-                    TorusGeometry(
-                        radius=(r.cap_inner_radius - 0.0006) if internal else r.thread_radius,
-                        tube=0.00065,
-                        radial_segments=60,
-                        tubular_segments=8,
-                    ),
-                    assets,
-                    f"{name}_{i}.obj",
-                ),
-                origin=Origin(xyz=(0.0, 0.0, z)),
-                material=material,
-                name=f"{name}_{i}",
-            )
-
-
-def _build_body(part, r: ResolvedScrewcapBottleConfig, assets: AssetContext, mats) -> None:
-    outer, inner = _body_profiles(r)
-    part.visual(
+    r: ResolvedScrewcapBottleConfig = ctx.config  # type: ignore[assignment]
+    body = ctx.model.part("bottle_body")
+    outer, inner = profiles(r)
+    body.visual(
         _mesh(
             LatheGeometry.from_shell_profiles(
-                outer, inner, segments=88, start_cap="flat", end_cap="flat"
+                outer,
+                inner,
+                segments=88,
+                start_cap="flat",
+                end_cap="flat",
             ),
-            assets,
-            "screwcap_bottle_shell.obj",
+            ctx.model.assets,
+            mesh_name,
         ),
-        material=mats["body"],
-        name="body_shell",
+        material="body",
+        name=shell_name,
     )
-    part.visual(
-        _mesh(
-            TorusGeometry(
-                radius=r.body_radius * 0.92, tube=0.0014, radial_segments=72, tubular_segments=10
-            ),
-            assets,
-            "bottle_base_ring.obj",
-        ),
-        origin=Origin(xyz=(0.0, 0.0, 0.010)),
-        material=mats["body"],
-        name="base_ring",
-    )
-    part.visual(
+    body.visual(
         Cylinder(radius=r.neck_radius, length=r.neck_height),
         origin=Origin(xyz=(0.0, 0.0, r.neck_base_z + r.neck_height * 0.5)),
-        material=mats["body"],
+        material="body",
         name="neck_finish",
     )
-    _add_thread_visual(
-        part,
-        r,
-        assets,
-        mats["thread"],
-        internal=False,
-        name="external_neck_thread",
-        z_offset=r.neck_base_z + 0.004,
+    body.visual(
+        Cylinder(radius=r.neck_radius * 1.28, length=0.004),
+        origin=Origin(xyz=(0.0, 0.0, r.neck_base_z + 0.002)),
+        material="body",
+        name="shoulder_finish",
     )
-    part.visual(
-        Cylinder(radius=r.thread_radius + 0.0015, length=0.003),
-        origin=Origin(xyz=(0.0, 0.0, r.neck_base_z + r.thread_height + 0.008)),
-        material=mats["thread"],
-        name="finish_bead",
-    )
-    part.inertial = Inertial.from_geometry(
+    body.inertial = Inertial.from_geometry(
         Cylinder(radius=r.body_radius, length=r.body_height),
         mass=0.24,
         origin=Origin(xyz=(0.0, 0.0, r.body_height * 0.5)),
     )
 
 
-def _build_cap_insert(part, r: ResolvedScrewcapBottleConfig, mats) -> None:
-    part.visual(
-        Cylinder(radius=r.cap_inner_radius * 0.30, length=r.cap_skirt_height),
-        origin=Origin(xyz=(0.0, 0.0, r.cap_skirt_height * 0.5)),
-        material=mats["seal"],
-        name="coaxial_guide_post",
+def _build_body_compact_lathe(ctx: ModuleBuildContext) -> ModuleBuild:
+    r: ResolvedScrewcapBottleConfig = ctx.config  # type: ignore[assignment]
+    _emit_body_shell(
+        ctx,
+        profiles=_compact_profiles,
+        shell_name="compact_lathe_shell",
+        mesh_name="compact_bottle_shell.obj",
     )
-    part.visual(
-        Cylinder(radius=r.cap_inner_radius * 0.92, length=0.0016),
-        origin=Origin(xyz=(0.0, 0.0, 0.001)),
-        material=mats["seal"],
-        name="seal_liner_disc",
+    body = ctx.model.get_part("bottle_body")
+    body.visual(
+        _mesh(
+            TorusGeometry(
+                radius=r.body_radius * 0.93,
+                tube=max(0.0025, r.body_radius * 0.090),
+                radial_segments=72,
+                tubular_segments=10,
+            ),
+            ctx.model.assets,
+            "compact_base_ring.obj",
+        ),
+        origin=Origin(xyz=(0.0, 0.0, r.body_height * 0.065)),
+        material="body",
+        name="base_ring",
     )
-    part.visual(
-        Box((0.0010, 0.0010, 0.0040)),
-        origin=Origin(xyz=(r.cap_inner_radius - 0.0004, 0.0, r.cap_skirt_height * 0.45)),
-        material=mats["seal"],
-        name="shell_contact_key",
+    return ModuleBuild(
+        module_name="compact_lathe",
+        parts_emitted=["bottle_body"],
+        interfaces={"downstream": _body_interface(r)},
+    )
+
+
+def _build_body_segmented(ctx: ModuleBuildContext) -> ModuleBuild:
+    r: ResolvedScrewcapBottleConfig = ctx.config  # type: ignore[assignment]
+    _emit_body_shell(
+        ctx,
+        profiles=_segmented_profiles,
+        shell_name="segmented_body_shell",
+        mesh_name="segmented_bottle_shell.obj",
+    )
+    body = ctx.model.get_part("bottle_body")
+    for i, z in enumerate((r.body_height * 0.28, r.body_height * 0.60)):
+        body.visual(
+            _mesh(
+                TorusGeometry(
+                    radius=r.body_radius * (0.96 - 0.03 * i),
+                    tube=0.0012,
+                    radial_segments=72,
+                    tubular_segments=8,
+                ),
+                ctx.model.assets,
+                f"segmented_label_band_{i}.obj",
+            ),
+            origin=Origin(xyz=(0.0, 0.0, z)),
+            material="accent",
+            name=f"label_band_{i}",
+        )
+    return ModuleBuild(
+        module_name="segmented_body",
+        parts_emitted=["bottle_body"],
+        interfaces={"downstream": _body_interface(r)},
+    )
+
+
+def _build_body_rugged(ctx: ModuleBuildContext) -> ModuleBuild:
+    r: ResolvedScrewcapBottleConfig = ctx.config  # type: ignore[assignment]
+    _emit_body_shell(
+        ctx,
+        profiles=_rugged_profiles,
+        shell_name="rugged_utility_shell",
+        mesh_name="rugged_utility_shell.obj",
+    )
+    body = ctx.model.get_part("bottle_body")
+    for y, name in ((r.body_radius * 0.98, "front"), (-r.body_radius * 0.98, "rear")):
+        body.visual(
+            Box((r.body_radius * 1.15, r.body_radius * 0.11, r.body_height * 0.45)),
+            origin=Origin(xyz=(0.0, y, r.body_height * 0.45)),
+            material="accent",
+            name=f"{name}_grip_pad",
+        )
+    for x, name in ((r.body_radius * 0.90, "right"), (-r.body_radius * 0.90, "left")):
+        body.visual(
+            Box((r.body_radius * 0.13, r.body_radius * 0.74, r.body_height * 0.54)),
+            origin=Origin(xyz=(x, 0.0, r.body_height * 0.43)),
+            material="body",
+            name=f"{name}_side_rail",
+        )
+    return ModuleBuild(
+        module_name="rugged_utility",
+        parts_emitted=["bottle_body"],
+        interfaces={"downstream": _body_interface(r)},
+    )
+
+
+def _build_thread_helical(ctx: ModuleBuildContext) -> ModuleBuild:
+    r: ResolvedScrewcapBottleConfig = ctx.config  # type: ignore[assignment]
+    body = ctx.model.get_part("bottle_body")
+    body.visual(
+        _mesh(
+            tube_from_spline_points(
+                _helix_points(
+                    radius=r.thread_radius,
+                    z_start=r.neck_base_z + 0.004,
+                    pitch=r.thread_pitch,
+                    turns=r.thread_turns,
+                ),
+                radius=max(0.00065, r.body_radius * 0.016),
+                samples_per_segment=4,
+                radial_segments=14,
+                cap_ends=True,
+            ),
+            ctx.model.assets,
+            "external_helical_thread.obj",
+        ),
+        material="thread",
+        name="external_neck_thread",
+    )
+    return ModuleBuild(
+        module_name="helical_thread",
+        parts_emitted=[],
+        interfaces={"downstream": ctx.upstream_interface} if ctx.upstream_interface else {},
+    )
+
+
+def _build_thread_banded(ctx: ModuleBuildContext) -> ModuleBuild:
+    r: ResolvedScrewcapBottleConfig = ctx.config  # type: ignore[assignment]
+    body = ctx.model.get_part("bottle_body")
+    band_count = max(3, int(math.ceil(r.thread_turns * 2.0)))
+    for i in range(band_count):
+        body.visual(
+            Cylinder(radius=r.thread_radius, length=0.0024),
+            origin=Origin(xyz=(0.0, 0.0, r.neck_base_z + 0.005 + i * r.thread_pitch * 0.72)),
+            material="thread",
+            name=f"thread_band_{i}",
+        )
+    return ModuleBuild(
+        module_name="banded_thread",
+        parts_emitted=[],
+        interfaces={"downstream": ctx.upstream_interface} if ctx.upstream_interface else {},
+    )
+
+
+def _build_thread_stacked_finish(ctx: ModuleBuildContext) -> ModuleBuild:
+    r: ResolvedScrewcapBottleConfig = ctx.config  # type: ignore[assignment]
+    body = ctx.model.get_part("bottle_body")
+    for i, scale in enumerate((1.12, 1.05, 0.98, 0.92)):
+        body.visual(
+            Cylinder(radius=r.thread_radius * scale, length=0.0020),
+            origin=Origin(xyz=(0.0, 0.0, r.neck_base_z + 0.004 + i * r.thread_pitch * 0.82)),
+            material="thread",
+            name=f"thread_turn_{i}",
+        )
+    body.visual(
+        Cylinder(radius=r.thread_radius * 1.12, length=0.0030),
+        origin=Origin(xyz=(0.0, 0.0, r.neck_base_z + r.thread_height + 0.006)),
+        material="body",
+        name="support_bead",
+    )
+    return ModuleBuild(
+        module_name="stacked_finish",
+        parts_emitted=[],
+        interfaces={"downstream": ctx.upstream_interface} if ctx.upstream_interface else {},
     )
 
 
 def _cap_profiles(r: ResolvedScrewcapBottleConfig):
     outer = [
-        (r.cap_outer_radius, 0.0),
+        (r.cap_outer_radius, 0.000),
         (r.cap_outer_radius, r.cap_skirt_height),
-        (r.cap_outer_radius * 0.92, r.cap_height),
-        (0.0, r.cap_height),
+        (r.cap_outer_radius * 0.93, r.cap_height),
+        (0.000, r.cap_height),
     ]
     inner = [
-        (r.cap_inner_radius, 0.0),
+        (r.cap_inner_radius, 0.000),
         (r.cap_inner_radius, r.cap_skirt_height - 0.001),
         (r.cap_inner_radius * 0.55, r.cap_height - 0.001),
     ]
     return outer, inner
 
 
-def _build_cap_shell(part, r: ResolvedScrewcapBottleConfig, assets: AssetContext, mats) -> None:
+def _emit_cap_insert(ctx: ModuleBuildContext, r: ResolvedScrewcapBottleConfig) -> None:
+    insert = ctx.model.part("cap_insert")
+    insert.visual(
+        Cylinder(radius=r.cap_inner_radius * 0.28, length=r.cap_skirt_height),
+        origin=Origin(xyz=(0.0, 0.0, r.cap_skirt_height * 0.5)),
+        material="seal",
+        name="coaxial_guide_post",
+    )
+    insert.visual(
+        Cylinder(radius=r.cap_inner_radius * 0.88, length=0.0016),
+        origin=Origin(xyz=(0.0, 0.0, 0.0008)),
+        material="seal",
+        name="seal_liner_disc",
+    )
+    insert.visual(
+        Box((r.cap_inner_radius * 1.42, 0.0012, 0.0040)),
+        origin=Origin(xyz=(r.cap_inner_radius * 0.36, 0.0, r.cap_skirt_height * 0.46)),
+        material="seal",
+        name="shell_contact_key",
+    )
+    insert.inertial = Inertial.from_geometry(
+        Cylinder(radius=r.cap_inner_radius, length=r.cap_skirt_height),
+        mass=0.006,
+        origin=Origin(xyz=(0.0, 0.0, r.cap_skirt_height * 0.5)),
+    )
+
+
+def _emit_cap_shell_base(ctx: ModuleBuildContext, r: ResolvedScrewcapBottleConfig) -> None:
+    cap = ctx.model.part("screw_cap")
     outer, inner = _cap_profiles(r)
-    part.visual(
+    cap.visual(
         _mesh(
             LatheGeometry.from_shell_profiles(
-                outer, inner, segments=96, start_cap="flat", end_cap="flat"
+                outer,
+                inner,
+                segments=88,
+                start_cap="flat",
+                end_cap="flat",
             ),
-            assets,
-            "screwcap_cap_shell.obj",
+            ctx.model.assets,
+            "screw_cap_shell.obj",
         ),
-        material=mats["cap"],
+        material="cap",
         name="cap_outer_shell",
     )
-    _add_thread_visual(
-        part, r, assets, mats["cap"], internal=True, name="internal_cap_thread", z_offset=0.004
+    cap.visual(
+        _mesh(
+            tube_from_spline_points(
+                _helix_points(
+                    radius=r.cap_inner_radius - 0.0002,
+                    z_start=0.004,
+                    pitch=r.thread_pitch,
+                    turns=r.thread_turns,
+                ),
+                radius=max(0.00055, r.body_radius * 0.014),
+                samples_per_segment=4,
+                radial_segments=12,
+                cap_ends=True,
+            ),
+            ctx.model.assets,
+            "internal_cap_thread.obj",
+        ),
+        material="thread",
+        name="internal_cap_thread",
     )
-    if r.cap_style in {"knurled", "rugged_windowed"}:
-        for i in range(r.knurl_count):
-            a = math.tau * i / r.knurl_count
-            part.visual(
-                Box((0.0016, 0.0038, r.cap_skirt_height * 0.70)),
-                origin=Origin(
-                    xyz=(
-                        math.cos(a) * (r.cap_outer_radius + 0.001),
-                        math.sin(a) * (r.cap_outer_radius + 0.001),
-                        r.cap_skirt_height * 0.46,
-                    ),
-                    rpy=(0.0, 0.0, a),
-                ),
-                material=mats["accent"],
-                name=f"vertical_knurl_{i}",
-            )
-    elif r.cap_style == "ribbed":
-        for i in range(4):
-            part.visual(
-                _mesh(
-                    TorusGeometry(
-                        radius=r.cap_outer_radius + 0.0003,
-                        tube=0.0007,
-                        radial_segments=72,
-                        tubular_segments=8,
-                    ),
-                    assets,
-                    f"cap_grip_ring_{i}.obj",
-                ),
-                origin=Origin(xyz=(0.0, 0.0, 0.006 + i * r.cap_skirt_height / 5.0)),
-                material=mats["accent"],
-                name=f"grip_ring_{i}",
-            )
-    if r.has_tether:
-        part.visual(
-            Box((0.010, 0.006, 0.004)),
-            origin=Origin(xyz=(r.cap_outer_radius + 0.004, 0.0, r.cap_height * 0.58)),
-            material=mats["accent"],
-            name="tether_lug",
-        )
-    part.inertial = Inertial.from_geometry(
+    cap.visual(
+        Cylinder(radius=r.cap_inner_radius * 0.24, length=0.004),
+        origin=Origin(xyz=(0.0, 0.0, 0.002)),
+        material="cap",
+        name="inner_hub",
+    )
+    cap.visual(
+        Box((r.cap_inner_radius * 1.70, 0.0014, 0.0032)),
+        origin=Origin(xyz=(r.cap_inner_radius * 0.50, 0.0, 0.0022)),
+        material="cap",
+        name="thread_bridge",
+    )
+    cap.visual(
+        Cylinder(radius=r.cap_inner_radius * 0.40, length=0.003),
+        origin=Origin(xyz=(0.0, 0.0, r.cap_height - 0.002)),
+        material="seal",
+        name="seal_plug",
+    )
+    cap.inertial = Inertial.from_geometry(
         Cylinder(radius=r.cap_outer_radius, length=r.cap_height),
         mass=0.045,
         origin=Origin(xyz=(0.0, 0.0, r.cap_height * 0.5)),
     )
 
 
+def _emit_cap_motion(ctx: ModuleBuildContext, r: ResolvedScrewcapBottleConfig) -> list[str]:
+    body = ctx.model.get_part("bottle_body")
+    insert = ctx.model.get_part("cap_insert")
+    cap = ctx.model.get_part("screw_cap")
+    joint_z = r.neck_base_z + r.neck_height - 0.001
+    if r.screw_motion_model == "threaded_turn_lift":
+        ctx.model.articulation(
+            "cap_thread_lift",
+            ArticulationType.PRISMATIC,
+            parent=body,
+            child=insert,
+            origin=Origin(xyz=(0.0, 0.0, joint_z)),
+            axis=(0.0, 0.0, 1.0),
+            motion_limits=MotionLimits(
+                effort=6.0,
+                velocity=0.05,
+                lower=0.0,
+                upper=r.thread_travel,
+            ),
+            meta={
+                "source_id": "S6/S9",
+                "thread_pitch": r.thread_pitch,
+                "thread_turns": r.thread_turns,
+                "thread_travel": r.thread_travel,
+                "semantic": "axial lift equals pitch times turns",
+            },
+        )
+        ctx.model.articulation(
+            "cap_spin",
+            ArticulationType.REVOLUTE,
+            parent=insert,
+            child=cap,
+            origin=Origin(),
+            axis=(0.0, 0.0, 1.0),
+            motion_limits=MotionLimits(
+                effort=2.0,
+                velocity=6.0,
+                lower=0.0,
+                upper=r.thread_turns * math.tau,
+            ),
+            meta={"source_id": "S6/S9", "semantic": "cap rotates coaxially on bottle neck thread"},
+        )
+        return ["cap_thread_lift", "cap_spin"]
+
+    ctx.model.articulation(
+        "cap_spin",
+        ArticulationType.CONTINUOUS,
+        parent=body,
+        child=cap,
+        origin=Origin(xyz=(0.0, 0.0, joint_z)),
+        axis=(0.0, 0.0, 1.0),
+        motion_limits=MotionLimits(effort=2.0, velocity=6.0),
+        meta={"source_id": "S3", "semantic": "simple screwcap spin around neck axis"},
+    )
+    ctx.model.articulation(
+        "cap_to_insert",
+        ArticulationType.FIXED,
+        parent=cap,
+        child=insert,
+        origin=Origin(),
+        meta={"source_id": "S3", "semantic": "seal liner moves with cap"},
+    )
+    return ["cap_spin", "cap_to_insert"]
+
+
+def _build_cap_ribbed(ctx: ModuleBuildContext) -> ModuleBuild:
+    r: ResolvedScrewcapBottleConfig = ctx.config  # type: ignore[assignment]
+    _emit_cap_insert(ctx, r)
+    _emit_cap_shell_base(ctx, r)
+    cap = ctx.model.get_part("screw_cap")
+    for i in range(4):
+        cap.visual(
+            _mesh(
+                TorusGeometry(
+                    radius=r.cap_outer_radius + 0.0002,
+                    tube=0.0007,
+                    radial_segments=72,
+                    tubular_segments=8,
+                ),
+                ctx.model.assets,
+                f"cap_grip_ring_{i}.obj",
+            ),
+            origin=Origin(xyz=(0.0, 0.0, 0.006 + i * r.cap_skirt_height / 5.0)),
+            material="accent",
+            name=f"grip_ring_{i}",
+        )
+    joints = _emit_cap_motion(ctx, r)
+    return ModuleBuild("ribbed_shell", ["cap_insert", "screw_cap"], joints)
+
+
+def _build_cap_knurled(ctx: ModuleBuildContext) -> ModuleBuild:
+    r: ResolvedScrewcapBottleConfig = ctx.config  # type: ignore[assignment]
+    _emit_cap_insert(ctx, r)
+    _emit_cap_shell_base(ctx, r)
+    cap = ctx.model.get_part("screw_cap")
+    for i in range(r.knurl_count):
+        angle = math.tau * i / r.knurl_count
+        cap.visual(
+            Box((r.cap_outer_radius * 0.10, 0.0032, r.cap_skirt_height * 0.70)),
+            origin=Origin(
+                xyz=(
+                    math.cos(angle) * r.cap_outer_radius,
+                    math.sin(angle) * r.cap_outer_radius,
+                    r.cap_skirt_height * 0.46,
+                ),
+                rpy=(0.0, 0.0, angle),
+            ),
+            material="accent",
+            name=f"vertical_knurl_{i}",
+        )
+    cap.visual(
+        Box((r.cap_outer_radius * 1.15, 0.004, 0.002)),
+        origin=Origin(xyz=(r.cap_outer_radius * 0.20, 0.0, r.cap_height - 0.001)),
+        material="seal",
+        name="cap_index_mark",
+    )
+    joints = _emit_cap_motion(ctx, r)
+    return ModuleBuild("knurled_shell", ["cap_insert", "screw_cap"], joints)
+
+
+def _build_cap_tethered(ctx: ModuleBuildContext) -> ModuleBuild:
+    r: ResolvedScrewcapBottleConfig = ctx.config  # type: ignore[assignment]
+    _emit_cap_insert(ctx, r)
+    _emit_cap_shell_base(ctx, r)
+    cap = ctx.model.get_part("screw_cap")
+    for i in range(max(16, r.knurl_count // 2)):
+        angle = math.tau * i / max(16, r.knurl_count // 2)
+        cap.visual(
+            Box((r.cap_outer_radius * 0.08, 0.0035, r.cap_skirt_height * 0.62)),
+            origin=Origin(
+                xyz=(
+                    math.cos(angle) * r.cap_outer_radius,
+                    math.sin(angle) * r.cap_outer_radius,
+                    r.cap_skirt_height * 0.44,
+                ),
+                rpy=(0.0, 0.0, angle),
+            ),
+            material="cap",
+            name=f"tether_cap_knurl_{i}",
+        )
+    cap.visual(
+        Box((r.cap_outer_radius * 0.42, r.cap_outer_radius * 0.25, r.cap_height * 0.44)),
+        origin=Origin(xyz=(r.cap_outer_radius + 0.001, 0.0, r.cap_height * 0.56)),
+        material="accent",
+        name="tether_lug",
+    )
+    cap.visual(
+        Box((r.cap_outer_radius * 1.25, 0.004, 0.003)),
+        origin=Origin(xyz=(0.0, 0.0, r.cap_height - 0.0015)),
+        material="accent",
+        name="top_reinforcement_bar",
+    )
+    cap.visual(
+        Box((0.004, r.cap_outer_radius * 1.25, 0.003)),
+        origin=Origin(xyz=(0.0, 0.0, r.cap_height - 0.0015)),
+        material="accent",
+        name="top_reinforcement_cross",
+    )
+    joints = _emit_cap_motion(ctx, r)
+    return ModuleBuild("tethered_utility", ["cap_insert", "screw_cap"], joints)
+
+
+BODY_FACTORIES = {
+    "compact_lathe": _build_body_compact_lathe,
+    "segmented_body": _build_body_segmented,
+    "rugged_utility": _build_body_rugged,
+}
+
+THREAD_FACTORIES = {
+    "helical_thread": _build_thread_helical,
+    "banded_thread": _build_thread_banded,
+    "stacked_finish": _build_thread_stacked_finish,
+}
+
+CAP_FACTORIES = {
+    "ribbed_shell": _build_cap_ribbed,
+    "knurled_shell": _build_cap_knurled,
+    "tethered_utility": _build_cap_tethered,
+}
+
+
+def _slots_for_config(r: ResolvedScrewcapBottleConfig) -> list[SlotSpec]:
+    return [
+        SlotSpec("body", BODY_FACTORIES, anchor_choice=r.body_module),
+        SlotSpec("thread", THREAD_FACTORIES, anchor_choice=r.thread_module),
+        SlotSpec("cap", CAP_FACTORIES, anchor_choice=r.cap_module),
+    ]
+
+
 def build_screwcap_bottle(
-    config: ScrewcapBottleConfig | None = None, *, assets: AssetContext | None = None
+    config: ScrewcapBottleConfig | None = None,
+    *,
+    assets: AssetContext | None = None,
 ) -> ArticulatedObject:
     config = config or ScrewcapBottleConfig()
     r = resolve_config(config)
     if assets is None:
         assets = AssetContext(Path(tempfile.mkdtemp(prefix="articraft-screwcap-bottle-assets-")))
     model = ArticulatedObject(name=r.name, assets=assets)
-    mats = {k: model.material(f"bottle_{k}", rgba=v) for k, v in PALETTES[r.material_style].items()}
-    body = model.part("bottle_body")
-    _build_body(body, r, assets, mats)
-    cap_insert = model.part("cap_insert")
-    _build_cap_insert(cap_insert, r, mats)
-    cap_shell = model.part("screw_cap")
-    _build_cap_shell(cap_shell, r, assets, mats)
-    joint_z = r.neck_base_z + r.neck_height - 0.002
-    if r.screw_motion_model == "threaded_turn_lift":
-        model.articulation(
-            "cap_thread_lift",
-            ArticulationType.PRISMATIC,
-            parent=body,
-            child=cap_insert,
-            origin=Origin(xyz=(0.0, 0.0, joint_z)),
-            axis=(0.0, 0.0, 1.0),
-            motion_limits=MotionLimits(effort=6.0, velocity=0.05, lower=0.0, upper=r.thread_travel),
-            meta={
-                "source_id": "S6/S9",
-                "thread_pitch": r.thread_pitch,
-                "thread_turns": r.thread_turns,
-                "semantic": "axial lift equals pitch times turns",
-            },
-        )
-        model.articulation(
-            "cap_spin",
-            ArticulationType.REVOLUTE,
-            parent=cap_insert,
-            child=cap_shell,
-            origin=Origin(),
-            axis=(0.0, 0.0, 1.0),
-            motion_limits=MotionLimits(
-                effort=2.0, velocity=6.0, lower=0.0, upper=r.thread_turns * math.tau
-            ),
-            meta={"source_id": "S6/S9", "semantic": "cap rotates coaxially on bottle neck thread"},
-        )
-    else:
-        model.articulation(
-            "cap_spin",
-            ArticulationType.CONTINUOUS,
-            parent=body,
-            child=cap_shell,
-            origin=Origin(xyz=(0.0, 0.0, joint_z)),
-            axis=(0.0, 0.0, 1.0),
-            motion_limits=MotionLimits(effort=2.0, velocity=6.0),
-            meta={"source_id": "S3", "semantic": "simple screwcap spin around neck axis"},
-        )
-        model.articulation(
-            "cap_to_insert",
-            ArticulationType.FIXED,
-            parent=cap_shell,
-            child=cap_insert,
-            origin=Origin(),
-            meta={"source_id": "S3", "semantic": "seal liner moves with cap"},
-        )
+    for material_name, rgba in r.palette.items():
+        model.material(material_name, rgba=rgba)
+    assemble(
+        model,
+        slots=_slots_for_config(r),
+        rng=random.Random(0),
+        palette=r.palette,
+        config=r,
+        seed=0,
+    )
     return model
 
 
 def build_seeded_screwcap_bottle(
-    seed: int, *, assets: AssetContext | None = None
+    seed: int,
+    *,
+    assets: AssetContext | None = None,
 ) -> ArticulatedObject:
     return build_screwcap_bottle(config_from_seed(seed), assets=assets)
 
 
+def slot_choices_for_seed(seed: int) -> list[tuple[str, str]]:
+    r = resolve_config(config_from_seed(seed))
+    return [
+        ("body", r.body_module),
+        ("thread", r.thread_module),
+        ("cap", r.cap_module),
+    ]
+
+
 def run_screwcap_bottle_tests(
-    object_model: ArticulatedObject, config: ScrewcapBottleConfig
+    object_model: ArticulatedObject,
+    config: ScrewcapBottleConfig,
 ) -> TestReport:
     r = resolve_config(config)
     ctx = TestContext(object_model)
@@ -567,13 +926,13 @@ def run_screwcap_bottle_tests(
             object_model.get_part(name) is not None
             for name in ("bottle_body", "cap_insert", "screw_cap")
         ),
-        "body, cap insert, cap shell required",
+        "body, cap insert, and cap shell are required",
     )
     spin = object_model.get_articulation("cap_spin")
     ctx.check("cap_spin_axis_z", tuple(spin.axis) == (0.0, 0.0, 1.0), details=str(spin.axis))
     ctx.check(
         "cap_fit_clearance",
-        r.cap_inner_radius > r.thread_radius + 0.0006,
+        r.cap_inner_radius > r.thread_radius + r.thread_clearance * 0.5,
         details=f"inner={r.cap_inner_radius}, thread={r.thread_radius}",
     )
     ctx.check(
@@ -589,770 +948,25 @@ def run_screwcap_bottle_tests(
             abs(r.thread_travel - r.thread_pitch * r.thread_turns) < 1e-9,
             details=f"travel={r.thread_travel}",
         )
+        ctx.check(
+            "turn_limit_consistent",
+            spin.motion_limits is not None
+            and abs((spin.motion_limits.upper or 0.0) - r.thread_turns * math.tau) < 1e-9,
+            details=f"turns={r.thread_turns}",
+        )
     return ctx.report()
 
 
-MATURITY_AUDIT_TRAIL = (
-    "screwcap_bottle maturity audit 000: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 001: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 002: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 003: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 004: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 005: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 006: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 007: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 008: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 009: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 010: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 011: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 012: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 013: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 014: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 015: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 016: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 017: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 018: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 019: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 020: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 021: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 022: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 023: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 024: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 025: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 026: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 027: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 028: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 029: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 030: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 031: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 032: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 033: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 034: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 035: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 036: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 037: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 038: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 039: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 040: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 041: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 042: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 043: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 044: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 045: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 046: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 047: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 048: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 049: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 050: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 051: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 052: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 053: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 054: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 055: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 056: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 057: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 058: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 059: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 060: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 061: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 062: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 063: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 064: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 065: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 066: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 067: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 068: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 069: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 070: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 071: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 072: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 073: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 074: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 075: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 076: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 077: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 078: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 079: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 080: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 081: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 082: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 083: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 084: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 085: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 086: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 087: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 088: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 089: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 090: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 091: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 092: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 093: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 094: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 095: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 096: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 097: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 098: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 099: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 100: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 101: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 102: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 103: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 104: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 105: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 106: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 107: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 108: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 109: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 110: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 111: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 112: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 113: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 114: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 115: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 116: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 117: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 118: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 119: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 120: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 121: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 122: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 123: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 124: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 125: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 126: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 127: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 128: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 129: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 130: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 131: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 132: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 133: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 134: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 135: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 136: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 137: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 138: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 139: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 140: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 141: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 142: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 143: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 144: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 145: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 146: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 147: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 148: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 149: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 150: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 151: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 152: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 153: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 154: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 155: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 156: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 157: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 158: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 159: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 160: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 161: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 162: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 163: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 164: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 165: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 166: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 167: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 168: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 169: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 170: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 171: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 172: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 173: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 174: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 175: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 176: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 177: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 178: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 179: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 180: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 181: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 182: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 183: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 184: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 185: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 186: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 187: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 188: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 189: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 190: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 191: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 192: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 193: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 194: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 195: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 196: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 197: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 198: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 199: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 200: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 201: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 202: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 203: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 204: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 205: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 206: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 207: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 208: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 209: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 210: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 211: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 212: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 213: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 214: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 215: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 216: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 217: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 218: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 219: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 220: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 221: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 222: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 223: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 224: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 225: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 226: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 227: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 228: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 229: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 230: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 231: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 232: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 233: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 234: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 235: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 236: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 237: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 238: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 239: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 240: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 241: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 242: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 243: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 244: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 245: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 246: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 247: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 248: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 249: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 250: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 251: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 252: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 253: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 254: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 255: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 256: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 257: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 258: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 259: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 260: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 261: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 262: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 263: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 264: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 265: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 266: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 267: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 268: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 269: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 270: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 271: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 272: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 273: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 274: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 275: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 276: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 277: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 278: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 279: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 280: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 281: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 282: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 283: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 284: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 285: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 286: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 287: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 288: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 289: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 290: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 291: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 292: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 293: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 294: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 295: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 296: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 297: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 298: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 299: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 300: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 301: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 302: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 303: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 304: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 305: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 306: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 307: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 308: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 309: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 310: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 311: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 312: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 313: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 314: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 315: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 316: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 317: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 318: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 319: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 320: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 321: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 322: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 323: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 324: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 325: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 326: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 327: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 328: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 329: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 330: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 331: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 332: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 333: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 334: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 335: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 336: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 337: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 338: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 339: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 340: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 341: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 342: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 343: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 344: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 345: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 346: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 347: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 348: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 349: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 350: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 351: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 352: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 353: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 354: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 355: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 356: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 357: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 358: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 359: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 360: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 361: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 362: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 363: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 364: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 365: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 366: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 367: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 368: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 369: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 370: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 371: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 372: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 373: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 374: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 375: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 376: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 377: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 378: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 379: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 380: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 381: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 382: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 383: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 384: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 385: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 386: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 387: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 388: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 389: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 390: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 391: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 392: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 393: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 394: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 395: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 396: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 397: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 398: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 399: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 400: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 401: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 402: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 403: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 404: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 405: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 406: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 407: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 408: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 409: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 410: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 411: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 412: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 413: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 414: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 415: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 416: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 417: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 418: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 419: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 420: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 421: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 422: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 423: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 424: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 425: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 426: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 427: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 428: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 429: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 430: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 431: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 432: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 433: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 434: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 435: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 436: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 437: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 438: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 439: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 440: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 441: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 442: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 443: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 444: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 445: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 446: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 447: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 448: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 449: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 450: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 451: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 452: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 453: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 454: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 455: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 456: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 457: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 458: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 459: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 460: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 461: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 462: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 463: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 464: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 465: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 466: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 467: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 468: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 469: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 470: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 471: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 472: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 473: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 474: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 475: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 476: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 477: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 478: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 479: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 480: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 481: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 482: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 483: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 484: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 485: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 486: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 487: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 488: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 489: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 490: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 491: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 492: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 493: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 494: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 495: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 496: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 497: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 498: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 499: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 500: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 501: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 502: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 503: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 504: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 505: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 506: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 507: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 508: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 509: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 510: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 511: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 512: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 513: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 514: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 515: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 516: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 517: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 518: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 519: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 520: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 521: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 522: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 523: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 524: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 525: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 526: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 527: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 528: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 529: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 530: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 531: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 532: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 533: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 534: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 535: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 536: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 537: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 538: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 539: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 540: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 541: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 542: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 543: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 544: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 545: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 546: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 547: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 548: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 549: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 550: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 551: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 552: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 553: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 554: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 555: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 556: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 557: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 558: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 559: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 560: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 561: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 562: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 563: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 564: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 565: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 566: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 567: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 568: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 569: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 570: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 571: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 572: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 573: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 574: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 575: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 576: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 577: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 578: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 579: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 580: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 581: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 582: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 583: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 584: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 585: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 586: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 587: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 588: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 589: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 590: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 591: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 592: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 593: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 594: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 595: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 596: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 597: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 598: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 599: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 600: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 601: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 602: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 603: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 604: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 605: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 606: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 607: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 608: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 609: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 610: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 611: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 612: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 613: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 614: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 615: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 616: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 617: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 618: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 619: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 620: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 621: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 622: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 623: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 624: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 625: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 626: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 627: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 628: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 629: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 630: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 631: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 632: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 633: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 634: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 635: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 636: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 637: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 638: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 639: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 640: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 641: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 642: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 643: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 644: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 645: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 646: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 647: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 648: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 649: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 650: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 651: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 652: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 653: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 654: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 655: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 656: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 657: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 658: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 659: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 660: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 661: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 662: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 663: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 664: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 665: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 666: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 667: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 668: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 669: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 670: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 671: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 672: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 673: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 674: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 675: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 676: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 677: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 678: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 679: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 680: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 681: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 682: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 683: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 684: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 685: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 686: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 687: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 688: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 689: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 690: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 691: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 692: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 693: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 694: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 695: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 696: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 697: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 698: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 699: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 700: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 701: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 702: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 703: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 704: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 705: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 706: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 707: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 708: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 709: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 710: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 711: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 712: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 713: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 714: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 715: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 716: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 717: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 718: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 719: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 720: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 721: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 722: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 723: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 724: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 725: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 726: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 727: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 728: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 729: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 730: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 731: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 732: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 733: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 734: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 735: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 736: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 737: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 738: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 739: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 740: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 741: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 742: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 743: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 744: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 745: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 746: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 747: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 748: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 749: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 750: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 751: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 752: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 753: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "screwcap_bottle maturity audit 754: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "screwcap_bottle maturity audit 755: moving details are children of the moving semantic part, not fixed to the root",
-    "screwcap_bottle maturity audit 756: clearance, retained overlap, and travel are computed together",
-    "screwcap_bottle maturity audit 757: optional branches are gated and stay attached to compatible parent geometry",
-    "screwcap_bottle maturity audit 758: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "screwcap_bottle maturity audit 759: visual details are anchored by dimensions already present in the mechanism",
-    "screwcap_bottle maturity audit 760: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "screwcap_bottle maturity audit 761: root envelope sampled before dependent child dimensions to avoid floating geometry",
-)
+__all__ = [
+    "__modular__",
+    "ScrewcapBottleConfig",
+    "ResolvedScrewcapBottleConfig",
+    "SOURCE_IDS",
+    "SOURCE_ADAPTATION_MAP",
+    "config_from_seed",
+    "resolve_config",
+    "build_screwcap_bottle",
+    "build_seeded_screwcap_bottle",
+    "slot_choices_for_seed",
+    "run_screwcap_bottle_tests",
+]

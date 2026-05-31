@@ -325,12 +325,6 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     sweep.add_argument(
-        "--line-floor",
-        type=int,
-        default=1000,
-        help="Minimum line count for the line_floor gate (default 1000).",
-    )
-    sweep.add_argument(
         "--compile-timeout",
         type=float,
         default=DEFAULT_COMPILE_TIMEOUT_S,
@@ -375,7 +369,6 @@ def compile_sweep(
     sdk_package: str,
     out_path: Path | None,
     state_dir: Path | None,
-    line_floor: int,
     compile_timeout_s: float,
     quiet: bool,
 ) -> int:
@@ -390,7 +383,6 @@ def compile_sweep(
             max_workers=max_workers,
             progress=progress,
             state_dir=state_dir,
-            line_floor=line_floor,
             compile_timeout_s=compile_timeout_s,
         )
     except (FileNotFoundError, AttributeError, ValueError) as exc:
@@ -437,7 +429,6 @@ def main(argv: list[str] | None = None) -> int:
             sdk_package=str(args.sdk_package),
             out_path=args.out,
             state_dir=state_dir,
-            line_floor=int(args.line_floor),
             compile_timeout_s=float(args.compile_timeout),
             quiet=bool(args.quiet),
         )

@@ -65,6 +65,7 @@ class TestReport:
     allowances: Tuple[str, ...] = ()
     allowed_isolated_parts: Tuple[str, ...] = ()
     allowed_overlaps: Tuple[AllowedOverlap, ...] = ()
+    allowed_disconnected_islands: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

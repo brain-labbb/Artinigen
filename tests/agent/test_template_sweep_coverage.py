@@ -10,7 +10,6 @@ from agent.template_sweep_coverage import (
     _literal_fields,
     check_adopted_source,
     check_enum_coverage,
-    check_line_floor,
     evaluate_gates,
 )
 
@@ -29,23 +28,6 @@ def _outcome(
         failure_details=None if verdict == "pass" else "isolated antenna",
         elapsed_s=0.0,
     )
-
-
-# --------------------------------------------------------------------------- #
-# line_floor
-# --------------------------------------------------------------------------- #
-
-
-def test_check_line_floor_passes_when_above_threshold() -> None:
-    gate = check_line_floor(1500, floor=1000)
-    assert gate.status == "pass"
-    assert gate.details["line_count"] == 1500
-
-
-def test_check_line_floor_fails_when_below_threshold() -> None:
-    gate = check_line_floor(400, floor=1000)
-    assert gate.status == "fail"
-    assert "below the 1000-line floor" in gate.reason
 
 
 # --------------------------------------------------------------------------- #
@@ -216,12 +198,9 @@ def test_evaluate_gates_aggregates(monkeypatch, tmp_path: Path) -> None:
 
     gates = evaluate_gates(
         slug="demo",
-        line_count=1200,
         outcomes=[_outcome(0, "pass", {"shape": "a"}), _outcome(1, "pass", {"shape": "b"})],
         repo_root=tmp_path,  # no spec -> adopted_source skipped
-        line_floor=1000,
     )
-    assert gates.line_floor.status == "pass"
     assert gates.enum_coverage.status == "pass"
     assert gates.adopted_source.status == "skipped"
     assert gates.all_pass_or_skipped() is True
@@ -238,13 +217,10 @@ def test_evaluate_gates_reports_failures(monkeypatch, tmp_path: Path) -> None:
 
     gates = evaluate_gates(
         slug="demo",
-        line_count=400,  # below floor
         outcomes=[_outcome(0, "pass", {"shape": "a"})],  # b missing
         repo_root=tmp_path,
-        line_floor=1000,
     )
     failing = gates.failing_gates()
-    assert "line_floor" in failing
     assert "enum_coverage" in failing
     assert gates.all_pass_or_skipped() is False
 
@@ -259,10 +235,8 @@ def test_evaluate_gates_skips_disabled_enum_coverage_by_default(
     monkeypatch.setattr("agent.template_sweep_coverage._input_config_class", lambda slug: FakeCfg)
     gates = evaluate_gates(
         slug="demo",
-        line_count=1200,
         outcomes=[_outcome(0, "pass", {"shape": "a"})],  # b would be missing
         repo_root=tmp_path,
-        line_floor=1000,
     )
     assert gates.enum_coverage.status == "skipped"
     assert gates.adopted_source.status == "skipped"

@@ -50,6 +50,7 @@ class TestContextCoreMixin:
             warnings=tuple(self._warnings),
             allowances=tuple(self._allowances),
             allowed_isolated_parts=tuple(self._allow_isolated_parts),
+            allowed_disconnected_islands=tuple(self._allow_disconnected_islands),
             allowed_overlaps=tuple(
                 AllowedOverlap(
                     link_a=pair[0],
@@ -526,6 +527,28 @@ class TestContextCoreMixin:
             raise ValueError("allow_isolated_part requires a non-empty reason")
         self._allow_isolated_parts[part_name] = r
         self._allowances.append(f"allow_isolated_part({part_name!r}): {r}")
+
+    def allow_disconnected_islands(
+        self,
+        part: object,
+        *,
+        reason: str,
+    ) -> None:
+        """Allow a specific part to contain disconnected geometry islands.
+
+        Use only for parts that are genuinely a set of separated rigid pieces
+        (e.g. a comb, grille, or fin stack), so the strict
+        `fail_if_part_contains_disconnected_geometry_islands` baseline check does
+        not force a fake bridging connector. Accidental seed-driven splits should
+        be fixed in geometry, not allowed here.
+        """
+
+        part_name = _named_ref(part, kind="part")
+        r = (reason or "").strip()
+        if not r:
+            raise ValueError("allow_disconnected_islands requires a non-empty reason")
+        self._allow_disconnected_islands[part_name] = r
+        self._allowances.append(f"allow_disconnected_islands({part_name!r}): {r}")
 
     def allow_coplanar_surfaces(
         self,

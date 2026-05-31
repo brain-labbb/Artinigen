@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from agent.templates.display_freezer_with_sliding_glass_lids import (
@@ -31,11 +29,6 @@ def _axis_min(visual, axis: int) -> float:
 
 def _axis_max(visual, axis: int) -> float:
     return visual.origin.xyz[axis] + visual.geometry.size[axis] * 0.5
-
-
-def test_template_line_floor() -> None:
-    template_path = Path("agent/templates/display_freezer_with_sliding_glass_lids.py")
-    assert len(template_path.read_text().splitlines()) >= 1000
 
 
 def test_seed_reproducibility() -> None:

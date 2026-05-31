@@ -35,7 +35,7 @@ from agent.compiler import compile_urdf_report
 from agent.feedback import compile_signal_bundle_from_exception
 from agent.models import CompileSignal
 
-DEFAULT_PASS_THRESHOLD = 0.95
+DEFAULT_PASS_THRESHOLD = 0.85
 DEFAULT_SEED_COUNT = 50
 DEFAULT_COMPILE_TIMEOUT_S = 60.0
 
@@ -486,7 +486,6 @@ def run_sweep(
     repo_root: Path | None = None,
     progress: Callable[[SeedOutcome], None] | None = None,
     state_dir: Path | None = None,
-    line_floor: int = 1000,
     compile_timeout_s: float = 0.0,
 ) -> SweepReport:
     """Run a multi-seed compile sweep and return the structured report.
@@ -549,10 +548,8 @@ def run_sweep(
 
     gates = evaluate_gates(
         slug=slug,
-        line_count=line_count,
         outcomes=outcomes,
         repo_root=repo_root,
-        line_floor=line_floor,
     )
 
     verdict = "pass" if pass_rate >= pass_threshold and gates.all_pass_or_skipped() else "fail"

@@ -23,6 +23,7 @@ class TestContext(TestContextExpectationMixin, TestContextModelCheckMixin, TestC
     _allow_pairs: Dict[Tuple[str, str], str] = field(default_factory=dict)
     _allowances: List[str] = field(default_factory=list)
     _allow_isolated_parts: Dict[str, str] = field(default_factory=dict)
+    _allow_disconnected_islands: Dict[str, str] = field(default_factory=dict)
     _allow_elems: List[Tuple[Tuple[str, str], Optional[str], Optional[str], str]] = field(
         default_factory=list, repr=False
     )

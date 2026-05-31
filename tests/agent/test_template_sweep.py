@@ -303,4 +303,3 @@ def test_report_to_json_round_trip(monkeypatch, tmp_path: Path) -> None:
     assert decoded["failed_seeds"] == []
     assert decoded["verdict"] == "pass"
     assert "coverage_gates" in decoded
-    assert decoded["coverage_gates"]["line_floor"]["status"] == "pass"

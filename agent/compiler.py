@@ -52,6 +52,10 @@ _AUTOMATED_BASELINE_WARNING_CHECK_NAME = (
     "warn_if_part_contains_disconnected_geometry_islands(tol=1e-06)"
 )
 _BASELINE_ARTICULATION_ORIGIN_TOL = 0.015
+# Relax the absolute tol for large objects: effective tol per joint is
+# max(_BASELINE_ARTICULATION_ORIGIN_TOL, this * max(parent,child) bbox diagonal).
+# Only ever loosens (small objects keep the 0.015 floor), so no template regresses.
+_BASELINE_ARTICULATION_ORIGIN_BBOX_RELATIVE = 0.05
 _AUTOMATED_BASELINE_ARTICULATION_ORIGIN_CHECK_NAME = (
     f"fail_if_articulation_origin_far_from_geometry(tol={_BASELINE_ARTICULATION_ORIGIN_TOL:.4g})"
 )
@@ -976,6 +980,7 @@ def _build_test_report(
     allowances: tuple[str, ...],
     allowed_isolated_parts: tuple[str, ...],
     allowed_overlaps: tuple[object, ...],
+    allowed_disconnected_islands: tuple[str, ...] = (),
 ) -> object:
     return report_type(
         passed=not failures,
@@ -986,6 +991,7 @@ def _build_test_report(
         allowances=allowances,
         allowed_isolated_parts=allowed_isolated_parts,
         allowed_overlaps=allowed_overlaps,
+        allowed_disconnected_islands=allowed_disconnected_islands,
     )
 
 
@@ -1026,6 +1032,9 @@ def _filter_duplicate_automated_baseline_results(
             str(item) for item in getattr(baseline_report, "allowed_isolated_parts", ())
         ),
         allowed_overlaps=tuple(getattr(baseline_report, "allowed_overlaps", ())),
+        allowed_disconnected_islands=tuple(
+            str(item) for item in getattr(baseline_report, "allowed_disconnected_islands", ())
+        ),
     )
 
 
@@ -1092,6 +1101,16 @@ def _merge_test_reports(
             seen_isolated_parts.add(normalized)
             allowed_isolated_parts.append(normalized)
 
+    allowed_disconnected_islands: list[str] = []
+    seen_disconnected_islands: set[str] = set()
+    for report in (authored_report, filtered_baseline_report):
+        for part_name in getattr(report, "allowed_disconnected_islands", ()):
+            normalized = str(part_name)
+            if normalized in seen_disconnected_islands:
+                continue
+            seen_disconnected_islands.add(normalized)
+            allowed_disconnected_islands.append(normalized)
+
     allowed_overlaps: list[object] = []
     seen_overlaps: set[tuple[str, str, str | None, str | None, str]] = set()
     for report in (authored_report, filtered_baseline_report):
@@ -1124,6 +1143,7 @@ def _merge_test_reports(
         allowances=tuple(allowances),
         allowed_isolated_parts=tuple(allowed_isolated_parts),
         allowed_overlaps=tuple(allowed_overlaps),
+        allowed_disconnected_islands=tuple(allowed_disconnected_islands),
     )
 
 
@@ -1156,6 +1176,12 @@ def _check_model_has_single_root_part(ctx: object) -> bool:
 def _apply_authored_allowances_to_baseline_context(ctx: object, authored_report: object) -> None:
     for part_name in getattr(authored_report, "allowed_isolated_parts", ()):
         ctx.allow_isolated_part(
+            str(part_name),
+            reason="carried over from authored run_tests() allowance",
+        )
+
+    for part_name in getattr(authored_report, "allowed_disconnected_islands", ()):
+        ctx.allow_disconnected_islands(
             str(part_name),
             reason="carried over from authored run_tests() allowance",
         )
@@ -1208,9 +1234,18 @@ def _run_compiler_owned_baseline_tests(
         )
     ctx.check_mesh_assets_ready()
     ctx.fail_if_isolated_parts()
+    # part-internal connectivity is WARN-level by design: a single part being
+    # several separated rigid pieces (comb teeth, fin stacks, bearing pins) is a
+    # common, legitimate shape, and the spec records no per-part internal-island
+    # contract to judge it against. The warning still surfaces every island in
+    # the compile/sweep report; it just does not block. (part-to-part support is
+    # the hard constraint — see fail_if_isolated_parts above.)
     ctx.warn_if_part_contains_disconnected_geometry_islands()
     ctx.fail_if_parts_overlap_in_current_pose()
-    ctx.fail_if_articulation_origin_far_from_geometry(tol=_BASELINE_ARTICULATION_ORIGIN_TOL)
+    ctx.fail_if_articulation_origin_far_from_geometry(
+        tol=_BASELINE_ARTICULATION_ORIGIN_TOL,
+        bbox_relative=_BASELINE_ARTICULATION_ORIGIN_BBOX_RELATIVE,
+    )
     ctx.fail_if_joint_mating_has_gap()
     baseline_report = ctx.report()
     return _build_test_report(

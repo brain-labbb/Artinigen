@@ -1534,6 +1534,7 @@ def find_joint_origin_distance_findings(
     *,
     asset_root: Optional[Path] = None,
     tol: float = 0.015,
+    bbox_relative: float = 0.0,
     validate_model: bool = True,
 ) -> List[JointOriginDistanceFinding]:
     compiled_model = compile_object_model_with_exact_collisions(
@@ -1591,6 +1592,16 @@ def find_joint_origin_distance_findings(
         if not parent_entries or not child_entries:
             continue
 
+        effective_tol = float(tol)
+        if bbox_relative > 0.0:
+            p_lo = [min(e.aabb[0][i] for e in parent_entries) for i in range(3)]
+            p_hi = [max(e.aabb[1][i] for e in parent_entries) for i in range(3)]
+            c_lo = [min(e.aabb[0][i] for e in child_entries) for i in range(3)]
+            c_hi = [max(e.aabb[1][i] for e in child_entries) for i in range(3)]
+            p_diag = math.sqrt(sum((p_hi[i] - p_lo[i]) ** 2 for i in range(3)))
+            c_diag = math.sqrt(sum((c_hi[i] - c_lo[i]) ** 2 for i in range(3)))
+            effective_tol = max(effective_tol, float(bbox_relative) * max(p_diag, c_diag))
+
         parent_distance = min(
             _collision_pair_metrics(parent_probe, entry.collision_obj)[1]
             for entry in parent_entries
@@ -1598,7 +1609,7 @@ def find_joint_origin_distance_findings(
         child_distance = min(
             _collision_pair_metrics(child_probe, entry.collision_obj)[1] for entry in child_entries
         )
-        if parent_distance > float(tol) or child_distance > float(tol):
+        if parent_distance > effective_tol or child_distance > effective_tol:
             findings.append(
                 JointOriginDistanceFinding(
                     joint=joint_name,
@@ -1606,7 +1617,7 @@ def find_joint_origin_distance_findings(
                     child=child_name,
                     parent_distance=float(parent_distance),
                     child_distance=float(child_distance),
-                    tol=float(tol),
+                    tol=float(effective_tol),
                 )
             )
     return findings

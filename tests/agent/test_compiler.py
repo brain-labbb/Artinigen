@@ -16,6 +16,7 @@ def _write_isolated_part_model_script(
     *,
     allowed_part: str | None = None,
     disconnected_base: bool = False,
+    allow_disconnected_base: bool = False,
 ) -> None:
     # Layout (z-up):
     #   base    : visual at z-extent [0.00, 0.10] (centered at z=0.05)
@@ -72,8 +73,12 @@ def _write_isolated_part_model_script(
         lines.append(
             f"    ctx.allow_isolated_part({allowed_part!r}, reason='intentionally freestanding decorative part')"
         )
+    if allow_disconnected_base:
+        lines.append(
+            "    ctx.allow_disconnected_islands('base', reason='base is intentionally two separate plates')"
+        )
     lines.append("    ctx.fail_if_isolated_parts()")
-    if disconnected_base:
+    if disconnected_base and not allow_disconnected_base:
         lines.append("    ctx.warn_if_part_contains_disconnected_geometry_islands()")
     lines.extend(
         [
@@ -594,14 +599,20 @@ def test_compile_urdf_report_preserves_disconnected_geometry_warnings_on_success
     ]
 
 
-def test_compile_urdf_report_keeps_disconnected_geometry_as_warning_with_isolated_part_allowance(
+def test_compile_urdf_report_keeps_disconnected_geometry_as_warning_with_island_allowance(
     tmp_path: Path,
 ) -> None:
+    # The baseline runs warn_if_part_contains_disconnected_geometry_islands()
+    # (part-internal connectivity is WARN-level). Declaring
+    # allow_disconnected_islands() for a genuinely multi-piece part suppresses
+    # the raw island finding and surfaces an explicit "allowed by justification"
+    # warning instead — verifying the escape hatch still threads through.
     script_path = tmp_path / "model.py"
     _write_isolated_part_model_script(
         script_path,
         allowed_part="antenna",
         disconnected_base=True,
+        allow_disconnected_base=True,
     )
 
     report = compile_urdf_report(script_path, run_checks=True, target="full")
@@ -609,7 +620,7 @@ def test_compile_urdf_report_keeps_disconnected_geometry_as_warning_with_isolate
     assert "<robot" in report.urdf_xml
     assert report.signal_bundle.status == "success"
     assert any(
-        warning.startswith("warn_if_part_contains_disconnected_geometry_islands(tol=1e-06):")
+        "Disconnected geometry islands allowed by justification" in warning and "'base'" in warning
         for warning in report.warnings
     )
 

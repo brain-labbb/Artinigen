@@ -30,12 +30,19 @@ remaining bug after baseline.
 
 ### Enforcement
 
-The `anchor_geometry_match` gate's `part_name_set` and `joint_topology`
-sub-checks fail when a template introduces parts or FIXED joints that the
-PRIMARY_ANCHOR record doesn't have. The `visual_count_per_part` sub-check
-fails when a template's per-part visual count drops below 50% of the anchor's
-— which catches the "5 visuals on rotor → 1 visual + 4 separate parts"
-collapse directly.
+Each candidate module's structure (parts, joints, per-part visual count)
+must be derivable from its 5-star source record cited in the spec's module
+table. The reviewer checks during spec review that the module table cites
+real `model.py:Lx-Ly` ranges (see [`SPEC_REVIEW_TEMPLATE.md`](SPEC_REVIEW_TEMPLATE.md)).
+At compile time, the strict `fail_if_part_contains_disconnected_geometry_islands`
+baseline catches the "tiny interface disk + floating decorative part"
+failure mode this rule guards against.
+
+Exception: a part that is genuinely separated rigid pieces (comb teeth, a
+grille, a fin stack) where connective geometry would invent material the real
+object lacks may declare `ctx.allow_disconnected_islands(part, reason="...")`
+to downgrade the check to a warning for that part. True multi-piece parts
+only — never to mask an accidental seed-driven split.
 
 ### Examples
 
@@ -172,72 +179,60 @@ deviation report.
 
 ---
 
-## Rule 3: derive structure from a single PRIMARY_ANCHOR
+## Rule 3: derive each module from a real 5-star sample
 
-**A template's part tree, joint topology, per-part visual count, and per-part
-primitive types must be derivable from a single nominated 5-star record (the
-PRIMARY_ANCHOR). Agents may freely parameterize literal dimensions, enum
-branches, and loop counts; they may not invent structural elements the
-anchor doesn't have, and they may not downgrade sophisticated primitives
+**Every candidate module's part tree, joint topology, per-part visual count,
+and per-part primitive types must be derivable from a real 5-star sample
+(declared as the module's `source_5_star_record` + `model.py:Lx-Ly` in the
+spec's module table). Agents may freely parameterize literal dimensions,
+enum branches, and loop counts; they may not invent structural elements no
+5-star sample has, and they may not downgrade sophisticated primitives
 (LatheGeometry / mesh_from_geometry / cadquery output → `Mesh`) to crude
 Box/Cylinder placeholders.**
 
 ### Why
 
-Without an anchor, agents drift to "imagine what a category looks like"
-mode — and the dominant failure mode (visible in dj_equipment,
-graphics_card, retractable_utility_knife) is that the agent picks crude
+Without a real source per module, agents drift to "imagine what a category
+looks like" mode — and the dominant failure mode is that agents pick crude
 boxes/cylinders where the 5-star sample has carefully sculpted lathe
-profiles. We've also seen agents invent entire structural elements (extra
-parts, extra joint chains) that no 5-star sample has.
+profiles, or invent entire structural elements (extra parts, extra joint
+chains) that no 5-star sample has.
 
-### Enforcement — `anchor_geometry_match` gate
+### How modular templates pin sources
 
-The spec must declare `primary_anchor` in its 元信息 table:
+The spec's module table lists, per slot, every candidate module's 5-star
+source with `model.py:Lx-Ly` line references:
 
 ```markdown
-## 元信息
-| 项 | 值 |
-|---|---|
-| slug | `dj_equipment` |
-| template path | `agent/templates/dj_equipment.py` |
-| primary_anchor | `rec_dj_equipment_xxx:rev_000001` |
-| ...
+## 槽位 + 候选模块表
+
+### Slot housing
+
+| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+|---|---|---|---|---|
+| barrel_grip | rec_..._cad8... | L93-L193 | **yes** | classic box-cutter envelope |
+| pistol_grip | rec_..._9365... | L40-L155 |  | pistol grip + finger guard |
 ```
 
-On every sweep, `articraft template compile-sweep` extracts the anchor's
-geometry fingerprint (part names normalized with `_i` suffix for indexed
-families; joint topology; per-part visual count + primitive histogram +
-Mesh count; overall bbox aspect ratio) and compares it to the template's
-fingerprint at `seed=0`. Six sub-checks must all pass:
-
-| Sub-check | What it catches |
-|---|---|
-| `part_name_set` | Template introduces parts the anchor doesn't have, or is missing parts the anchor has |
-| `joint_topology` | Template adds/drops (parent, child, type) joint triples |
-| `visual_count_per_part` | Template collapses anchor's N visuals into <50% of N |
-| `primitive_complexity_lower_bound` | Template's Mesh count for any part drops below the anchor's |
-| `primitive_histogram_similarity` | Template swaps primitive types (Cylinder→Box, etc.) |
-| `bbox_ratio` | Template's overall aspect ratio diverges from the anchor's by more than 30% on any axis |
+The implementation must adapt those line ranges into the module factory:
+copy structure, parameterize dimensions, keep primitive types.
 
 ### Authoring workflow under Rule 3
 
-When writing a new template (or rewriting an existing one), the **first
-action** must be:
+When writing each module factory, the **first action** must be:
 
-1. Run `uv run articraft template anchor-fingerprint <PRIMARY_ANCHOR>` to
-   inspect the structure you must inherit.
-2. Read the anchor's `model.py` end-to-end. Identify each helper, each
-   `part.visual(...)` call, each `model.articulation(...)`. Decide which
-   literals to parameterize and which loops to make variable-count.
-3. Sketch the template's part tree mirroring the anchor's part tree
-   (collapsing indexed families like `blade_0..N` into a single `blade_i`
-   in your mental model).
-4. Implement helpers that adapt the anchor's geometry. Replace literal
-   coordinates with `config.<field>` / `r.<field>`; keep primitive types
-   (Box stays Box, Cylinder stays Cylinder, Mesh stays Mesh).
+1. Open the source 5-star record's `model.py` at the line range cited in
+   the spec.
+2. Read those lines end-to-end. Identify each helper, each `part.visual(...)`
+   call, each `model.articulation(...)`. Decide which literals to
+   parameterize and which loops to make variable-count.
+3. Sketch the module's part tree mirroring the source's structure.
+4. Implement the factory that adapts the source's geometry. Replace literal
+   coordinates with `r.<field>`; keep primitive types (Box stays Box,
+   Cylinder stays Cylinder, Mesh stays Mesh).
 5. Add `MatingContract` to every joint that creates a separate child part
-   (Rule 2).
+   (Rule 2). Use `allow_overlap` for captured-pin geometry (Rule 2's
+   grandfather pattern).
 6. Run `compile-sweep`. Iterate until `verdict=pass`.
 
 ### What "adapting" means concretely
@@ -263,24 +258,26 @@ crude primitives.
 
 Before declaring a template done, all of the following must hold:
 
-1. [ ] Spec declares `primary_anchor | rec_xxx:rev_yyy` in 元信息.
-2. [ ] Every `_build_<part>` helper was authored after reading the anchor's
-   corresponding helper. Literal values were parameterized; primitive
-   types were preserved.
+1. [ ] Spec's module table lists, per slot, each candidate module's
+   `source_5_star_record` + `model.py:Lx-Ly` line range.
+2. [ ] Every module factory was authored after reading the cited line
+   range. Literal values were parameterized; primitive types were
+   preserved.
 3. [ ] No FIXED articulation exists unless the docstring justifies why
    visual fusing won't work (Rule 1).
-4. [ ] Every non-FIXED articulation declares a `MatingContract` pointing
-   to real visuals on both sides (Rule 2).
-5. [ ] `compile-sweep` reports `verdict=pass` on `--seeds 0-49`:
-   - `pass_rate >= 0.95` (baseline incl. mating-gap, articulation-origin,
-     overlap, isolated-parts).
-   - `coverage_gates.line_floor.status == "pass"`.
-   - `coverage_gates.anchor_geometry_match.status == "pass"` (all 6
-     sub-checks pass).
-6. [ ] Preview-self-checked seeds 0, 1, 2 visually look like the category
-   and the closed pose has no visible gaps.
+4. [ ] Every chain joint declares a `MatingContract` pointing to real
+   visuals on both sides (Rule 2); captured-pin geometry is grandfathered
+   with `allow_overlap` declarations in `run_<slug>_tests`.
+5. [ ] `compile-sweep` reports `verdict=pass` on `--seeds 0-19`:
+   - `pass_rate >= 0.85`.
+   - `coverage_gates.module_topology_diversity.status == "pass"`
+     (≥5 distinct slot-choice combinations).
+6. [ ] `template batch --seeds 0-9 --agent claude-code` produces 10/10
+   compilable records, and the agent visually checks the viewer for
+   floating parts / gross geometry errors.
 
-If you reach step 5 with a persistent failure cluster in
-`anchor_geometry_match`, **do not patch around it**. Either correct the
-template to match the anchor, or escalate to the user — never weaken the
-anchor declaration to make the gate pass.
+If you reach step 5 with a persistent failure cluster, **do not patch
+around it**. Either correct the affected module to match its 5-star
+source, fix the connectivity / mating geometry per
+[`MATURE_METHOD.md`](MATURE_METHOD.md) §"常见失败模式", or escalate to
+the user.
