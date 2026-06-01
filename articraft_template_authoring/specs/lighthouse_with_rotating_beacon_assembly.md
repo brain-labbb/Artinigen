@@ -6,8 +6,8 @@
 | slug | `lighthouse_with_rotating_beacon_assembly` |
 | template path | `agent/templates/lighthouse_with_rotating_beacon_assembly.py` |
 | test path (optional) | `tests/agent/test_lighthouse_with_rotating_beacon_assembly_template.py` — 可选回归网，默认被 pytest 排除；验收以 compile-sweep 为准 |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `pending` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 | __modular__ | `True` |
 | pattern | `mixed`（静态 body 身份链 + 1 个 CONTINUOUS 旋转 beacon 子件 + 可选 gated REVOLUTE 开口件；lantern 解构成 0..N 个 FIXED 子件） |
 

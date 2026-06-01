@@ -42,7 +42,9 @@
 ### 槽位图（pattern）
 
 - [ ] `pattern` 字段对（linear_chain / parallel_children / multiplicity / mixed）。
-- [ ] 如果是 `multiplicity`，N_min / N_max 是否合理（一般 3-8）。
+- [ ] 如果是 `multiplicity`，是否明确写了可采样 `N_min..N_max` 或固定 N；
+      范围是否合理、有来源或 reviewer-gated 外推说明（例如 fan blades 3-8、
+      arm links 1-5），且不是只写抽象的 `N`。
 - [ ] 如果是 `parallel_children`，spec 是否说清楚 chassis 模块怎么暴露
       共用 attachment surface。
 

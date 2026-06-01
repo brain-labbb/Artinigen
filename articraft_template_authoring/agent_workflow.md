@@ -58,7 +58,8 @@ N 个类别 → N 个 articraft_template_authoring/specs/<slug>.md → 停等审
    到同一个 chassis part。
 3. **Multiplicity**（monitor_mount arms / fan blades）：一个槽位有
    `N_min..N_max` 种倍数候选（每种 N 是一个独立 module 名），适用于
-   "同一种 part 重复 N 次"。
+   "同一种 part 重复 N 次"。spec 必须写清可采样范围或固定值，例如
+   fan blades `3..8`、serial arm links `1..5`；不要只写抽象的 `N`。
 
 ### 1.4 写 spec
 
@@ -73,6 +74,8 @@ N 个类别 → N 个 articraft_template_authoring/specs/<slug>.md → 停等审
 - **seed=0 anchor 选择**（每槽位标一个 anchor module）
 - 每槽位的 part 列表 + joint 拓扑
 - 参数范围表
+- Multiplicity / Copy Logic（每个 spec 必填；agent 自己判断；有就写具体
+  复制规则和 `N_min..N_max` / 固定 N，没有就写无）
 - 拓扑多样性审计（组合数 / 倍数范围 / 预计 diversity gate 是否能过）
 - Validator / Reject cases / 与相邻类别的边界
 

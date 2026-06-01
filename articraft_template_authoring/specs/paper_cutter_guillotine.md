@@ -6,8 +6,8 @@
 | slug | `paper_cutter_guillotine` |
 | template path | `agent/templates/paper_cutter_guillotine.py` |
 | test path (optional) | `tests/agent/test_paper_cutter_guillotine_template.py` — 可选回归网，默认被 pytest 排除；验收以 compile-sweep 为准 |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `pending` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 | __modular__ | `True` |
 | pattern | `mixed`（身份链 base→blade_arm 单 REVOLUTE + 并列 gated children + 可选 FIXED 中间件） |
 

@@ -1,0 +1,146 @@
+# Single Rotor Helicopter Spec
+
+## 元信息
+| 项 | 值 |
+|---|---|
+| slug | `single_rotor_helicopter` |
+| template path | `agent/templates/single_rotor_helicopter.py` |
+| test path | `tests/agent/test_single_rotor_helicopter_template.py` |
+| stage | `SPEC_ONLY_DRAFT` |
+| status | `pending` |
+| __modular__ | `True` |
+| pattern | `mixed` |
+
+## 5 星样本阅读摘要
+| 项 | 值 |
+|---|---|
+| five_star_total | 2 |
+| read_count | 2 |
+| read_scope | all 5-star samples in this category; each record's `record.json`, active `revision.json`, `prompt.txt`, and `model.py` were read/scanned |
+| samples_adopted_as_module_sources | 2 |
+| samples_read_but_not_adopted | 0 |
+| source_index_policy | only two 5-star sources exist; every slot falls back to 2 candidates with explicit reviewer caveat |
+
+- adopted as module sources: `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce`, `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a`.
+- read but not adopted: none.
+
+## 核心身份
+
+Single rotor helicopter is an aircraft with one main rotor on a mast above the fuselage, a tail boom carrying a tail rotor, and landing gear/skids/wheels. Core motions are main rotor continuous spin about vertical mast axis and tail rotor continuous spin about a horizontal tail axis. Optional articulation includes cockpit/service/cabin doors, including hinged and sliding door families.
+
+边界：
+- 不包括 coaxial/multirotor/drone categories: exactly one main rotor disk and one tail anti-torque rotor family.
+- 不混入 airplane: must have vertical-lift main rotor and tail rotor.
+
+## 采用源码索引（Adopted Source Index）
+| source_id | sample_id | model.py 来源 | 采纳用途 |
+|---|---|---|---|
+| S1 | `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce` | `data/records/rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce/revisions/rev_000001/model.py:L66-L387` | fire utility skid airframe, five-blade main rotor, tail rotor, service and crew hinged doors |
+| S2 | `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a` | `data/records/rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a/revisions/rev_000001/model.py:L184-L587` | offshore transport wheeled airframe, main/tail rotors, cockpit hinges and sliding cabin door |
+
+## 槽位 + 候选模块表
+
+### Slot A：airframe_landing
+| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+|---|---|---|---|---|
+| `fire_utility_skid_airframe` | `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce` | L66-L197 | **yes** | robust fuselage, skid landing gear, service-door frames |
+| `offshore_wheeled_airframe` | `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a` | L184-L472 | | long fuselage, wheeled landing gear, cockpit/cabin door cutouts |
+
+### Slot B：main_rotor
+| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+|---|---|---|---|---|
+| `five_blade_fire_rotor` | `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce` | L198-L249, L328-L336 | **yes** | five-blade rotor with mast/hub; CONTINUOUS vertical spin |
+| `tall_mast_transport_rotor` | `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a` | L473-L500, L570-L578 | | taller mast and rotor disk for transport helicopter |
+
+### Slot C：tail_rotor
+| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+|---|---|---|---|---|
+| `compact_tail_rotor` | `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce` | L250-L279, L337-L345 | **yes** | tail rotor near boom tip, horizontal axis |
+| `fin_mounted_tail_rotor` | `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a` | L501-L527, L579-L587 | | tail rotor on fin with transport-airframe proportions |
+
+### Slot D：doors_service
+| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+|---|---|---|---|---|
+| `service_and_crew_hinges` | `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce` | L280-L387 | **yes** | paired service doors plus crew access door, all REVOLUTE |
+| `cockpit_hinges_and_cabin_slide` | `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a` | L459-L569 | | two cockpit hinge doors plus PRISMATIC sliding cabin door |
+
+> Reviewer caveat: all slots have only 2 candidates because the category has only two 5-star samples. This is the allowed fallback case; do not invent a third source family without new 5-star records.
+
+## 槽位图（slot graph）
+
+pattern: `mixed`
+
+```text
+[Slot A airframe_landing]
+  ├── main_rotor_spin CONTINUOUS, axis Z --> [Slot B main_rotor]
+  ├── tail_rotor_spin CONTINUOUS, axis X --> [Slot C tail_rotor]
+  └── parallel REVOLUTE/PRISMATIC doors --> [Slot D doors_service]
+```
+
+## 部件（Parts）
+| part | slot | visual_count | 描述 | 来源 |
+|---|---|---:|---|---|
+| `fuselage` / `airframe` | A | ~15-40 | cabin, tail boom, skids/wheels, doors cutouts, stabilizer details | S1/S2 |
+| `main_rotor` | B | ~3-5 | central hub and five main blades | S1/S2 |
+| `tail_rotor` | C | ~3 | fin/boom anti-torque rotor | S1/S2 |
+| `service_door` / `cockpit_door` / `cabin_door` | D | ~0-3 each | hinged or sliding access doors | S1/S2 |
+
+## 关节（Joints）
+| 关节 | 类型 | parent_slot.part | child_slot.part | axis | range | 描述 |
+|---|---|---|---|---|---|---|
+| `main_rotor_spin` | CONTINUOUS | A.airframe | B.main_rotor | `(0,0,1)` | unbounded | main rotor disk spin |
+| `tail_rotor_spin` | CONTINUOUS | A.airframe | C.tail_rotor | `(1,0,0)` | unbounded | tail rotor spin |
+| `door_hinge_i` | REVOLUTE | A.airframe | D.door | vertical `(0,0,+/-1)` | bounded | cockpit/service/crew door |
+| `cabin_door_slide` | PRISMATIC | A.airframe | D.cabin_door | longitudinal | short travel | sliding passenger cabin door |
+
+## 参数范围汇总
+| 参数 | 类型 | 取值范围 | 默认 | 派生关系 | 来源 |
+|---|---|---|---|---|---|
+| `airframe_style` | enum | `fire_utility_skid_airframe` / `offshore_wheeled_airframe` | `fire_utility_skid_airframe` | Slot A | S1/S2 |
+| `main_rotor_style` | enum | `five_blade_fire_rotor` / `tall_mast_transport_rotor` | `five_blade_fire_rotor` | Slot B | S1/S2 |
+| `tail_rotor_style` | enum | `compact_tail_rotor` / `fin_mounted_tail_rotor` | `compact_tail_rotor` | Slot C | S1/S2 |
+| `door_style` | enum | `service_and_crew_hinges` / `cockpit_hinges_and_cabin_slide` / `none` | `service_and_crew_hinges` | Slot D | S1/S2 |
+| `main_blade_count` | int | 5 only from sources | 5 | do not generalize until more sources | S1/S2 |
+
+## Multiplicity / Copy Logic
+
+- `main_blade_count` is fixed at `N=5` from the two available 5-star sources. It is not randomly sampled in this SPEC_ONLY draft.
+- The copied object is main-rotor blade geometry inside the Slot B `main_rotor` part. Blades do not get per-blade pitch joints in the current source-backed domain.
+- Naming should use `main_blade_i` for named visuals when exposed. The single moving articulation remains `main_rotor_spin`.
+- Placement is radial around the mast/hub in the rotor disk: blade `i` uses phase `i * 360° / 5`, and every blade root must connect to a visible hub/root socket.
+- Tail-rotor blade count is source-local visual detail, not an independent multiplicity parameter in this spec.
+
+## 拓扑多样性审计
+
+总组合数：`2 airframe × 2 main_rotor × 2 tail_rotor × 3 door_style = 24`。预计 `module_topology_diversity` 门控（>=5 distinct）能过：probably yes because door slot changes REVOLUTE vs PRISMATIC sets and airframe/rotor modules change part counts, but reviewer should accept the 2-candidate fallback explicitly.
+
+| slot | candidate_count | 是否 >=3 | 备注 |
+|---|---:|---|---|
+| airframe_landing | 2 | no | only two 5-star samples exist |
+| main_rotor | 2 | no | only two 5-star samples exist |
+| tail_rotor | 2 | no | only two 5-star samples exist |
+| doors_service | 3 | yes | includes `none`, but only two source families |
+
+## Validator（author_run_tests 必须覆盖的点）
+- Exactly one main rotor assembly with vertical continuous spin.
+- Tail rotor must be mounted on tail boom/fin with horizontal spin axis.
+- Airframe must carry landing gear/skids/wheels and tail boom; no floating rotors.
+- Doors, if enabled, must sit in cabin/service cutouts and use correct hinge/slide axes.
+- Main rotor blades must be evenly distributed and attached to hub.
+
+## Reject cases（必须能识别并拒绝）
+- Multirotor/drone layout or coaxial twin main rotors.
+- Missing tail rotor or tail rotor axis vertical.
+- Main rotor detached from mast or blades not attached to hub.
+- Sliding/hinged doors floating outside fuselage.
+
+## 与相邻类别的边界
+- `drone`：multiple small rotors around a frame; no tail boom/tail rotor pair.
+- `wind_turbine` / `ceiling_fan`：rotor-only devices without fuselage and tail boom.
+- `airplane`：fixed-wing aircraft without main helicopter rotor.
+
+## 审核记录
+| 项 | 结论 |
+|---|---|
+| reviewer status | pending |
+| reviewer notes | SPEC_ONLY_DRAFT with 2-source fallback; waiting for human review |

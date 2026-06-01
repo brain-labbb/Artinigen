@@ -6,8 +6,8 @@
 | slug | `metronome` |
 | template path | `agent/templates/metronome.py` |
 | test path (optional) | `tests/agent/test_metronome_template.py` — 可选回归网，默认被 pytest 排除；验收以 compile-sweep 为准 |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `pending` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 | __modular__ | `True` |
 | pattern | `mixed`（身份链 housing→pendulum→sliding_weight 的串联移动副 + winding_key/可选 door/lid/legs 并列 children + 可选 stabilizer-leg multiplicity） |
 

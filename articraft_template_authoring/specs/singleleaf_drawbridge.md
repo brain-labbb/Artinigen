@@ -6,8 +6,8 @@
 | slug | `singleleaf_drawbridge` |
 | template path | `agent/templates/singleleaf_drawbridge.py` |
 | test path (optional) | `tests/agent/test_singleleaf_drawbridge_template.py` — 可选回归网，默认被 pytest 排除；验收以 compile-sweep 为准 |
-| stage | `SPEC_ONLY_DRAFT` |
-| status | `pending` |
+| stage | `APPROVED` |
+| status | `APPROVED` |
 | __modular__ | `True` |
 | pattern | `mixed`（身份永远是 `fixed_support → bridge_leaf` 单 REVOLUTE；hinge_bearing 可选引入独立 FIXED bearing parts；topside/shore 为 gated baked-visual 扩展） |
 
@@ -66,7 +66,7 @@
 
 ## 核心身份
 
-单叶卷扬/竖旋开启桥（single-leaf drawbridge / bascule）：恰好一个**接地固定支座**（abutment / shore_frame / support_frame / pier base，root part）+ 恰好一片**桥叶/桥面 leaf**，两者只由**一个 REVOLUTE** 铰接。铰轴是水平的、垂直于桥跨方向（绝大多数 `(0,-1,0)`，少数沿河岸 `(1,0,0)`），位于支座近岸侧的 trunnion/bearing 销线上；leaf 从水平闭合位绕该线上翻约 `0 → 1.05~1.5 rad`（≈60–86°）露出航道。wow + 唯一 articulation 就是这片桥面抬起。abutment/塔/护栏/路缘/引桥/受桥/水道/控制塔/counterweight 全部是 baked 进 support 或 leaf 的 `part.visual(...)` 静态几何（41 个样本无一例外，连 counterweight 也是 leaf 上的死 visual），不另起 FIXED 装饰 part——唯一例外是 `0003` 把两侧 bearing 拆成独立 FIXED part（见 Slot C）。
+单叶卷扬/竖旋开启桥（single-leaf drawbridge / bascule）：恰好一个**接地固定支座**（abutment / shore_frame / support_frame / pier base，root part）+ 恰好一片**桥叶/桥面 leaf**，两者只由**一个 REVOLUTE** 铰接。铰轴是水平的、垂直于桥跨方向（本模板把 deck 沿 +Y 铺开、铰轴实现为世界 **`(1,0,0)`** 横向轴，等价于样本里的 transverse 销线），位于支座近岸侧的 trunnion/bearing 销线上。**`0 rad` = 图示水平闭合桥面（即默认静止位 / 缩略图位）**：正角把 leaf **向上抬**（露出航道），负角让 leaf **向下俯**至水平面以下。每 seed 采样 `upper ∈ [+30°, +60°]`（抬起）与 `lower ∈ [-45°, -15°]`（下俯）。wow + 唯一 articulation 就是这片桥面绕销线的上抬/下俯。abutment/塔/护栏/路缘/引桥/受桥/水道/控制塔/counterweight 全部是 baked 进 support 或 leaf 的 `part.visual(...)` 静态几何（41 个样本无一例外，连 counterweight 也是 leaf 上的死 visual），不另起 FIXED 装饰 part——唯一例外是 `0003` 把两侧 bearing 拆成独立 FIXED part（见 Slot C）。
 
 边界：
 - 不是双叶/对开 bascule（两片叶各自 revolute 向中央合拢）——本类恰好一片 leaf、一个 revolute。
@@ -191,7 +191,7 @@ pattern = mixed
 ## 关节（Joints）
 | 关节 | 类型 | parent_slot.part | child_slot.part | axis | range | 描述 | 来源 |
 |---|---|---|---|---|---|---|---|
-| `leaf_hinge`（`support_to_leaf`/`frame_to_leaf`/`abutment_to_leaf`/`main_trunnion`） | REVOLUTE | A `fixed_support` | B `bridge_leaf` | `(0,-1,0)` 主 / `(1,0,0)` 旁 | `lower=0.0`, `upper∈[1.05, 1.5]` rad | 唯一主关节：桥叶绕近岸水平销线上翻 | S1/S2/S3/S4/S5/S7/S8/S9（全 41） |
+| `leaf_hinge`（`support_to_leaf`/`frame_to_leaf`/`abutment_to_leaf`/`main_trunnion`） | REVOLUTE | A `fixed_support` | B `bridge_leaf` | `(1,0,0)`（横向，deck 沿 +Y）| `lower∈[-0.785,-0.262]`（下俯 −45°..−15°）, `upper∈[+0.524,+1.047]`（抬起 +30°..+60°），`0 rad`=水平 | 唯一主关节：桥叶绕近岸水平销线上抬/下俯 | S1/S2/S3/S4/S5/S7/S8/S9（全 41） |
 | `frame_to_left_bearing` / `frame_to_right_bearing` | FIXED | A `fixed_support` | C `left_bearing`/`right_bearing` | n/a | n/a | **仅 Slot C=`separate_bearing_parts`**：两侧独立 bearing 钉死到 support | S1 (0003:L163-L176) |
 
 ## 参数范围汇总
@@ -202,8 +202,9 @@ pattern = mixed
 | `hinge_bearing` | enum | `trunnion_tube_in_cylinder_housing` / `trunnion_shaft_through_torus_ring` / `leaf_sleeve_over_support_pin` / `separate_bearing_parts` | `trunnion_tube_in_cylinder_housing` | drives Slot C：是否独立 bearing part + captured-pin 重叠声明 | S9 / S7 / S2 / S1 |
 | `topside_extras` | enum | `curb_guard` / `rail_balustrade` / `tread_underside_ribs` | `curb_guard` | drives Slot D（baked，无新 DOF） | S1 / S8 / S3 |
 | `shore_context` | enum | `bare_abutment` / `approach_receiving_span` / `channel_water_context` | `bare_abutment` | drives Slot E（baked，无新 DOF） | S9 / S8 / S4 |
-| `hinge_axis` | enum | `transverse=(0,-1,0)`（v1 唯一采样）/ `alongshore=(1,0,0)`（v1 暂缓，见实现备注）| `transverse` | revolute.axis；与销线方向一致（实测 **39** 个 transverse，2 个 8b9957c9/a76f28f2 用 alongshore——后者均 read-but-not-adopted，0 行 adopted 源码） | 全样本 / 8b9957c9 / a76f28f2 |
-| `leaf_open_upper` | float | `1.05 - 1.5` rad（≈60–86°） | `1.22` | revolute upper（lower 恒 0.0） | 全样本（典型 1.18-1.25） |
+| `hinge_axis` | enum | `transverse`（v1 唯一采样，本模板实现为世界 `(1,0,0)`，deck 沿 +Y）/ `alongshore`（v1 暂缓，见实现备注）| `transverse` | revolute.axis；横向水平销线（实测 **39** 个 transverse，2 个 8b9957c9/a76f28f2 用 alongshore——后者均 read-but-not-adopted，0 行 adopted 源码） | 全样本 / 8b9957c9 / a76f28f2 |
+| `leaf_open_upper` | float | `+0.524 - +1.047` rad（抬起 +30°..+60°） | `1.047`（+60°） | revolute upper；`0 rad`=水平闭合位，正角向上抬 | 用户指定（向上最多 60°） |
+| `leaf_open_lower` | float | `-0.785 - -0.262` rad（下俯 −45°..−15°） | `-0.524`（−30°） | revolute lower；负角向下俯至水平面以下 | 用户指定（向下最多 45°） |
 | `span_length` | float | `0.72 - 12.0`（leaf 跨长，模型量级随 scale 大幅变化） | sampled | leaf deck 长 = span_length；tip nose 在其末端 | 0003(0.72)/303cdd7f(11)/f04c79fe(12) |
 | `deck_width` | float | `0.30 - 4.3` | sampled | leaf 宽；与 support bearing 间距协调 | S9 / S8 / S3 |
 | `bearing_track` | float | derived | derived | 两侧 bearing 的 y 间距 ≈ deck_width 内缩；trunnion 销线全跨长由此派生 | S9 / S2 / S8 |
@@ -236,11 +237,11 @@ pattern = mixed
 | identity | 恰好一个 root `fixed_support` + 一个 `bridge_leaf`；二者由 exactly one REVOLUTE 相连 |
 | revolute count | `len([a for a in articulations if a.type==REVOLUTE]) == 1`（唯一主关节） |
 | part count | 2 part（`hinge_bearing≠separate_bearing_parts`）或 4 part（support + leaf + 2 bearing，含恰好 2 个 FIXED `frame_to_*_bearing`，`separate_bearing_parts`） |
-| hinge axis | `axis ∈ {(0,-1,0),(1,0,0)}` 且水平横向；revolute.origin 落在销线中心、贴近 leaf trunnion 与 support bearing 几何（fail_if_articulation_origin_far_from_geometry） |
-| motion range | `lower==0.0 且 1.05<=upper<=1.5`（约 60–86°开启） |
-| closed seam | 闭合位（pose=lower）leaf deck 与 support 路面 apron 在销线处沿桥跨方向几乎对齐/小 gap（`expect_gap`/`expect_overlap` 跨缝宽度匹配），deck 不穿透 support |
+| hinge axis | `axis == (1,0,0)` 且水平横向（deck 沿 +Y）；revolute.origin 落在销线中心、贴近 leaf trunnion 与 support bearing 几何（fail_if_articulation_origin_far_from_geometry） |
+| motion range | `0 rad`=水平闭合位（默认静止位）；`upper ∈ [+0.524,+1.047]`（抬起 +30°..+60°）且 `lower ∈ [-0.785,-0.262]`（下俯 −45°..−15°），`lower < 0 < upper` 跨水平双向 |
+| closed seam | 水平位（pose=0）leaf deck 与 support 路面 apron 在销线处沿桥跨方向几乎对齐/小 gap（`expect_gap`/`expect_overlap` 跨缝宽度匹配），deck 不穿透 support |
 | trunnion captured | trunnion shaft/tube/collar 与 support bearing housing/ring/pin 共轴咬合（`expect_within` xz 居中 + `expect_overlap` 沿轴向穿过 / `separate_bearing_parts` 用 `expect_contact` 坐入 shell）；press-fit 用 `allow_overlap` 声明 |
-| leaf lifts up | pose=upper 时 leaf tip/nose AABB 顶 Z 抬升量 `Δz ≥ 0.6 · span_length · sin(upper)`（几何下界，替代“相当比例”模糊词；upper、span 均已知，对 span=0.72 与 span=12 等量级自适应）且 tip 沿 X 朝销线回退（`Δx < 0`），不与 support/水道实体非预期穿模 |
+| leaf lifts up | pose=upper 时 leaf tip/nose AABB 顶 Z 抬升量 `Δz ≥ 0.6 · span_length · sin(upper)`（几何下界；upper、span 均已知，对 span=0.72 与 span=12 等量级自适应）且 tip 沿 Y 朝销线回退（`Δy < 0`），不与 support/水道实体非预期穿模；pose=lower 时 leaf tip 下俯至水平面以下（Δz<0） |
 | grounding | `fixed_support` 落地（最低面 z≈0 或基础块落地），leaf 闭合位坐落在 bearing 销线高度，不漂浮 |
 | no floating | bearing（独立或 visual）、counterweight、护栏、引桥、水道、控制塔全部 baked 进 support/leaf 或 FIXED；无悬空装饰 part |
 | baked-not-part | counterweight / 引桥 / 受桥 / 控制塔 / 护栏 均为 `part.visual(...)`，绝不另起独立 part 或 FIXED 装饰件（Slot C 的 bearing 是唯一允许的独立 FIXED part） |
@@ -254,7 +255,7 @@ pattern = mixed
 - `separate_bearing_parts` 声称独立 bearing part 却不 FIXED 到 support（bearing 漂浮），或反之把 bearing 该是 visual 时拆成无谓 FIXED part。
 - 闭合位 leaf 不与岸基路面对齐（悬在半空 / 跨缝处投影不接续 / 穿透 support）。
 - counterweight / 引桥 / 受桥 / 控制塔 / 护栏 被做成独立可动 part 或 FIXED 装饰件（违反“不动就不是 part”）。
-- motion range 不真实（upper<1.0 几乎不开，或 >1.6 过冲翻折）。
+- motion range 不真实（`0 rad` 不是水平闭合位；upper 抬起 <+30° 几乎不开或 >+60° 过冲翻折；lower 下俯超过 −45°）。
 - 把栏杆道闸（barrier_gate）、平转桥、升降桥、双叶 bascule 硬塞进本模板。
 
 ## 与相邻类别的边界

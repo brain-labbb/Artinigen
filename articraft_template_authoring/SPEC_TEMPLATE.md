@@ -139,7 +139,50 @@ pattern: <linear_chain / parallel_children / multiplicity / mixed>
 主要列：尺寸参数（含 multiplicity 槽位的 N_min / N_max）、palette、enum
 选择（如果模块内部还有 sub-enum）。
 
-### 8. 拓扑多样性审计
+### 8. Multiplicity / Copy Logic（强制判断）
+
+每个 spec 都必须写本节，由 agent 判断该类别是否有复制数量逻辑。若有
+`*_count`、`N` 个同构子件、径向重复、并排重复、串联重复或
+"fan blades / arm links / reels / bells" 这类逻辑，必须展开写清楚；若没有，
+也必须显式写 "无复制数量逻辑"，并说明不要引入独立 count 参数。
+只要出现可变 N，就必须给出可采样的整数闭区间 `N_min..N_max`，或说明
+固定 N；不要只写 "N 个"。范围要来自 5 星样本或 reviewer-gated 外推，例如
+`blade_count=3..8`、`arm_link_count=1..5`、`reel_count=2..4`。
+
+```markdown
+## Multiplicity / Copy Logic
+
+有复制数量逻辑时写：
+
+- `count_param`: 谁决定 N，N 是随机采样、模块派生、还是固定常量。
+- `N_range`: 必填；写可采样整数闭区间或固定值，例如 `3..8` / `fixed 4`。
+- sampling domain: 是否允许区间内所有整数，还是只允许离散集合（如 `{3, 5, 7}`）。
+- copied object: 复制的是 visual、part、joint，还是 part+joint 成对复制。
+- naming: 复制件命名方式，例如 `blade_i` / `reel_i_spin`。
+- placement: 复制件如何分布，例如 `360°/N` 径向等分、并排等间距、串联链。
+- joint policy: 每个复制件是否有独立 joint；若没有，说明共享哪个主 joint。
+- source/gating: 哪些 N 来自 5 星样本，哪些是 reviewer-gated 参数外推；
+  外推必须写清为什么不会破坏间距、bbox、joint 拓扑或 validator 覆盖。
+
+示例：
+
+- `blade_count`: `N_range=3..8`, sampling domain=`all integers`; copied object=
+  blade visual(s) under shared rotor part; placement=`360°/N` radial spacing.
+- `arm_link_count`: `N_range=1..5`, sampling domain=`all integers`; copied object=
+  serial link part + revolute joint pair; naming=`arm_link_i` / `arm_joint_i`.
+- `bell_count`: `N_range=fixed 1` 或 `2..4`，取决于类别是否真实支持多钟并排。
+
+无复制数量逻辑时写：
+
+- 无复制数量逻辑：本类别的核心可动件是固定数量的 named slots，不随机采样
+  `*_count`，也不通过循环复制 part/joint。
+- 若某些 module 内部有 source-local 重复视觉（例如 ribs、bolts、minor controls），
+  它们是 baked visuals 或该 module 的固定结构，不暴露为模板级 count 参数。
+```
+
+本节要能让实现 agent 不需要从参数表反推复制规则。
+
+### 9. 拓扑多样性审计
 
 ```markdown
 ## 拓扑多样性审计
@@ -157,7 +200,7 @@ pattern: <linear_chain / parallel_children / multiplicity / mixed>
 | C | 2 | **no** | 理由：5 星样本只有 2 种结构家族 |
 ```
 
-### 9. 验证器和拒绝条件
+### 10. 验证器和拒绝条件
 
 ```markdown
 ## Validator（author_run_tests 必须覆盖的点）
@@ -169,7 +212,7 @@ pattern: <linear_chain / parallel_children / multiplicity / mixed>
 - ...
 ```
 
-### 10. 与相邻类别的边界
+### 11. 与相邻类别的边界
 
 ```markdown
 ## 与相邻类别的边界
@@ -182,7 +225,7 @@ pattern: <linear_chain / parallel_children / multiplicity / mixed>
 
 ## 可选字段
 
-### 11. 模板实现备注（给后续实现 agent 的提示）
+### 12. 模板实现备注（给后续实现 agent 的提示）
 
 ```markdown
 ## 模板实现备注（可选）
@@ -193,7 +236,7 @@ pattern: <linear_chain / parallel_children / multiplicity / mixed>
 - 任何 spec → 代码翻译的非平凡映射
 ```
 
-### 12. Adopted Source Index
+### 13. Adopted Source Index
 
 ```markdown
 ## 采用源码索引（Adopted Source Index）
