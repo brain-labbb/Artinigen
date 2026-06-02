@@ -141,21 +141,31 @@ pattern: <linear_chain / parallel_children / multiplicity / mixed>
 
 ### 8. Multiplicity / Copy Logic（强制判断）
 
-每个 spec 都必须写本节，由 agent 判断该类别是否有复制数量逻辑。若有
-`*_count`、`N` 个同构子件、径向重复、并排重复、串联重复或
-"fan blades / arm links / reels / bells" 这类逻辑，必须展开写清楚；若没有，
-也必须显式写 "无复制数量逻辑"，并说明不要引入独立 count 参数。
-只要出现可变 N，就必须给出可采样的整数闭区间 `N_min..N_max`，或说明
-固定 N；不要只写 "N 个"。范围要来自 5 星样本或 reviewer-gated 外推，例如
-`blade_count=3..8`、`arm_link_count=1..5`、`reel_count=2..4`。
+每个 spec 都必须写本节，由 agent 判断该类别是否有**模板级复制数量逻辑**。
+这里的 Multiplicity 只指 "同一种 visual/part/joint 或 part+joint 组合需要按
+N 复制" 的规则。若有 `*_count`、`N` 个同构子件、径向重复、并排重复、
+串联重复或 "fan blades / arm links / reels / bells" 这类逻辑，必须展开写清楚；
+若没有，也必须显式写 "无复制数量逻辑"，并说明不要引入独立 count 参数。
+
+不要把类别身份中的固定单件硬写成 count：例如 one propeller、one car、
+one safe door、one lift panel、left/right guide rails、fixed hinge knuckles、
+fixed control surfaces、bolts/ribs/tick marks 都不是模板级 Multiplicity，除非
+模板真的要通过循环复制这些对象并暴露 N 或固定 N 个同构复制件。
+
+只要出现可变 N，就必须给出可采样的整数闭区间 `N_min..N_max`，或离散集合；
+若是固定 N，也必须是固定 N 个同构复制件（例如 fixed 3 branches），不是
+fixed 1 的普通 named slot。不要只写 "N 个"。范围要来自 5 星样本或
+reviewer-gated 外推，例如 `blade_count=3..8`、`arm_link_count=1..5`、
+`reel_count=2..4`。
 
 ```markdown
 ## Multiplicity / Copy Logic
 
 有复制数量逻辑时写：
 
-- `count_param`: 谁决定 N，N 是随机采样、模块派生、还是固定常量。
-- `N_range`: 必填；写可采样整数闭区间或固定值，例如 `3..8` / `fixed 4`。
+- `count_param`: 谁决定 N，N 是随机采样、模块派生、还是固定的同构复制件数量。
+- `N_range`: 必填；写可采样整数闭区间、离散集合或固定同构复制件数量，
+  例如 `3..8` / `{1,2}` / `fixed 4`。
 - sampling domain: 是否允许区间内所有整数，还是只允许离散集合（如 `{3, 5, 7}`）。
 - copied object: 复制的是 visual、part、joint，还是 part+joint 成对复制。
 - naming: 复制件命名方式，例如 `blade_i` / `reel_i_spin`。
@@ -170,14 +180,20 @@ pattern: <linear_chain / parallel_children / multiplicity / mixed>
   blade visual(s) under shared rotor part; placement=`360°/N` radial spacing.
 - `arm_link_count`: `N_range=1..5`, sampling domain=`all integers`; copied object=
   serial link part + revolute joint pair; naming=`arm_link_i` / `arm_joint_i`.
-- `bell_count`: `N_range=fixed 1` 或 `2..4`，取决于类别是否真实支持多钟并排。
+- `branch_count`: `N_range=fixed 3`, sampling domain=`fixed constant`; copied
+  object=branch part + independent rotary joint; naming=`branch_i` / `branch_i_spin`.
+- `wiper_count`: `N_range={1,2}`, module-derived, not sampled independently;
+  copied object=wiper arm + blade + sweep joint for dual modules.
 
 无复制数量逻辑时写：
 
-- 无复制数量逻辑：本类别的核心可动件是固定数量的 named slots，不随机采样
-  `*_count`，也不通过循环复制 part/joint。
-- 若某些 module 内部有 source-local 重复视觉（例如 ribs、bolts、minor controls），
-  它们是 baked visuals 或该 module 的固定结构，不暴露为模板级 count 参数。
+- 无复制数量逻辑：本类别的核心可动件是固定 named slots，不随机采样
+  `*_count`，也不通过循环复制模板级 visual/part/joint。
+- 固定单件不要写成 `foo_count=fixed 1`。例如 one propeller、one door、
+  one lift panel、one car、one chassis 都只是 named slots。
+- 若某些 module 内部有 source-local 重复视觉或固定结构（例如 left/right rails,
+  ribs、bolts、tick marks、hinge knuckles、fixed decorative controls），它们是
+  baked visuals 或 module-local fixed structure，不暴露为模板级 count 参数。
 ```
 
 本节要能让实现 agent 不需要从参数表反推复制规则。

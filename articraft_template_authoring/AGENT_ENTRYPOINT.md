@@ -62,8 +62,9 @@ contract、captured-pin 重叠声明等关键质量标准）"。
     `model.py:Lx-Ly` 引用），**至少 3 个候选/槽位**（不够 3 个退到 2）
   - **槽位图**：chain / parallel / multiplicity / 混合
   - **anchor 标注**：每个槽位标 seed=0 该选哪个模块
-  - **Multiplicity / Copy Logic**：每个 spec 必填；有复制数量逻辑时必须写
-    `N_min..N_max` 或固定 N，供后续 seed 采样
+  - **Multiplicity / Copy Logic**：每个 spec 必填；这里只指模板级复制数量逻辑。
+    有同构 visual/part/joint 复制时必须写 `N_min..N_max`、离散集合或固定 N 个
+    同构复制件；固定单件 named slot 不要写成 `*_count=fixed 1`
   - **拓扑多样性审计**：模块表算下来组合数是否 ≥8，是否能挤过
     `module_topology_diversity` 门控（≥5）
 
