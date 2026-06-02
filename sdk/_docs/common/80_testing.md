@@ -46,6 +46,8 @@ TestReport(
     warnings: tuple[str, ...] = (),
     allowances: tuple[str, ...] = (),
     allowed_isolated_parts: tuple[str, ...] = (),
+    allowed_disconnected_islands: tuple[str, ...] = (),
+    allowed_floating_islands: tuple[str, ...] = (),
     allowed_overlaps: tuple[AllowedOverlap, ...] = (),
 )
 ```
@@ -57,6 +59,8 @@ TestReport(
 - `warnings`: warning messages and failed warning-tier checks.
 - `allowances`: human-readable entries recorded by `allow_*`.
 - `allowed_isolated_parts`: names of parts explicitly allowed by `allow_isolated_part(...)`.
+- `allowed_disconnected_islands`: parts allowed to contain disconnected visual islands.
+- `allowed_floating_islands`: parts explicitly allowed with `allow_floating=True`.
 - `allowed_overlaps`: structured overlap allowances recorded by `allow_overlap(...)`.
 
 ## Construction
@@ -80,8 +84,16 @@ return ctx.report()
 - exactly one root part
 - mesh asset readiness
 - floating disconnected-part-group detection
+- visible visual-support graph detection
 - disconnected geometry-island detection within a part
 - current-pose real 3D overlap detection
+- sampled articulation overlap detection in final/dev profiles
+
+The final template gate is physical-support based: every non-degenerate visible
+visual element must have a contact, slight-embed, or declared mating path to the
+grounded body. A visual may be disconnected from other visuals in the same part,
+but it must be supported by some visible geometry. A bare articulation does not
+count as support; a passing `MatingContract` does.
 
 Use `run_tests()` for prompt-specific exact assertions such as `expect_gap(...)`,
 `expect_overlap(...)`, `expect_contact(...)`, and `expect_within(...)`.
@@ -160,6 +172,19 @@ footprint or cavity.
 - `elem_a`, `elem_b`: optional element-level scope. If omitted, the allowance
   applies to the full part pair.
 
+In the final quality profile, broad part-pair allowances are not accepted.
+Always scope intentional overlap to both named elements:
+
+```python
+ctx.allow_overlap(
+    base,
+    shaft,
+    elem_a="bearing_socket",
+    elem_b="shaft",
+    reason="The shaft is intentionally captured by the bearing socket proxy.",
+)
+```
+
 ### Acceptable Overlap Patterns
 
 Use `allow_overlap(...)` for small intentional overlap that is local, mostly
@@ -185,6 +210,20 @@ floating/disconnected-part-group pass.
 
 If the intentional floating assembly is a multi-part group, allow each authored
 part in that group.
+
+This is a migration/debug escape hatch only. It is rejected by the final
+quality profile because visible geometry must have real support.
+
+### `allow_disconnected_islands(part, *, reason, allow_floating=False) -> None`
+
+Records that a part is allowed to contain disconnected geometry islands, such as
+comb teeth, grille bars, or fin stacks where fake bridging material would be
+wrong. This only suppresses the old disconnected-island warning. It does not
+make unsupported visible geometry pass the visual support graph.
+
+Do not use fake hidden bridges to trick the gate. Prefer real contact, a visible
+riser/bracket/stem, slight seating embed, or a separate supported part. Passing
+`allow_floating=True` is rejected by the final quality profile.
 
 ### `allow_coplanar_surfaces(link_a, link_b, *, reason, elem_a=None, elem_b=None) -> None`
 
@@ -356,6 +395,21 @@ Warning-tier heuristic for suspicious coplanar or nearly coplanar surfaces.
 - `ignore_adjacent`, `ignore_fixed`: same meaning as the sampled overlap checks.
 
 Use only when this specific heuristic answers a real uncertainty.
+
+### `fail_if_unsupported_visual_islands(*, max_pose_samples=1, contact_tol=None, name=None) -> bool`
+
+Fails when any visible visual-element component lacks a support path to the
+grounded visible body. Support means contact, slight embed, distance within the
+SDK support tolerance, or a passing `MatingContract` between the exact element
+pair. Articulation alone is not support.
+
+Use this when you need the same final-gate semantics inside an authored test.
+The compiler-owned final profile already runs it at rest and across sampled
+poses.
+
+### `warn_if_unsupported_visual_islands(...) -> bool`
+
+Warning-tier version used by the development profile.
 
 ## Exact Assertions
 

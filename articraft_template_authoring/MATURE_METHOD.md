@@ -204,8 +204,8 @@ monitor_mount 是这块写得最系统的范例，直接抄它的结构。
 ## 7. 测试覆盖
 
 **权威验收信号是 `compile-sweep`，不是 pytest**（见根 `CLAUDE.md`）。模板是否合格
-完全由 `compile-sweep <slug> --seeds 0-49` 的三道门（baseline 质量门 +
-`module_topology_diversity` ≥5）判定。
+完全由 `compile-sweep <slug> --quality-profile final --seeds 0-49` 的三道门
+（baseline/final 质量门 + `module_topology_diversity` ≥5）判定。
 
 `tests/agent/test_<slug>_template.py` 是**可选**的结构回归网，不是验收门。它默认
 被 pytest 排除（自动打 `template_asset` marker，见 `tests/agent/conftest.py`），
@@ -225,18 +225,21 @@ compile-sweep 抽样覆盖不到的两项**——其余 sweep 已经管了：
 
 ## 8. 完工自检循环
 
-跟 `agent_workflow.md §3.3` 一致：**两段式 sweep**——先 `--seeds 0-4`
-打掉头部 bug（anchor / 主流模块组合 / 基础 mating），再 `--seeds 0-19`
-验证 edge case + diversity gate。盲跑 20 seed 修一轮 5-10 分钟，迭代代价大。
+跟 `agent_workflow.md §3.3` 一致：先 `--seeds 0-4` 打掉头部 bug
+（anchor / 主流模块组合 / 基础 mating），再 `--seeds 0-19` 验证 edge
+case + diversity gate，最后 `--seeds 0-49 --quality-profile final` 做最终验收。
 
 再强调几条死规：
 
-- **disconnected_geometry_islands 是 FAIL 级**（不是 warn）。任何浮空
-  visual 都会让 sweep verdict=fail。真·多块刚性件（梳齿/栅格/鳍片堆）若加桥
-  会凭空造材料，用 `ctx.allow_disconnected_islands(part, reason="...")` 降为
-  warning；仅限真多块件，不可掩盖意外断裂的 seed。
-- **pass_threshold 默认 0.85**。20 seed 允许 ≤3 个失败。5 seed 阶段
-  允许 ≤1 个失败（pass_rate ≥ 0.8）。
+- **任何 visible island 都必须 supported**。原始 part-internal island 检查是
+  warn；final 硬门是 `fail_if_unsupported_visual_islands`：同 part 或跨 part 的
+  可见组件都必须通过接触、轻微嵌入、受支撑邻居或 passing `MatingContract`
+  连到 grounded body。裸 joint 不算支撑。
+- **final 不接受带失败通过**。`--quality-profile final` 要求 sampled seeds 全部
+  hard QC 通过，`pass_rate == 1.0`，`quality_summary.failed_gates == {}`。
+- **高风险 allowance 会阻塞 final**。禁止 broad `allow_overlap(part_a, part_b)`、
+  `allow_isolated_part(...)`、`allow_disconnected_islands(..., allow_floating=True)`。
+  intentional overlap 必须写成 element-level allowance。
 - **`module_topology_diversity` 不在 5 seed 阶段判定**（≥5 distinct 凑不齐）。
   只在 20 seed 阶段是硬约束。
 - **必须自己跑 viewer 看一遍 10 个 seed**。sweep verdict=pass 不代表外观
@@ -255,11 +258,11 @@ compile-sweep 抽样覆盖不到的两项**——其余 sweep 已经管了：
 
 | 失败 | 原因 | 修复 |
 |---|---|---|
-| disconnected_geometry_islands | visual 间不 AABB 相交 | 加 connector neck/riser；真·多块件用 allow_disconnected_islands |
+| unsupported_visual_island | 一块 visible geometry 没有接触/嵌入/mating 支撑路径 | 把件挪到贴住 supported surface，加真实 stem/riser/bracket/collar，或给 joint 加 passing MatingContract |
 | joint_origin_far_from_geometry | child 模块的 (0,0,0) 不在它自己 visual AABB 内（tol=max(0.015, 0.05×bbox 对角线)，大件按比例放宽） | 调 hub 位置或加 anchor visual |
 | joint_mating_has_gap | 沿 normal 轴的 face center 不重合 | 调 anchor_local 的 normal-axis 分量 |
 | inter-part overlap | 加 connector 后引发新重叠 | 在 _allow_internal_pivot_overlaps 加声明 |
-| pass_rate < 0.85 | 某些 module 组合 + 某些尺寸触发边缘 case | sweep 报告里看失败 cluster，修改有问题的 module 或 clamp 范围 |
+| pass_rate < 1.0 | 某些 module 组合 + 某些尺寸触发边缘 case | sweep 报告里看失败 cluster，修改有问题的 module 或 clamp 范围 |
 | diversity < 5 | 候选模块过少 / RNG 太集中 | 加候选模块 OR 改 rng.choice 权重 |
 | seed=0 ≠ anchor 拓扑 | config_from_seed(0) 不返回 anchor 组合 | 修 config_from_seed 的 seed==0 分支 |
 

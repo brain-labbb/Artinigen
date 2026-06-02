@@ -103,6 +103,7 @@ approved / rejected
   gold-standard 模板的代码骨架。
 - 实现阶段必须读 `MATURE_METHOD.md` 和根
   `MODULAR_TEMPLATE_AUTHORING.md`。
-- 完工标准：sweep `verdict=pass`, pass_rate ≥ 0.85, diversity ≥ 5,
+- 完工标准：final sweep `verdict=pass`, `pass_rate == 1.0`,
+  `quality_summary.failed_gates == {}`, diversity ≥ 5,
   10 seed batch viewer 自检干净。
 - 单类别串行 + 自闭环修，最多 2-3 个同族模板一组推进。

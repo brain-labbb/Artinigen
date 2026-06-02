@@ -24,6 +24,9 @@ class TestContext(TestContextExpectationMixin, TestContextModelCheckMixin, TestC
     _allowances: List[str] = field(default_factory=list)
     _allow_isolated_parts: Dict[str, str] = field(default_factory=dict)
     _allow_disconnected_islands: Dict[str, str] = field(default_factory=dict)
+    # Subset of _allow_disconnected_islands that ALSO opted out of the stricter
+    # float gate (fail_if_floating_geometry_islands) via allow_floating=True.
+    _allow_floating_islands: Dict[str, str] = field(default_factory=dict)
     _allow_elems: List[Tuple[Tuple[str, str], Optional[str], Optional[str], str]] = field(
         default_factory=list, repr=False
     )

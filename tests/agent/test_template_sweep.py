@@ -104,7 +104,9 @@ def test_extract_failure_for_bare_runtime_exception_uses_signal_code() -> None:
 def test_run_sweep_handles_mixed_pass_fail(monkeypatch, tmp_path: Path) -> None:
     """Stub `_compile_one` to simulate mixed outcomes; verify aggregation."""
 
-    def fake_compile_one(slug: str, stem: str, seed: int, sdk_package: str) -> SeedOutcome:
+    def fake_compile_one(
+        slug: str, stem: str, seed: int, sdk_package: str, quality_profile: str
+    ) -> SeedOutcome:
         if seed in {1, 4}:
             return SeedOutcome(
                 seed=seed,
@@ -156,7 +158,9 @@ def test_run_sweep_handles_mixed_pass_fail(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_run_sweep_passes_when_threshold_met(monkeypatch, tmp_path: Path) -> None:
-    def fake_compile_one(slug: str, stem: str, seed: int, sdk_package: str) -> SeedOutcome:
+    def fake_compile_one(
+        slug: str, stem: str, seed: int, sdk_package: str, quality_profile: str
+    ) -> SeedOutcome:
         return SeedOutcome(
             seed=seed,
             verdict="pass",
@@ -165,6 +169,22 @@ def test_run_sweep_passes_when_threshold_met(monkeypatch, tmp_path: Path) -> Non
             failure_type_normalized=None,
             failure_details=None,
             elapsed_s=0.0,
+            warnings=["minor warning"] if seed == 0 else [],
+            quality_report={
+                "quality_profile": quality_profile,
+                "quality_summary": {
+                    "unsupported_visual_islands": 0,
+                    "broad_overlap_allowances": 0,
+                    "floating_allowances": 0,
+                    "isolated_allowances": 0,
+                    "sampled_pose_failures": 0,
+                },
+                "quality_gates": {
+                    "visual_support_graph": {"status": "pass", "findings": []},
+                    "allowance_policy": {"status": "pass", "findings": []},
+                    "sampled_pose_support": {"status": "pass", "findings": []},
+                },
+            },
         )
 
     fake_template = tmp_path / "templates" / "stub_slug.py"
@@ -188,6 +208,125 @@ def test_run_sweep_passes_when_threshold_met(monkeypatch, tmp_path: Path) -> Non
     assert report.pass_rate == 1.0
     assert report.verdict == "pass"
     assert report.line_count == 1500
+
+
+def test_run_sweep_final_fails_when_passed_seed_has_quality_gate_failure(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    def fake_compile_one(
+        slug: str, stem: str, seed: int, sdk_package: str, quality_profile: str
+    ) -> SeedOutcome:
+        gate_status = "fail" if seed == 1 else "pass"
+        return SeedOutcome(
+            seed=seed,
+            verdict="pass",
+            config={"x": seed},
+            failure_type=None,
+            failure_type_normalized=None,
+            failure_details=None,
+            elapsed_s=0.0,
+            quality_report={
+                "quality_profile": quality_profile,
+                "quality_summary": {
+                    "unsupported_visual_islands": 1 if seed == 1 else 0,
+                    "broad_overlap_allowances": 0,
+                    "floating_allowances": 0,
+                    "isolated_allowances": 0,
+                    "sampled_pose_failures": 0,
+                },
+                "quality_gates": {
+                    "visual_support_graph": {
+                        "status": gate_status,
+                        "findings": ["unsupported"] if seed == 1 else [],
+                    },
+                    "allowance_policy": {"status": "pass", "findings": []},
+                    "sampled_pose_support": {"status": "pass", "findings": []},
+                },
+            },
+        )
+
+    fake_template = tmp_path / "templates" / "stub_slug.py"
+    fake_template.parent.mkdir(parents=True)
+    fake_template.write_text("\n" * 100, encoding="utf-8")
+
+    monkeypatch.setattr(template_sweep, "_compile_one", fake_compile_one)
+    monkeypatch.setattr(
+        template_sweep,
+        "_template_module_path",
+        lambda slug, *, repo_root: fake_template,
+    )
+
+    report = run_sweep(
+        slug="stub_slug",
+        stem="stub",
+        seeds=[0, 1],
+        max_workers=1,
+        repo_root=tmp_path,
+        quality_profile="final",
+    )
+
+    assert report.pass_rate == 1.0
+    assert report.verdict == "fail"
+    assert report.extra["quality_summary"]["failed_gates"]["visual_support_graph"] == [1]
+
+
+def test_run_sweep_dev_reports_quality_gate_failure_without_blocking(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    def fake_compile_one(
+        slug: str, stem: str, seed: int, sdk_package: str, quality_profile: str
+    ) -> SeedOutcome:
+        return SeedOutcome(
+            seed=seed,
+            verdict="pass",
+            config={"x": seed},
+            failure_type=None,
+            failure_type_normalized=None,
+            failure_details=None,
+            elapsed_s=0.0,
+            quality_report={
+                "quality_profile": quality_profile,
+                "quality_summary": {
+                    "unsupported_visual_islands": 1,
+                    "broad_overlap_allowances": 1,
+                    "floating_allowances": 0,
+                    "isolated_allowances": 0,
+                    "sampled_pose_failures": 0,
+                },
+                "quality_gates": {
+                    "visual_support_graph": {"status": "fail", "findings": ["unsupported"]},
+                    "allowance_policy": {"status": "fail", "findings": ["broad"]},
+                    "sampled_pose_support": {"status": "pass", "findings": []},
+                },
+            },
+        )
+
+    fake_template = tmp_path / "templates" / "stub_slug.py"
+    fake_template.parent.mkdir(parents=True)
+    fake_template.write_text("\n" * 100, encoding="utf-8")
+
+    monkeypatch.setattr(template_sweep, "_compile_one", fake_compile_one)
+    monkeypatch.setattr(
+        template_sweep,
+        "_template_module_path",
+        lambda slug, *, repo_root: fake_template,
+    )
+
+    report = run_sweep(
+        slug="stub_slug",
+        stem="stub",
+        seeds=[0],
+        max_workers=1,
+        repo_root=tmp_path,
+        quality_profile="dev",
+        pass_threshold=1.0,
+    )
+
+    assert report.verdict == "pass"
+    assert report.extra["quality_summary"]["totals"]["broad_overlap_allowances"] == 1
+    assert report.extra["quality_summary"]["failed_gates"]["allowance_policy"] == [0]
 
 
 def test_run_sweep_raises_when_template_missing(tmp_path: Path) -> None:
@@ -231,6 +370,7 @@ def test_compile_one_via_subprocess_returns_timeout_when_worker_hangs(
         stem="any_stem",
         seed=99,
         sdk_package="sdk",
+        quality_profile="final",
         timeout_s=1.5,
         repo_root=tmp_path,
     )
@@ -257,6 +397,7 @@ def test_compile_one_via_subprocess_returns_crash_on_non_zero_rc(
         stem="any_stem",
         seed=11,
         sdk_package="sdk",
+        quality_profile="final",
         timeout_s=10.0,
         repo_root=tmp_path,
     )
@@ -266,7 +407,9 @@ def test_compile_one_via_subprocess_returns_crash_on_non_zero_rc(
 
 
 def test_report_to_json_round_trip(monkeypatch, tmp_path: Path) -> None:
-    def fake_compile_one(slug: str, stem: str, seed: int, sdk_package: str) -> SeedOutcome:
+    def fake_compile_one(
+        slug: str, stem: str, seed: int, sdk_package: str, quality_profile: str
+    ) -> SeedOutcome:
         return SeedOutcome(
             seed=seed,
             verdict="pass",
@@ -275,6 +418,22 @@ def test_report_to_json_round_trip(monkeypatch, tmp_path: Path) -> None:
             failure_type_normalized=None,
             failure_details=None,
             elapsed_s=0.0,
+            warnings=["minor warning"] if seed == 0 else [],
+            quality_report={
+                "quality_profile": quality_profile,
+                "quality_summary": {
+                    "unsupported_visual_islands": 0,
+                    "broad_overlap_allowances": 0,
+                    "floating_allowances": 0,
+                    "isolated_allowances": 0,
+                    "sampled_pose_failures": 0,
+                },
+                "quality_gates": {
+                    "visual_support_graph": {"status": "pass", "findings": []},
+                    "allowance_policy": {"status": "pass", "findings": []},
+                    "sampled_pose_support": {"status": "pass", "findings": []},
+                },
+            },
         )
 
     fake_template = tmp_path / "templates" / "stub_slug.py"
@@ -303,3 +462,7 @@ def test_report_to_json_round_trip(monkeypatch, tmp_path: Path) -> None:
     assert decoded["failed_seeds"] == []
     assert decoded["verdict"] == "pass"
     assert "coverage_gates" in decoded
+    assert decoded["quality_profile"] == "final"
+    assert decoded["seed_outcomes"][0]["quality_summary"]["unsupported_visual_islands"] == 0
+    assert decoded["seed_outcomes"][0]["quality_gates"]["visual_support_graph"]["status"] == "pass"
+    assert decoded["seed_outcomes"][0]["warnings"] == ["minor warning"]

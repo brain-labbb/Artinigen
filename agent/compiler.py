@@ -15,7 +15,7 @@ import threading
 import traceback
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from agent.feedback import build_compile_signal_bundle
 from agent.models import CompileReport, CompileSignalBundle
@@ -26,6 +26,8 @@ from sdk._core.v0.assets import activate_asset_session, asset_session_for_script
 logger = logging.getLogger(__name__)
 
 _COMPILE_TARGETS = {"full", "visual"}
+QualityProfile = Literal["final", "dev", "legacy"]
+_QUALITY_PROFILES = {"final", "dev", "legacy"}
 
 _EXCEPTION_PREFIX_RE = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*(?:Error|Exception)):\s*")
 _VISUAL_OBJ_MESH_RE = re.compile(
@@ -59,6 +61,19 @@ _BASELINE_ARTICULATION_ORIGIN_BBOX_RELATIVE = 0.05
 _AUTOMATED_BASELINE_ARTICULATION_ORIGIN_CHECK_NAME = (
     f"fail_if_articulation_origin_far_from_geometry(tol={_BASELINE_ARTICULATION_ORIGIN_TOL:.4g})"
 )
+# Part-internal islands stay WARN-level in general (see warn call below), but a
+# *clearly floating* island — a sizeable piece separated from the body by a real
+# gap — is a hard fail. The relative contact tol first merges sub-tolerance gaps
+# and "resting on" decoration (beads/blade tips/panels) so only genuine floats
+# survive; the gap/size thresholds are calibrated against real templates (genuine
+# floats sit at gap ~0.08-0.30·partdiag, legit near-touching repeats at <0.01).
+_BASELINE_FLOATING_ISLAND_RELATIVE_CONTACT_TOL = 0.008
+_BASELINE_FLOATING_ISLAND_FAIL_GAP_REL = 0.03
+_BASELINE_FLOATING_ISLAND_FAIL_SIZE_REL = 0.06
+_AUTOMATED_BASELINE_FLOATING_ISLAND_CHECK_NAME = (
+    f"fail_if_floating_geometry_islands(gap>{_BASELINE_FLOATING_ISLAND_FAIL_GAP_REL:.3g},"
+    f"size>{_BASELINE_FLOATING_ISLAND_FAIL_SIZE_REL:.3g})"
+)
 _AUTOMATED_BASELINE_MATING_CHECK_NAME = "fail_if_joint_mating_has_gap"
 _AUTOMATED_BASELINE_DEFAULT_CHECK_NAMES = frozenset(
     {
@@ -66,10 +81,21 @@ _AUTOMATED_BASELINE_DEFAULT_CHECK_NAMES = frozenset(
         "check_single_root_part",
         "check_mesh_assets_ready",
         "fail_if_isolated_parts()",
+        "fail_if_unsupported_visual_islands()",
+        "fail_if_unsupported_visual_islands(sampled)",
+        "warn_if_unsupported_visual_islands()",
+        "warn_if_unsupported_visual_islands(sampled)",
         _AUTOMATED_BASELINE_WARNING_CHECK_NAME,
+        _AUTOMATED_BASELINE_FLOATING_ISLAND_CHECK_NAME,
+        _AUTOMATED_BASELINE_FLOATING_ISLAND_CHECK_NAME.replace(
+            "fail_if_floating_geometry_islands", "warn_if_floating_geometry_islands"
+        ),
         "fail_if_parts_overlap_in_current_pose()",
+        "fail_if_articulation_overlaps(samples=8)",
+        "warn_if_articulation_overlaps(samples=8)",
         _AUTOMATED_BASELINE_ARTICULATION_ORIGIN_CHECK_NAME,
         _AUTOMATED_BASELINE_MATING_CHECK_NAME,
+        "check_final_allowance_policy",
     }
 )
 _MODEL_EXECUTION_LOCK = threading.Lock()
@@ -90,6 +116,14 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _normalize_quality_profile(value: str | None) -> QualityProfile:
+    profile = str(value or "dev").strip().lower()
+    if profile not in _QUALITY_PROFILES:
+        supported = ", ".join(sorted(_QUALITY_PROFILES))
+        raise ValueError(f"Unsupported quality_profile {value!r}. Expected one of: {supported}")
+    return profile  # type: ignore[return-value]
+
+
 def compile_urdf(
     script_path: Path,
     *,
@@ -98,6 +132,7 @@ def compile_urdf(
     ignore_geom_qc: bool = False,
     target: str = "full",
     rewrite_visual_glb: bool | None = None,
+    quality_profile: str = "dev",
 ) -> str:
     """Execute a generated script and return the exported XML payload."""
     report = compile_urdf_report_maybe_timeout(
@@ -107,6 +142,7 @@ def compile_urdf(
         ignore_geom_qc=ignore_geom_qc,
         target=target,
         rewrite_visual_glb=rewrite_visual_glb,
+        quality_profile=quality_profile,
     )
     for warning in report.warnings:
         logger.warning("%s", warning)
@@ -175,6 +211,7 @@ def _attach_compiled_urdf_on_failure(
     urdf_xml: str | None,
     warnings: list[str],
     signal_bundle: CompileSignalBundle,
+    quality_report: dict[str, Any] | None = None,
 ) -> BaseException:
     wrapped = RuntimeError(f"{type(exc).__name__}: {exc}")
     if isinstance(urdf_xml, str) and urdf_xml.strip():
@@ -184,6 +221,8 @@ def _attach_compiled_urdf_on_failure(
     if test_report is not None:
         setattr(wrapped, "test_report", test_report)
     setattr(wrapped, "compile_signal_bundle", signal_bundle)
+    if quality_report is not None:
+        setattr(wrapped, "compile_quality_report", quality_report)
     return wrapped
 
 
@@ -225,6 +264,7 @@ def compile_urdf_report(
     ignore_geom_qc: bool = False,
     target: str = "full",
     rewrite_visual_glb: bool | None = None,
+    quality_profile: str = "dev",
 ) -> CompileReport:
     session = asset_session_for_script(script_path)
     with activate_asset_session(session):
@@ -235,6 +275,7 @@ def compile_urdf_report(
             ignore_geom_qc=ignore_geom_qc,
             target=target,
             rewrite_visual_glb=rewrite_visual_glb,
+            quality_profile=quality_profile,
         )
 
 
@@ -246,12 +287,15 @@ def _compile_urdf_report_impl(
     ignore_geom_qc: bool = False,
     target: str = "full",
     rewrite_visual_glb: bool | None = None,
+    quality_profile: str = "dev",
 ) -> CompileReport:
     """Execute a generated script and return export XML plus non-blocking warnings."""
     globals_dict = load_model_globals(script_path, sdk_package=sdk_package)
     warnings: list[str] = []
     test_report = None
     target_key = _normalize_compile_target(target)
+    quality_profile_key = _normalize_quality_profile(quality_profile)
+    quality_report: dict[str, Any] | None = None
     script_path = script_path.resolve()
     if run_checks:
         try:
@@ -265,14 +309,23 @@ def _compile_urdf_report_impl(
                     script_path=script_path,
                     sdk_package=sdk_package,
                     authored_report=authored_report,
+                    quality_profile=quality_profile_key,
                 )
                 test_report = _merge_test_reports(
                     authored_report,
                     baseline_report,
                     sdk_package=sdk_package,
                 )
+                quality_report = _build_quality_report(
+                    test_report,
+                    quality_profile=quality_profile_key,
+                )
                 _raise_for_failed_test_report(test_report)
         except Exception as exc:
+            failed_quality_report = _build_quality_report(
+                getattr(exc, "test_report", None),
+                quality_profile=quality_profile_key,
+            )
             urdf_xml = _extract_urdf_xml(
                 globals_dict,
                 sdk_package=sdk_package,
@@ -290,6 +343,7 @@ def _compile_urdf_report_impl(
                 urdf_xml=urdf_xml,
                 warnings=warnings,
                 signal_bundle=signal_bundle,
+                quality_report=failed_quality_report,
             )
             if ignore_geom_qc:
                 nonblocking_warning = _nonblocking_geometry_qc_warning_from_exception(wrapped)
@@ -309,6 +363,7 @@ def _compile_urdf_report_impl(
                             warnings=warning_lines,
                             test_report=getattr(wrapped, "test_report", None),
                         ),
+                        quality_report=getattr(wrapped, "compile_quality_report", None),
                     )
             raise wrapped from exc
 
@@ -341,6 +396,7 @@ def _compile_urdf_report_impl(
         urdf_xml=urdf_xml,
         warnings=warnings,
         signal_bundle=signal_bundle,
+        quality_report=quality_report,
     )
 
 
@@ -586,6 +642,7 @@ def _compile_worker(
     ignore_geom_qc: bool,
     target: str,
     rewrite_visual_glb: bool,
+    quality_profile: str,
     conn: object,
 ) -> None:
     try:
@@ -596,12 +653,14 @@ def _compile_worker(
             ignore_geom_qc=ignore_geom_qc,
             target=target,
             rewrite_visual_glb=rewrite_visual_glb,
+            quality_profile=quality_profile,
         )
         payload = {
             "ok": True,
             "urdf_xml": report.urdf_xml,
             "warnings": report.warnings,
             "signal_bundle": report.signal_bundle.to_dict(),
+            "quality_report": report.quality_report,
         }
         conn.send(payload)  # type: ignore[attr-defined]
     except BaseException as exc:
@@ -620,6 +679,9 @@ def _compile_worker(
         signal_bundle = getattr(exc, "compile_signal_bundle", None)
         if isinstance(signal_bundle, CompileSignalBundle):
             payload["signal_bundle"] = signal_bundle.to_dict()
+        quality_report = getattr(exc, "compile_quality_report", None)
+        if isinstance(quality_report, dict):
+            payload["quality_report"] = quality_report
         conn.send(payload)  # type: ignore[attr-defined]
     finally:
         with suppress(Exception):
@@ -634,6 +696,7 @@ def compile_urdf_report_maybe_timeout(
     ignore_geom_qc: bool = False,
     target: str = "full",
     rewrite_visual_glb: bool | None = None,
+    quality_profile: str = "dev",
 ) -> CompileReport:
     """
     Run `compile_urdf_report` with a hard timeout to prevent indefinite hangs.
@@ -649,6 +712,7 @@ def compile_urdf_report_maybe_timeout(
             ignore_geom_qc=ignore_geom_qc,
             target=target,
             rewrite_visual_glb=rewrite_visual_glb,
+            quality_profile=quality_profile,
         )
 
     ctx = get_mp_context()
@@ -662,6 +726,7 @@ def compile_urdf_report_maybe_timeout(
             ignore_geom_qc,
             target,
             rewrite_visual_glb,
+            quality_profile,
             child_conn,
         ),
         daemon=True,
@@ -714,6 +779,9 @@ def compile_urdf_report_maybe_timeout(
             urdf_xml=urdf_xml,
             warnings=[str(w) for w in warnings],
             signal_bundle=signal_bundle,
+            quality_report=(
+                dict(msg["quality_report"]) if isinstance(msg.get("quality_report"), dict) else None
+            ),
         )
 
     error_text = str(msg.get("error", "Unknown compile worker error")).strip()
@@ -739,6 +807,9 @@ def compile_urdf_report_maybe_timeout(
             "compile_signal_bundle",
             CompileSignalBundle.from_dict(signal_bundle_payload),
         )
+    quality_report = msg.get("quality_report")
+    if isinstance(quality_report, dict):
+        setattr(exc, "compile_quality_report", dict(quality_report))
     raise exc
 
 
@@ -981,6 +1052,7 @@ def _build_test_report(
     allowed_isolated_parts: tuple[str, ...],
     allowed_overlaps: tuple[object, ...],
     allowed_disconnected_islands: tuple[str, ...] = (),
+    allowed_floating_islands: tuple[str, ...] = (),
 ) -> object:
     return report_type(
         passed=not failures,
@@ -992,6 +1064,7 @@ def _build_test_report(
         allowed_isolated_parts=allowed_isolated_parts,
         allowed_overlaps=allowed_overlaps,
         allowed_disconnected_islands=allowed_disconnected_islands,
+        allowed_floating_islands=allowed_floating_islands,
     )
 
 
@@ -1034,6 +1107,9 @@ def _filter_duplicate_automated_baseline_results(
         allowed_overlaps=tuple(getattr(baseline_report, "allowed_overlaps", ())),
         allowed_disconnected_islands=tuple(
             str(item) for item in getattr(baseline_report, "allowed_disconnected_islands", ())
+        ),
+        allowed_floating_islands=tuple(
+            str(item) for item in getattr(baseline_report, "allowed_floating_islands", ())
         ),
     )
 
@@ -1111,6 +1187,16 @@ def _merge_test_reports(
             seen_disconnected_islands.add(normalized)
             allowed_disconnected_islands.append(normalized)
 
+    allowed_floating_islands: list[str] = []
+    seen_floating_islands: set[str] = set()
+    for report in (authored_report, filtered_baseline_report):
+        for part_name in getattr(report, "allowed_floating_islands", ()):
+            normalized = str(part_name)
+            if normalized in seen_floating_islands:
+                continue
+            seen_floating_islands.add(normalized)
+            allowed_floating_islands.append(normalized)
+
     allowed_overlaps: list[object] = []
     seen_overlaps: set[tuple[str, str, str | None, str | None, str]] = set()
     for report in (authored_report, filtered_baseline_report):
@@ -1144,6 +1230,7 @@ def _merge_test_reports(
         allowed_isolated_parts=tuple(allowed_isolated_parts),
         allowed_overlaps=tuple(allowed_overlaps),
         allowed_disconnected_islands=tuple(allowed_disconnected_islands),
+        allowed_floating_islands=tuple(allowed_floating_islands),
     )
 
 
@@ -1180,10 +1267,14 @@ def _apply_authored_allowances_to_baseline_context(ctx: object, authored_report:
             reason="carried over from authored run_tests() allowance",
         )
 
+    floating_allowed = {
+        str(part_name) for part_name in getattr(authored_report, "allowed_floating_islands", ())
+    }
     for part_name in getattr(authored_report, "allowed_disconnected_islands", ()):
         ctx.allow_disconnected_islands(
             str(part_name),
             reason="carried over from authored run_tests() allowance",
+            allow_floating=str(part_name) in floating_allowed,
         )
 
     for overlap in getattr(authored_report, "allowed_overlaps", ()):
@@ -1204,12 +1295,181 @@ def _apply_authored_allowances_to_baseline_context(ctx: object, authored_report:
         )
 
 
+def _broad_overlap_allowances(report: object) -> list[object]:
+    broad: list[object] = []
+    for overlap in getattr(report, "allowed_overlaps", ()):
+        elem_a = getattr(overlap, "elem_a", None)
+        elem_b = getattr(overlap, "elem_b", None)
+        if elem_a is None or elem_b is None:
+            broad.append(overlap)
+    return broad
+
+
+def _check_final_allowance_policy(ctx: object, authored_report: object) -> bool:
+    findings: list[str] = []
+    isolated_parts = [str(item) for item in getattr(authored_report, "allowed_isolated_parts", ())]
+    floating_parts = [
+        str(item) for item in getattr(authored_report, "allowed_floating_islands", ())
+    ]
+    broad_overlaps = _broad_overlap_allowances(authored_report)
+
+    if isolated_parts:
+        findings.append(
+            "allow_isolated_part is not permitted in final quality profile: "
+            + ", ".join(repr(item) for item in sorted(isolated_parts))
+        )
+    if floating_parts:
+        findings.append(
+            "allow_disconnected_islands(..., allow_floating=True) is not permitted in final "
+            "quality profile: " + ", ".join(repr(item) for item in sorted(floating_parts))
+        )
+    for overlap in broad_overlaps:
+        findings.append(
+            "broad allow_overlap without both elem_a and elem_b is not permitted in final "
+            "quality profile: "
+            f"pair=({getattr(overlap, 'link_a', '')!r},{getattr(overlap, 'link_b', '')!r}) "
+            f"elem_a={getattr(overlap, 'elem_a', None)!r} "
+            f"elem_b={getattr(overlap, 'elem_b', None)!r}"
+        )
+
+    if not findings:
+        return bool(ctx.check("check_final_allowance_policy", True))
+    preview = "\n".join(f"- {item}" for item in findings[:10])
+    more = "" if len(findings) <= 10 else f"\n... ({len(findings) - 10} more)"
+    return bool(
+        ctx.check(
+            "check_final_allowance_policy",
+            False,
+            "Final quality profile forbids high-risk blanket allowances. "
+            "Use real support geometry or element-level allowances instead:\n"
+            f"{preview}{more}",
+        )
+    )
+
+
+def _quality_failure_findings(report: object, prefix: str) -> list[dict[str, str]]:
+    return [
+        {
+            "check": str(getattr(failure, "name", "")),
+            "details": str(getattr(failure, "details", "")),
+        }
+        for failure in getattr(report, "failures", ()) or ()
+        if str(getattr(failure, "name", "")).startswith(prefix)
+    ]
+
+
+def _quality_warning_count(report: object, needle: str) -> int:
+    return sum(1 for warning in getattr(report, "warnings", ()) or () if needle in str(warning))
+
+
+def _quality_warning_findings(report: object, needle: str) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for warning in getattr(report, "warnings", ()) or ():
+        text = str(warning)
+        if needle not in text:
+            continue
+        check, _, _details = text.partition(":")
+        findings.append({"check": check.strip() or "warning", "details": text})
+    return findings
+
+
+def _build_quality_report(
+    report: object | None, *, quality_profile: QualityProfile
+) -> dict[str, Any]:
+    if report is None:
+        return {
+            "quality_profile": quality_profile,
+            "quality_summary": {},
+            "quality_gates": {},
+        }
+
+    broad_overlaps = _broad_overlap_allowances(report)
+    floating_allowances = [str(item) for item in getattr(report, "allowed_floating_islands", ())]
+    isolated_allowances = [str(item) for item in getattr(report, "allowed_isolated_parts", ())]
+    unsupported_visual_failures = _quality_failure_findings(
+        report, "fail_if_unsupported_visual_islands"
+    )
+    unsupported_visual_warnings = _quality_warning_findings(
+        report, "Unsupported visual island(s) detected"
+    )
+    unsupported_visual_findings = unsupported_visual_failures + unsupported_visual_warnings
+    sampled_pose_failures = [
+        {
+            "check": str(getattr(failure, "name", "")),
+            "details": str(getattr(failure, "details", "")),
+        }
+        for failure in getattr(report, "failures", ()) or ()
+        if "sampled" in str(getattr(failure, "name", ""))
+        or "articulation_overlaps" in str(getattr(failure, "name", ""))
+    ]
+    sampled_pose_warnings = [
+        finding
+        for finding in _quality_warning_findings(report, "overlaps detected")
+        + _quality_warning_findings(report, "Unsupported visual island(s) detected")
+        if "sampled" in finding["check"] or "articulation_overlaps" in finding["check"]
+    ]
+    sampled_pose_findings = sampled_pose_failures + sampled_pose_warnings
+    allowance_policy_failures = _quality_failure_findings(report, "check_final_allowance_policy")
+    allowance_policy_findings = list(allowance_policy_failures)
+    allowance_policy_findings.extend(
+        {
+            "check": "broad_overlap_allowance",
+            "details": (
+                f"allow_overlap({getattr(overlap, 'link_a', '')!r}, "
+                f"{getattr(overlap, 'link_b', '')!r}) lacks both elem_a and elem_b"
+            ),
+        }
+        for overlap in broad_overlaps
+    )
+    allowance_policy_findings.extend(
+        {"check": "floating_allowance", "details": f"part={part_name!r}"}
+        for part_name in floating_allowances
+    )
+    allowance_policy_findings.extend(
+        {"check": "isolated_allowance", "details": f"part={part_name!r}"}
+        for part_name in isolated_allowances
+    )
+
+    quality_summary = {
+        "unsupported_visual_islands": len(unsupported_visual_findings),
+        "broad_overlap_allowances": len(broad_overlaps),
+        "floating_allowances": len(floating_allowances),
+        "isolated_allowances": len(isolated_allowances),
+        "sampled_pose_failures": len(sampled_pose_findings),
+    }
+    quality_gates = {
+        "visual_support_graph": {
+            "status": "fail" if unsupported_visual_findings else "pass",
+            "findings": unsupported_visual_findings,
+        },
+        "allowance_policy": {
+            "status": "fail"
+            if allowance_policy_failures
+            or broad_overlaps
+            or floating_allowances
+            or isolated_allowances
+            else "pass",
+            "findings": allowance_policy_findings,
+        },
+        "sampled_pose_support": {
+            "status": "fail" if sampled_pose_findings else "pass",
+            "findings": sampled_pose_findings,
+        },
+    }
+    return {
+        "quality_profile": quality_profile,
+        "quality_summary": quality_summary,
+        "quality_gates": quality_gates,
+    }
+
+
 def _run_compiler_owned_baseline_tests(
     globals_dict: dict,
     *,
     script_path: Path,
     sdk_package: str,
     authored_report: object,
+    quality_profile: QualityProfile,
 ) -> object:
     object_model = globals_dict.get("object_model")
     if object_model is None:
@@ -1232,16 +1492,42 @@ def _run_compiler_owned_baseline_tests(
             allowed_isolated_parts=(),
             allowed_overlaps=(),
         )
+    if quality_profile == "final":
+        _check_final_allowance_policy(ctx, authored_report)
     ctx.check_mesh_assets_ready()
     ctx.fail_if_isolated_parts()
-    # part-internal connectivity is WARN-level by design: a single part being
-    # several separated rigid pieces (comb teeth, fin stacks, bearing pins) is a
-    # common, legitimate shape, and the spec records no per-part internal-island
-    # contract to judge it against. The warning still surfaces every island in
-    # the compile/sweep report; it just does not block. (part-to-part support is
-    # the hard constraint — see fail_if_isolated_parts above.)
+    if quality_profile == "final":
+        ctx.fail_if_unsupported_visual_islands()
+        ctx.fail_if_unsupported_visual_islands(
+            max_pose_samples=8,
+            name="fail_if_unsupported_visual_islands(sampled)",
+        )
+    elif quality_profile == "dev":
+        ctx.warn_if_unsupported_visual_islands()
+        ctx.warn_if_unsupported_visual_islands(
+            max_pose_samples=8,
+            name="warn_if_unsupported_visual_islands(sampled)",
+        )
+    # Part-internal connectivity remains diagnostic. The final hard decision is
+    # the visual support graph, which can see support through other parts.
     ctx.warn_if_part_contains_disconnected_geometry_islands()
+    if quality_profile in {"final", "dev"}:
+        ctx.warn_if_floating_geometry_islands(
+            relative_contact_tol=_BASELINE_FLOATING_ISLAND_RELATIVE_CONTACT_TOL,
+            fail_gap_rel=_BASELINE_FLOATING_ISLAND_FAIL_GAP_REL,
+            fail_size_rel=_BASELINE_FLOATING_ISLAND_FAIL_SIZE_REL,
+        )
+    else:
+        ctx.fail_if_floating_geometry_islands(
+            relative_contact_tol=_BASELINE_FLOATING_ISLAND_RELATIVE_CONTACT_TOL,
+            fail_gap_rel=_BASELINE_FLOATING_ISLAND_FAIL_GAP_REL,
+            fail_size_rel=_BASELINE_FLOATING_ISLAND_FAIL_SIZE_REL,
+        )
     ctx.fail_if_parts_overlap_in_current_pose()
+    if quality_profile == "final":
+        ctx.fail_if_articulation_overlaps(max_pose_samples=8)
+    elif quality_profile == "dev":
+        ctx.warn_if_articulation_overlaps(max_pose_samples=8)
     ctx.fail_if_articulation_origin_far_from_geometry(
         tol=_BASELINE_ARTICULATION_ORIGIN_TOL,
         bbox_relative=_BASELINE_ARTICULATION_ORIGIN_BBOX_RELATIVE,

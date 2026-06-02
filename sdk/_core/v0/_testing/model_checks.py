@@ -14,6 +14,7 @@ from .common import (
     _CoplanarFinding,
     _format_overlap_element,
     _format_unsupported_part_finding,
+    _format_unsupported_visual_island_finding,
     _normalize_joint_origin_tol,
     _overlap_rank,
     _pair_key,
@@ -29,6 +30,7 @@ from .common import (
     find_joint_origin_distance_findings,
     find_part_geometry_connectivity_findings,
     find_unsupported_parts,
+    find_unsupported_visual_islands,
     generate_pose_samples,
     resolve_mesh_path,
 )
@@ -311,6 +313,117 @@ class TestContextModelCheckMixin:
             )
         return record(resolved_name, True)
 
+    def _check_floating_geometry_islands_impl(
+        self,
+        *,
+        contact_tol: float = 1e-6,
+        relative_contact_tol: float = 0.008,
+        fail_gap_rel: float = 0.03,
+        fail_size_rel: float = 0.06,
+        name: Optional[str] = None,
+        warn_only: bool = False,
+        prefix: str = "fail_if_floating_geometry_islands",
+    ) -> bool:
+        resolved_name = name or (
+            f"{prefix}(gap>{float(fail_gap_rel):.3g},size>{float(fail_size_rel):.3g})"
+        )
+        record = self._record_warning_check if warn_only else self._record
+        if float(relative_contact_tol) < 0.0 or float(contact_tol) < 0.0:
+            return record(resolved_name, False, "contact tolerances must be non-negative")
+
+        findings = find_part_geometry_connectivity_findings(
+            self.model,
+            asset_root=self._asset_root(),
+            contact_tol=float(contact_tol),
+            relative_contact_tol=float(relative_contact_tol),
+            validate_model=not self._model_validated_strict,
+        )
+
+        # NOTE: only the explicit float opt-in silences this gate. A blanket
+        # allow_disconnected_islands(part) (intended for near-touching multi-piece
+        # parts) does NOT exempt a sizeable far-floating island here — it must use
+        # allow_disconnected_islands(part, allow_floating=True).
+        allowed_parts = set(self._allow_floating_islands)
+        if allowed_parts:
+            findings = [f for f in findings if str(f.part) not in allowed_parts]
+
+        failures: List[str] = []
+        for finding in findings:
+            for label, gap_rel, size_rel in finding.islands:
+                if gap_rel > float(fail_gap_rel) and size_rel > float(fail_size_rel):
+                    failures.append(
+                        f"part={finding.part!r} island=[{label}] "
+                        f"gap={gap_rel:.3f}·partdiag size={size_rel:.3f}·partdiag"
+                    )
+
+        if failures:
+            preview = "\n".join(failures[:10])
+            more = "" if len(failures) <= 10 else f"\n... ({len(failures) - 10} more)"
+            return record(
+                resolved_name,
+                False,
+                "Floating geometry island(s) detected — a part has a sizeable piece "
+                "separated from its body by a real gap. Connect it to the part body, or "
+                "if it is intentionally a separate rigid piece justify it with "
+                f"ctx.allow_disconnected_islands(part, reason=...):\n{preview}{more}",
+            )
+        return record(resolved_name, True)
+
+    def fail_if_floating_geometry_islands(
+        self,
+        *,
+        contact_tol: float = 1e-6,
+        relative_contact_tol: float = 0.008,
+        fail_gap_rel: float = 0.03,
+        fail_size_rel: float = 0.06,
+        name: Optional[str] = None,
+    ) -> bool:
+        """Fail only on *clearly floating* part-internal islands.
+
+        Unlike ``warn_if_part_contains_disconnected_geometry_islands`` (which flags
+        every non-touching island, including legitimate near-touching repeats such
+        as comb teeth, blade stacks, bead arrays, and "resting on" decoration), this
+        check first relativizes the contact tolerance to the part size so those merge
+        into the body, then fails a part only when a surviving island is BOTH:
+
+          * separated from the body by a real gap: gap > ``fail_gap_rel`` * part_diag
+          * sizeable rather than a pinhead detail: size > ``fail_size_rel`` * part_diag
+
+        ``contact_tol``/``relative_contact_tol`` denoise; the two ``*_rel`` thresholds
+        are the float gate (calibrated against real templates — genuine floats sit at
+        gap ~0.08-0.30, legit near-touching islands at gap <0.01). Parts opted out via
+        ``ctx.allow_disconnected_islands(part, reason=...)`` are skipped, as are sub-gate
+        islands (they remain visible through the warn-level check).
+        """
+        return self._check_floating_geometry_islands_impl(
+            contact_tol=contact_tol,
+            relative_contact_tol=relative_contact_tol,
+            fail_gap_rel=fail_gap_rel,
+            fail_size_rel=fail_size_rel,
+            name=name,
+            warn_only=False,
+            prefix="fail_if_floating_geometry_islands",
+        )
+
+    def warn_if_floating_geometry_islands(
+        self,
+        *,
+        contact_tol: float = 1e-6,
+        relative_contact_tol: float = 0.008,
+        fail_gap_rel: float = 0.03,
+        fail_size_rel: float = 0.06,
+        name: Optional[str] = None,
+    ) -> bool:
+        return self._check_floating_geometry_islands_impl(
+            contact_tol=contact_tol,
+            relative_contact_tol=relative_contact_tol,
+            fail_gap_rel=fail_gap_rel,
+            fail_size_rel=fail_size_rel,
+            name=name,
+            warn_only=True,
+            prefix="warn_if_floating_geometry_islands",
+        )
+
     def fail_if_isolated_parts(
         self,
         *,
@@ -413,6 +526,101 @@ class TestContextModelCheckMixin:
             "(floating support-disconnected component groups from the grounded body; "
             f"samples={sample_count}, contact_tol={resolved_contact_tol:.4g}):\n"
             f"{preview}{more}",
+        )
+
+    def _check_unsupported_visual_islands_impl(
+        self,
+        *,
+        max_pose_samples: int,
+        contact_tol: Optional[float],
+        check_name: str,
+        warn_only: bool = False,
+    ) -> bool:
+        record = self._record_warning_check if warn_only else self._record
+        sample_count = int(max_pose_samples)
+        if sample_count < 1:
+            return record(check_name, False, "max_pose_samples must be >= 1")
+
+        resolved_contact_tol = (
+            default_contact_tol_from_env() if contact_tol is None else float(contact_tol)
+        )
+        if resolved_contact_tol < 0.0:
+            return record(check_name, False, "contact_tol must be non-negative")
+
+        findings = find_unsupported_visual_islands(
+            self.model,
+            asset_root=self._asset_root(),
+            max_pose_samples=sample_count,
+            contact_tol=resolved_contact_tol,
+            seed=int(self.seed),
+            validate_model=not self._model_validated_strict,
+        )
+        if not findings:
+            return record(check_name, True)
+
+        preview = "\n".join(
+            _format_unsupported_visual_island_finding(finding) for finding in findings[:10]
+        )
+        more = "" if len(findings) <= 10 else f"\n... ({len(findings) - 10} more)"
+        return record(
+            check_name,
+            False,
+            "Unsupported visual island(s) detected "
+            "(visible geometry component groups with no contact path to the grounded body; "
+            f"samples={sample_count}, contact_tol={resolved_contact_tol:.4g}):\n"
+            f"{preview}{more}",
+        )
+
+    def fail_if_unsupported_visual_islands(
+        self,
+        *,
+        max_pose_samples: int = 1,
+        contact_tol: Optional[float] = None,
+        name: Optional[str] = None,
+    ) -> bool:
+        if name is not None:
+            resolved_name = name
+        elif max_pose_samples == 1 and contact_tol is None:
+            resolved_name = "fail_if_unsupported_visual_islands()"
+        else:
+            resolved_contact_tol = (
+                default_contact_tol_from_env() if contact_tol is None else float(contact_tol)
+            )
+            resolved_name = (
+                "fail_if_unsupported_visual_islands("
+                f"samples={int(max_pose_samples)},contact_tol={resolved_contact_tol:.4g})"
+            )
+        return self._check_unsupported_visual_islands_impl(
+            max_pose_samples=max_pose_samples,
+            contact_tol=contact_tol,
+            check_name=resolved_name,
+            warn_only=False,
+        )
+
+    def warn_if_unsupported_visual_islands(
+        self,
+        *,
+        max_pose_samples: int = 1,
+        contact_tol: Optional[float] = None,
+        name: Optional[str] = None,
+    ) -> bool:
+        if name is not None:
+            resolved_name = name
+        elif max_pose_samples == 1 and contact_tol is None:
+            resolved_name = "warn_if_unsupported_visual_islands()"
+        else:
+            resolved_contact_tol = (
+                default_contact_tol_from_env() if contact_tol is None else float(contact_tol)
+            )
+            resolved_name = (
+                "warn_if_unsupported_visual_islands("
+                f"samples={int(max_pose_samples)},contact_tol={resolved_contact_tol:.4g})"
+            )
+        return self._check_unsupported_visual_islands_impl(
+            max_pose_samples=max_pose_samples,
+            contact_tol=contact_tol,
+            check_name=resolved_name,
+            warn_only=True,
         )
 
     def fail_if_parts_overlap_in_current_pose(

@@ -34,15 +34,27 @@ Each candidate module's structure (parts, joints, per-part visual count)
 must be derivable from its 5-star source record cited in the spec's module
 table. The reviewer checks during spec review that the module table cites
 real `model.py:Lx-Ly` ranges (see [`SPEC_REVIEW_TEMPLATE.md`](SPEC_REVIEW_TEMPLATE.md)).
-At compile time, the strict `fail_if_part_contains_disconnected_geometry_islands`
-baseline catches the "tiny interface disk + floating decorative part"
-failure mode this rule guards against.
+At compile time two baseline checks guard this rule:
+
+- `fail_if_unsupported_visual_islands` is the final hard gate. Every
+  non-degenerate visible element must have a contact, slight embed, supported
+  neighbor, or passing `MatingContract` path to the grounded body. This applies
+  inside one part and between parts. A bare articulation is not support.
+- `warn_if_part_contains_disconnected_geometry_islands` surfaces *every*
+  part-internal island (any non-touching rigid piece) as a non-blocking
+  warning. A single part being several separated pieces is often legitimate
+  (comb teeth, fin stacks, bead arrays), so this does not fail the compile.
+- `warn_if_floating_geometry_islands` remains a migration diagnostic for old
+  part-internal float patterns, but final acceptance is decided by the visible
+  support graph.
 
 Exception: a part that is genuinely separated rigid pieces (comb teeth, a
 grille, a fin stack) where connective geometry would invent material the real
-object lacks may declare `ctx.allow_disconnected_islands(part, reason="...")`
-to downgrade the check to a warning for that part. True multi-piece parts
-only — never to mask an accidental seed-driven split.
+object lacks may declare `ctx.allow_disconnected_islands(part, reason="...")`.
+This silences the warning only; it does **not** exempt the part from the final
+visual support graph. `allow_floating=True` is rejected by final profile. Fix
+unsupported visible geometry with real contact, a visible support, or a passing
+`MatingContract`; never mask an accidental seed-driven split.
 
 ### Examples
 
@@ -233,7 +245,7 @@ When writing each module factory, the **first action** must be:
 5. Add `MatingContract` to every joint that creates a separate child part
    (Rule 2). Use `allow_overlap` for captured-pin geometry (Rule 2's
    grandfather pattern).
-6. Run `compile-sweep`. Iterate until `verdict=pass`.
+6. Run `compile-sweep --quality-profile final`. Iterate until `verdict=pass`.
 
 ### What "adapting" means concretely
 
@@ -268,8 +280,10 @@ Before declaring a template done, all of the following must hold:
 4. [ ] Every chain joint declares a `MatingContract` pointing to real
    visuals on both sides (Rule 2); captured-pin geometry is grandfathered
    with `allow_overlap` declarations in `run_<slug>_tests`.
-5. [ ] `compile-sweep` reports `verdict=pass` on `--seeds 0-19`:
-   - `pass_rate >= 0.85`.
+5. [ ] `compile-sweep --quality-profile final` reports `verdict=pass` on
+   `--seeds 0-49`:
+   - `pass_rate == 1.0`.
+   - `quality_summary.failed_gates == {}`.
    - `coverage_gates.module_topology_diversity.status == "pass"`
      (≥5 distinct slot-choice combinations).
 6. [ ] `template batch --seeds 0-9 --agent claude-code` produces 10/10

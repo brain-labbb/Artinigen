@@ -9,6 +9,7 @@ from sdk import (
     ArticulatedObject,
     ArticulationType,
     Box,
+    MatingContract,
     Mesh,
     Mimic,
     MotionLimits,
@@ -99,6 +100,74 @@ def _build_diagonally_floating_spheres_model() -> ArticulatedObject:
     base.visual(Sphere(0.05), origin=Origin(xyz=(0.0, 0.0, 0.05)), name="sphere_a")
     base.visual(Sphere(0.05), origin=Origin(xyz=(0.08, 0.08, 0.05)), name="sphere_b")
 
+    return model
+
+
+def _build_near_touching_islands_model() -> ArticulatedObject:
+    # Two 0.1 boxes separated by a 5 mm edge gap. The pieces are an island pair
+    # (gap > the relativized contact tol) but the gap is small relative to the
+    # part (gap_rel ~0.02 < 0.03), so the float gate must NOT fire.
+    model = ArticulatedObject(name="near_touching_islands")
+
+    base = model.part("base")
+    base.visual(Box((0.1, 0.1, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.05)))
+    base.visual(Box((0.1, 0.1, 0.1)), origin=Origin(xyz=(0.105, 0.0, 0.05)))
+
+    return model
+
+
+def _build_same_part_visual_support_model(*, detail_z: float) -> ArticulatedObject:
+    model = ArticulatedObject(name="same_part_visual_support")
+
+    base = model.part("base")
+    base.visual(Box((0.2, 0.2, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.05)), name="base_block")
+    base.visual(Box((0.04, 0.04, 0.02)), origin=Origin(xyz=(0.0, 0.0, detail_z)), name="tick")
+
+    return model
+
+
+def _build_cross_part_visual_support_model(
+    *, child_xyz: tuple[float, float, float]
+) -> ArticulatedObject:
+    model = ArticulatedObject(name="cross_part_visual_support")
+
+    base = model.part("base")
+    base.visual(Box((0.2, 0.2, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.05)), name="base_block")
+
+    child = model.part("button")
+    child.visual(Box((0.04, 0.04, 0.02)), origin=Origin(xyz=child_xyz), name="button_cap")
+    model.articulation(
+        "base_to_button",
+        ArticulationType.FIXED,
+        parent=base,
+        child=child,
+        origin=Origin(),
+    )
+    return model
+
+
+def _build_mating_supported_gap_model() -> ArticulatedObject:
+    model = ArticulatedObject(name="mating_supported_gap")
+
+    base = model.part("base")
+    base.visual(Box((0.2, 0.2, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.05)), name="base_top")
+
+    child = model.part("cap")
+    child.visual(Box((0.04, 0.04, 0.02)), origin=Origin(xyz=(0.0, 0.0, 0.01)), name="cap_bottom")
+    model.articulation(
+        "base_to_cap",
+        ArticulationType.FIXED,
+        parent=base,
+        child=child,
+        origin=Origin(xyz=(0.0, 0.0, 0.103)),
+        mating=MatingContract(
+            parent_face_geometry="base_top",
+            parent_face_side="positive_z",
+            child_face_geometry="cap_bottom",
+            child_face_side="negative_z",
+            contact_tol=0.005,
+        ),
+    )
     return model
 
 
@@ -590,6 +659,113 @@ def test_warn_if_part_contains_disconnected_geometry_islands_uses_exact_geometry
     assert report.checks == ("warn_if_part_contains_disconnected_geometry_islands(tol=1e-06)",)
     assert len(report.warnings) == 1
     assert "connected=1/2" in report.warnings[0]
+
+
+def test_fail_if_floating_geometry_islands_fails_far_floating_island() -> None:
+    # base is two 0.1 boxes 0.3 apart -> island at gap ~0.58·partdiag,
+    # size ~0.33·partdiag: both over the gate, so it is a hard fail.
+    ctx = SDKTestContext(_build_disconnected_part_model())
+
+    assert not ctx.fail_if_floating_geometry_islands()
+
+    report = ctx.report()
+    assert not report.passed
+    assert len(report.failures) == 1
+    assert report.failures[0].name == "fail_if_floating_geometry_islands(gap>0.03,size>0.06)"
+    assert "Floating geometry island" in report.failures[0].details
+
+
+def test_fail_if_floating_geometry_islands_passes_near_touching_islands() -> None:
+    # Sub-gate island (small gap relative to the part) must not trip the float
+    # gate, even though it is still a disconnected island at the warn level.
+    ctx = SDKTestContext(_build_near_touching_islands_model())
+
+    assert ctx.fail_if_floating_geometry_islands()
+    assert ctx.report().passed
+
+
+def test_fail_if_floating_geometry_islands_not_silenced_by_blanket_allow() -> None:
+    # A blanket allow_disconnected_islands(part) silences the warn-level check but
+    # must NOT exempt a float-grade island from the gate.
+    ctx = SDKTestContext(_build_disconnected_part_model())
+    ctx.allow_disconnected_islands("base", reason="intentionally two plates")
+
+    assert not ctx.fail_if_floating_geometry_islands()
+    assert not ctx.report().passed
+
+
+def test_fail_if_floating_geometry_islands_silenced_by_allow_floating() -> None:
+    # Only the explicit float opt-in exempts the part from the gate.
+    ctx = SDKTestContext(_build_disconnected_part_model())
+    ctx.allow_disconnected_islands(
+        "base", reason="water sheet floats by design", allow_floating=True
+    )
+
+    assert ctx.fail_if_floating_geometry_islands()
+    assert ctx.report().passed
+
+
+def test_fail_if_unsupported_visual_islands_fails_same_part_floating_detail() -> None:
+    ctx = SDKTestContext(_build_same_part_visual_support_model(detail_z=0.16))
+
+    assert not ctx.fail_if_unsupported_visual_islands()
+
+    report = ctx.report()
+    assert not report.passed
+    assert report.failures[0].name == "fail_if_unsupported_visual_islands()"
+    assert "Unsupported visual island(s) detected" in report.failures[0].details
+    assert "base/tick:Box" in report.failures[0].details
+
+
+def test_fail_if_unsupported_visual_islands_passes_same_part_surface_contact() -> None:
+    ctx = SDKTestContext(_build_same_part_visual_support_model(detail_z=0.11))
+
+    assert ctx.fail_if_unsupported_visual_islands()
+    assert ctx.report().passed
+
+
+def test_fail_if_unsupported_visual_islands_passes_same_part_slight_embed() -> None:
+    ctx = SDKTestContext(_build_same_part_visual_support_model(detail_z=0.105))
+
+    assert ctx.fail_if_unsupported_visual_islands()
+    assert ctx.report().passed
+
+
+def test_fail_if_unsupported_visual_islands_passes_cross_part_surface_contact() -> None:
+    ctx = SDKTestContext(_build_cross_part_visual_support_model(child_xyz=(0.0, 0.0, 0.11)))
+
+    assert ctx.fail_if_unsupported_visual_islands()
+    assert ctx.report().passed
+
+
+def test_fail_if_unsupported_visual_islands_rejects_joint_without_visual_support() -> None:
+    ctx = SDKTestContext(_build_cross_part_visual_support_model(child_xyz=(0.5, 0.0, 0.05)))
+
+    assert not ctx.fail_if_unsupported_visual_islands()
+
+    report = ctx.report()
+    assert not report.passed
+    assert "button/button_cap:Box" in report.failures[0].details
+
+
+def test_fail_if_unsupported_visual_islands_accepts_passing_mating_contract() -> None:
+    ctx = SDKTestContext(_build_mating_supported_gap_model())
+
+    assert ctx.fail_if_unsupported_visual_islands()
+    assert ctx.report().passed
+
+
+def test_warn_if_unsupported_visual_islands_records_warning_only() -> None:
+    ctx = SDKTestContext(_build_same_part_visual_support_model(detail_z=0.16))
+
+    assert not ctx.warn_if_unsupported_visual_islands()
+
+    report = ctx.report()
+    assert report.passed
+    assert report.failures == ()
+    assert len(report.warnings) == 1
+    assert "warn_if_unsupported_visual_islands()" in report.warnings[0]
+    assert "Unsupported visual island(s) detected" in report.warnings[0]
 
 
 def test_warn_if_part_contains_disconnected_geometry_islands_records_mesh_component_warning(

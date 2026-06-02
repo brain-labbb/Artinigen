@@ -155,22 +155,30 @@ bug 修干净，再上 20 seed 验证 edge case，能省 30-50% 的总时间。
 
 # 2a. 快速 5 seed sweep — 用来打掉 anchor / 主流模块组合 / 基础 mating 的 bug
 uv run articraft template compile-sweep <slug> --seeds 0-4 \
-    --quiet --out /tmp/sw_<slug>_fast.json
+    --quality-profile final --quiet --out /tmp/sw_<slug>_fast.json
 
 # 在这一步要求：
-# - verdict == "pass" 或 pass_rate >= 0.8（5 seed 允许 ≤1 个失败）
+# - verdict == "pass"；若失败，先修 seeds 0-4 的 failure/quality cluster
 # 注意：seeds 0-4 不足以让 module_topology_diversity 过线（≥5 distinct），
 # 该 gate 在 2b 的 20 seed 才正式判定，**这里不算硬约束**。
 # 若 2a 失败，先把 seeds 0-4 的 failure cluster 修干净再继续；不要直接跳到 2b。
 
-# 2b. 完整 20 seed sweep — 验证 edge case + diversity gate
+# 2b. 中段 20 seed sweep — 验证 edge case + diversity gate
 uv run articraft template compile-sweep <slug> --seeds 0-19 \
-    --quiet --out /tmp/sw_<slug>.json
+    --quality-profile final --quiet --out /tmp/sw_<slug>.json
 
 # 必须：
 # - verdict == "pass"
-# - pass_rate >= 0.85（默认 threshold；20 seed 允许 ≤3 个失败）
+# - pass_rate == 1.0
+# - quality_summary.failed_gates == {}
 # - coverage_gates.module_topology_diversity.status == "pass"（≥5 distinct）
+
+# 2c. 最终 50 seed sweep — 唯一验收门
+uv run articraft template compile-sweep <slug> --seeds 0-49 \
+    --quality-profile final --quiet --out /tmp/sw_<slug>_final.json
+
+# 必须同样 verdict=pass、pass_rate==1.0、quality_summary.failed_gates=={}，
+# 且 diversity gate pass。
 
 # 3. 10 seed viewer 推送
 uv run articraft template batch <slug> --seeds 0-9 --agent claude-code
@@ -187,7 +195,8 @@ uv run articraft template batch <slug> --seeds 0-9 --agent claude-code
 
 ### 3.4 完工标准
 
-- sweep verdict=pass, pass_rate ≥ 0.85, diversity ≥ 5（**唯一验收门**，不要求 pytest）
+- final sweep verdict=pass, pass_rate == 1.0, failed_gates == {}, diversity ≥ 5
+  （**唯一验收门**，不要求 pytest）
 - 10 seed batch 全部 compile 成功
 - 自检过一遍 viewer 的 10 个 seed，**没有明显几何错误**（关节悬空、
   部件穿模、视觉断片）
@@ -219,7 +228,7 @@ uv run articraft template batch <slug> --seeds 0-9 --agent claude-code
 - slug: <category_slug>
 - spec: articraft_template_authoring/specs/<slug>.md
 - template: agent/templates/<slug>.py (NNNN lines)
-- sweep: verdict=pass, pass_rate=X.XX, distinct_topologies=K
+- sweep: verdict=pass, pass_rate=1.00, failed_gates={}, distinct_topologies=K
 - batch: 10/10 seeds compiled to viewer (record IDs ...)
 - per-seed picks: <seed 0..9 的 slot_choices_for_seed 一行一个>
 ```

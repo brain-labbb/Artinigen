@@ -131,6 +131,7 @@ class ViewerMaterializationStore(ViewerStoreComponent):
         compile_elapsed_seconds: float | None = None,
         checks_run: list[str] | None = None,
         signal_bundle: dict[str, Any] | None = None,
+        quality_report: dict[str, Any] | None = None,
     ) -> None:
         existing_report = self.repo.read_json(compile_path)
         metrics = (
@@ -159,6 +160,7 @@ class ViewerMaterializationStore(ViewerStoreComponent):
             checks_run=list(checks_run or ["compile_urdf"]),
             metrics=metrics,
             signal_bundle=signal_bundle,
+            quality_report=quality_report,
         )
         self.materialization_store.write_compile_report(record_id, report)
 
@@ -350,6 +352,11 @@ class ViewerMaterializationStore(ViewerStoreComponent):
                 compile_elapsed_seconds=compile_elapsed_seconds,
                 checks_run=checks_run,
                 signal_bundle=compile_signal_bundle.to_dict(),
+                quality_report=(
+                    dict(compile_result.quality_report)
+                    if isinstance(getattr(compile_result, "quality_report", None), dict)
+                    else None
+                ),
             )
             materialization_status = str(materialization_summary["materialization_status"])
             return MaterializeRecordAssetsResult(

@@ -194,8 +194,9 @@ makes positive angles open upward.
 2. Add visuals with `part.visual(...)`.
 3. Add motion with `model.articulation(...)`.
 4. Add prompt-specific `expect_*` assertions in `run_tests()`.
-5. Use `allow_overlap(...)` and `allow_isolated_part(...)` only when the
-   intended mechanism genuinely requires those exceptions.
+5. Use element-scoped `allow_overlap(...)` only when the intended mechanism
+   genuinely requires that overlap. Do not use broad floating or isolated
+   allowances for final-quality work.
 
 `part.inertial` is optional. Add it only when a downstream simulation or
 export consumer needs explicit mass properties.
@@ -211,9 +212,13 @@ export consumer needs explicit mass properties.
   cut openings into it rather than replacing it with floating fragments.
 - Hidden supports and internal structure can stay simple as long as the visible
   form reads correctly.
-- Within one part, avoid disconnected visual islands. If a feature should read
-  as mounted, give it a real rib, bracket, pin, collar, stem, or wall
-  connection, or split it into a separate part.
+- Visible elements may be disconnected in the same part only when they have a
+  real support path through contact, slight embed, another supported part, or a
+  passing `MatingContract`. A bare joint does not make unsupported geometry
+  physically valid.
+- If a feature should read as mounted, give it a real rib, bracket, pin, collar,
+  stem, wall connection, or supported surface contact. Do not add fake hidden
+  bridges just to silence connectivity checks.
 - For mounted child parts, prefer placement helpers over hand-tuned
   `Origin(...)` offsets.
 - Use `place_on_surface(...)` by default for rigid mounts onto housings,

@@ -26,6 +26,7 @@ from ..geometry_qc import (
     find_joint_origin_distance_findings,
     find_part_geometry_connectivity_findings,
     find_unsupported_parts,
+    find_unsupported_visual_islands,
     generate_pose_samples,
     part_world_aabb,
 )
@@ -66,6 +67,7 @@ class TestReport:
     allowed_isolated_parts: Tuple[str, ...] = ()
     allowed_overlaps: Tuple[AllowedOverlap, ...] = ()
     allowed_disconnected_islands: Tuple[str, ...] = ()
+    allowed_floating_islands: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -204,6 +206,46 @@ def _format_unsupported_part_finding(finding: object) -> str:
     return (
         f"- {pose_label}, {subject} is disconnected from {grounded_body}; "
         f"nearest_grounded_part={nearest_part!r}; approx_gap={gap_text}; backend={backend}"
+    )
+
+
+def _format_unsupported_visual_island_finding(finding: object) -> str:
+    component = tuple(str(item) for item in getattr(finding, "component", ()) or ())
+    root_component = tuple(str(item) for item in getattr(finding, "root_component", ()) or ())
+    nearest_element = getattr(finding, "nearest_element", None)
+    min_distance = getattr(finding, "min_distance", None)
+    pose_index = getattr(finding, "pose_index", None)
+    pose = getattr(finding, "pose", None)
+    backend = getattr(finding, "backend", None)
+
+    gap_text = "unknown"
+    if isinstance(min_distance, (int, float)) and math.isfinite(float(min_distance)):
+        gap_text = f"{float(min_distance):.4g}m"
+
+    pose_preview = ""
+    if isinstance(pose, dict):
+        pairs: list[str] = []
+        for key, value in sorted(pose.items()):
+            try:
+                pairs.append(f"{key}={float(value):.4g}")
+            except Exception:
+                pairs.append(f"{key}={value}")
+        pose_preview = ", ".join(pairs)
+
+    pose_label = "at rest pose"
+    if pose_preview:
+        pose_label = f"at pose ({pose_preview})"
+    if isinstance(pose_index, int):
+        pose_label = f"pose_index={pose_index} {pose_label}"
+
+    component_preview = list(component[:6])
+    component_more = "" if len(component) <= 6 else f", ... ({len(component) - 6} more)"
+    root_preview = list(root_component[:4])
+    root_more = "" if len(root_component) <= 4 else f", ... ({len(root_component) - 4} more)"
+    return (
+        f"- {pose_label}, visual island {component_preview}{component_more} is unsupported; "
+        f"grounded_component={root_preview}{root_more}; nearest_grounded_element={nearest_element!r}; "
+        f"approx_gap={gap_text}; backend={backend}"
     )
 
 

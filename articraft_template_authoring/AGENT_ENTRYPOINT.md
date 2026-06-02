@@ -13,7 +13,7 @@ slot/module/assembler 架构实现一个能覆盖多种拓扑的模板。
    槽位图 + 拓扑多样性审计），停下等人工审核。
 2. **TEMPLATE_AFTER_REVIEW**：人工审核 spec 后，agent 按 spec 写
    `agent/templates/<category_slug>.py` + 测试，自检
-   `compile-sweep` 20 seed + 10 seed batch 推 viewer。
+   `compile-sweep --quality-profile final --seeds 0-49` + 10 seed batch 推 viewer。
 
 ## 启动后依序读
 
@@ -84,8 +84,9 @@ contract、captured-pin 重叠声明等关键质量标准）"。
 - 读取 `MATURE_METHOD.md` 和根 `MODULAR_TEMPLATE_AUTHORING.md`
 - 创建 `agent/templates/<category_slug>.py`（modular 拓扑展开后自然 2000+ 行，无硬性下限）
 - 在 `agent/templates/` registry 注册新模板（如果项目结构需要）
-- 跑 `compile-sweep --seeds 0-19`，必须 `verdict=pass`，pass_rate ≥ 0.85，
-  `module_topology_diversity` ≥ 5（**这是唯一验收门**，不靠 pytest）
+- 跑 `compile-sweep --quality-profile final --seeds 0-49`，必须
+  `verdict=pass`、`pass_rate == 1.0`、`module_topology_diversity` ≥ 5，
+  且 `quality_summary.failed_gates == {}`（**这是唯一验收门**，不靠 pytest）
 - （可选）创建 `tests/agent/test_<category_slug>_template.py` 作为结构回归网；
   它默认被 pytest 排除（`template_asset` marker），非验收必需，仅在模板定稿
   需长期锁结构时写，且只覆盖 sweep 抽样覆盖不到的两项（穷举 build + anchor）
@@ -105,15 +106,16 @@ contract、captured-pin 重叠声明等关键质量标准）"。
 ## 完工标准
 
 - pytest 全过
-- `uv run articraft template compile-sweep <slug> --seeds 0-19` 输出
-  `verdict=pass`，pass_rate ≥ 0.85，`module_topology_diversity` ≥ 5 distinct
+- `uv run articraft template compile-sweep <slug> --quality-profile final --seeds 0-49`
+  输出 `verdict=pass`，`pass_rate == 1.0`，`quality_summary.failed_gates == {}`，
+  `module_topology_diversity` ≥ 5 distinct
 - `template batch --seeds 0-9 --agent claude-code` 10/10 compile 成功
 - 自己 viewer 过一遍 10 个 seed，没有明显几何错误
 
 ## 一句话目标
 
 让一个 agent 从"给定 N 个新类别"到"产出审核通过的 spec → 实现合格的
-模板 → 20 seed sweep pass + viewer 自检通过"全程自闭环，**无需人工救火
+模板 → 50 seed final sweep pass + viewer 自检通过"全程自闭环，**无需人工救火
 几何/连通/重叠问题**。
 
 ## 本目录文件

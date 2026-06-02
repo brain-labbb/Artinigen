@@ -62,6 +62,15 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     "display_freezer_with_sliding_glass_lids": "display_freezer",
     "dj_equipment": "dj_equipment",
     "drone": "drone",
+    "traditional_windmill": "traditional_windmill",
+    "overshot_waterwheel": "overshot_waterwheel",
+    "globe": "globe",
+    "parabolic_dish_on_azimuth_elevation_mount": "parabolic_dish",
+    "satellite_with_articulated_solar_panels": "satellite_with_articulated_solar_panels",
+    "single_rotor_helicopter": "single_rotor_helicopter",
+    "turntable": "turntable",
+    "bell_tower_with_swinging_bell": "bell_tower_with_swinging_bell",
+    "turnstile_gates": "turnstile_gates",
     "graphics_card_with_cooling_fans": "graphics_card",
     "lighthouse_with_rotating_beacon_assembly": "lighthouse_with_rotating_beacon_assembly",
     "louvered_shutter_assembly": "louvered_shutter",
@@ -315,6 +324,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(f"Minimum pass_rate required for verdict=pass (default {DEFAULT_PASS_THRESHOLD})."),
     )
     sweep.add_argument(
+        "--quality-profile",
+        choices=("final", "dev", "legacy"),
+        default="final",
+        help=(
+            "Quality gate profile. final is the default final-template gate "
+            "(all sampled seeds must pass and high-risk allowances fail); dev "
+            "keeps threshold-based iteration but reports quality risk; legacy "
+            "keeps pre-final behavior for historical debugging."
+        ),
+    )
+    sweep.add_argument(
         "--max-workers",
         type=int,
         default=None,
@@ -383,6 +403,7 @@ def compile_sweep(
     stem: str,
     seeds: list[int],
     pass_threshold: float,
+    quality_profile: str,
     max_workers: int | None,
     sdk_package: str,
     out_path: Path | None,
@@ -398,6 +419,7 @@ def compile_sweep(
             seeds=seeds,
             sdk_package=sdk_package,
             pass_threshold=pass_threshold,
+            quality_profile=quality_profile,
             max_workers=max_workers,
             progress=progress,
             state_dir=state_dir,
@@ -443,6 +465,7 @@ def main(argv: list[str] | None = None) -> int:
             stem=TEMPLATE_REGISTRY[args.slug],
             seeds=seeds,
             pass_threshold=float(args.pass_threshold),
+            quality_profile=str(args.quality_profile),
             max_workers=(None if args.max_workers is None else int(args.max_workers)),
             sdk_package=str(args.sdk_package),
             out_path=args.out,

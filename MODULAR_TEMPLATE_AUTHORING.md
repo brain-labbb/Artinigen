@@ -182,29 +182,35 @@ is free.
 `_modular.py`'s `_emit_chain_joint` enforces this; violating it raises
 ValueError at assembly time.
 
-### Contract 3 — Visual connectivity within a part
+### Contract 3 — Visible support within and across parts
 
-`fail_if_part_contains_disconnected_geometry_islands` is a **FAIL-level**
-baseline check (since 2026-05). Every visual on a part must overlap (AABB)
-with at least one other visual on the same part, transitively forming
-one connected island.
+The final gate is the visual support graph. Every visible element must have a
+support path to the grounded body through contact, slight embed, a supported
+neighbor, or a passing `MatingContract`. This applies inside one part and
+between parts.
 
-Common fix: add a "neck" or "riser" Box that bridges between two visuals
-that would otherwise be geometric islands (e.g. a lofted bridge that
-floats above a carrier_block, a lower_lug below a clevis pivot).
+Legacy connectivity checks still run as diagnostics:
 
-The connectivity check uses a strict 1e-6 tolerance — visuals must
-actually overlap, not just touch boundaries. If two parts touch by a
-boundary face, push them into each other by 1-2 mm so the check passes.
+- `warn_if_part_contains_disconnected_geometry_islands` (**WARN-level**)
+  surfaces every island (visual that does not touch the rest of the part)
+  but does not block — a part being several separated pieces is often
+  legitimate.
+- `warn_if_floating_geometry_islands` surfaces old float-risk islands in the
+  final profile; the hard decision comes from `fail_if_unsupported_visual_islands`.
+
+Common fix: move the floating piece so it actually rests on supported geometry,
+add a real visible neck/riser/stem/bracket that the object plausibly has, or
+split it into a separate part with real contact or `MatingContract`. Pieces
+that merely touch by a boundary face are fine. A bare fixed/revolute/prismatic
+joint is not support.
 
 Escape hatch (use sparingly): for a part that is *genuinely* a set of
 separated rigid pieces — a comb, grille, or fin stack where adding a
 bridge would invent material the real object does not have — declare
 `ctx.allow_disconnected_islands(part, reason="...")` in `run_<slug>_tests`.
-This downgrades the strict check to a warning for that part only. Do NOT
-use it to paper over an accidental seed-driven split; those should be
-fixed in geometry. Prefer a real bridging connector whenever the pieces
-are meant to be one solid body.
+This only silences the old WARN. It does not affect the final visual support
+graph. `allow_floating=True` is rejected by final profile; do not use it to
+paper over an accidental seed-driven split.
 
 ### Contract 4 — seed=0 is the anchor
 
@@ -263,12 +269,15 @@ required — there may be no per-template test at all.
 ```bash
 # Compile sweep (50 seeds across 4 parallel processes)
 uv run articraft template compile-sweep <slug> --seeds 0-49 \
-    --quiet --out /tmp/sw_<slug>.json
+    --quality-profile final --quiet --out /tmp/sw_<slug>.json
 ```
 
 The sweep JSON must satisfy:
 - `verdict == "pass"`
-- `pass_rate >= 0.85` (default threshold; configurable via `--pass-threshold`)
+- `pass_rate == 1.0`; every sampled seed must pass hard QC
+- `quality_summary.failed_gates == {}` and the totals for
+  `unsupported_visual_islands`, `broad_overlap_allowances`,
+  `floating_allowances`, and `sampled_pose_failures` are all zero
 - `coverage_gates.module_topology_diversity.status == "pass"` (≥5 distinct
   observed combinations)
 
@@ -278,7 +287,7 @@ uv run articraft template batch <slug> --seeds 0-9 --agent claude-code
 just viewer
 ```
 Walk through all 10 seeds in the viewer to catch issues the gates miss
-(weird proportions, parts that look floating despite passing connectivity,
+(weird proportions, parts that look floating despite passing support QC,
 mechanism that doesn't slide as intended). Do not declare done if any
 seed looks broken in the viewer.
 
@@ -287,24 +296,35 @@ seed looks broken in the viewer.
 ## Common pitfalls (learned the hard way)
 
 ### Disconnected geometry islands
-Most common. The strict 1e-6 connectivity check fails any visual that
-doesn't AABB-overlap with the rest of its part. Symptoms:
+Most common. Raw part-internal islands are diagnostic, but final quality is
+decided by the visible support graph: every visible element, even inside one
+part, must have a contact/embed/mating path to the grounded body. Symptoms:
 - A lug or boss appears to "float" near a joint pivot
 - A bridge mesh sits above a carrier_block with a gap
 - A bracket sits above a top_deck without overlap
 
-Fix: insert a **connector** visual (Box neck or vertical riser) that
-overlaps both the floating visual and the rest of the part. The
-connector typically has small width and tall z to span the gap.
-
-When you place a visual at z=0 (e.g. above wall_top_z) "touching" another
-at z=0, that's a boundary — push by 1mm so AABBs actually overlap.
+Fix: move the piece so it rests on a supported surface, give it a real visible
+stem/riser/bracket/collar, or split it into a separate part that physically
+mates with the parent. Do not add fake hidden bridges just to satisfy the old
+connectivity warning.
 
 If the part is *supposed* to be separated rigid pieces (comb teeth, a
 grille, a fin stack) and a connector would invent fake material, declare
-`ctx.allow_disconnected_islands(part, reason="...")` instead of bridging.
-That is the only sanctioned way to keep genuine multi-piece parts; never
-reach for it to hide an accidental split.
+`ctx.allow_disconnected_islands(part, reason="...")` only to silence the old
+warning. It does not affect the final visual support graph. `allow_floating=True`
+is rejected by the final quality profile.
+
+### High-risk allowances
+Final profile rejects broad `allow_overlap(part_a, part_b)`,
+`allow_isolated_part(...)`, and `allow_disconnected_islands(...,
+allow_floating=True)`. Intentional overlap must be local and element-scoped:
+
+```python
+ctx.allow_overlap(parent, child, elem_a="bearing_socket", elem_b="shaft", reason="...")
+```
+
+A joint without real contact or a passing `MatingContract` is not a physical
+support path.
 
 ### Joint origin far from geometry
 `fail_if_articulation_origin_far_from_geometry(tol=0.015)` requires the
@@ -365,14 +385,14 @@ Use sparingly — prefer real MatingContracts where the geometry fits
 ### Inter-part overlap from extended connectors
 When you add a connector neck/riser to fix disconnected islands, it
 may now collide with adjacent parts at the joint. Declare
-`allow_overlap` between the new connector and the adjacent parts'
-hubs/collars/lugs. See monitor_mount's wrist_riser_web declarations.
+element-scoped `allow_overlap` between the new connector element and the
+adjacent hubs/collars/lugs. See monitor_mount's wrist_riser_web declarations.
 
-### Pass threshold
-Default is **0.85** (50 seeds → ≤7 failures tolerated). For wide-domain
-modular templates this is appropriate. Set higher (`--pass-threshold 0.95`)
-only if your template has a narrow parameter range and you want a
-quality bar.
+### Quality profile
+Final acceptance uses `--quality-profile final`, which requires every sampled
+seed to pass hard QC and forbids high-risk broad/floating allowances. The
+`dev` and `legacy` profiles are migration/debug tools only; they do not certify
+the template.
 
 ---
 
@@ -538,17 +558,19 @@ for c in d.get('failure_clusters', [])[:3]:
 "
 ```
 
-Don't claim done unless `verdict == "pass"`. A `pass_rate` of 0.84 with
-8 failing seeds means there's still a systematic edge case to address,
-not a "close enough".
+Don't claim done unless `verdict == "pass"` under `--quality-profile final`.
+Any failing seed means there's still a systematic edge case to address, not a
+"close enough".
 
 ---
 
 ## Where new strict gates come from
 
 The compiler-owned baseline (in [`agent/compiler.py`](agent/compiler.py)
-`_run_compiler_owned_baseline_tests`) runs on every compile. Adding a
-new strict check there means ALL templates must satisfy it. The
-disconnected_geometry_islands check was upgraded from warn-level to
-fail-level in 2026-05; future strict additions should follow the same
-pattern (audit existing templates first, fix any that would regress).
+`_run_compiler_owned_baseline_tests`) runs on every compile. Adding a new strict
+check there means final-profile templates must satisfy it. The current final
+policy is: raw part-internal islands are warn-level diagnostics, but unsupported
+visible islands, high-risk broad/floating allowances, and sampled articulation
+overlaps are final-profile failures. Future strict additions should follow the
+same pattern: audit existing templates first, fix real regressions, and keep
+`dev`/`legacy` useful for migration.

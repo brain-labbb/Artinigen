@@ -307,6 +307,21 @@ ISOLATED_PART_COMPILER_SPEC = SignalSpec(
     group="qc",
     blocking=True,
 )
+UNSUPPORTED_VISUAL_ISLAND_SPEC = SignalSpec(
+    severity="failure",
+    kind="unsupported_visual_island",
+    code="QC_UNSUPPORTED_VISUAL_ISLAND",
+    source="tests",
+    group="qc",
+    blocking=True,
+)
+UNSUPPORTED_VISUAL_ISLAND_WARNING_SPEC = SignalSpec(
+    severity="warning",
+    kind="unsupported_visual_island",
+    code="WARN_UNSUPPORTED_VISUAL_ISLAND",
+    source="tests",
+    group="qc",
+)
 
 _MIN_DISTANCE_RE = re.compile(
     r"min_distance=(?P<distance>[-+0-9.eE]+)\s+contact_tol=(?P<tol>[-+0-9.eE]+)"
@@ -735,6 +750,21 @@ def _iter_test_failures(test_report: TestReportLike | None) -> Iterable[CompileS
                 )
             )
             continue
+        if parsed.name.startswith("fail_if_unsupported_visual_islands") or (
+            "unsupported visual island" in parsed.lower_details
+        ):
+            signals.append(
+                _signal_from_spec(
+                    UNSUPPORTED_VISUAL_ISLAND_SPEC,
+                    summary=(
+                        "Compiler-owned visual support graph found visible geometry "
+                        "without a support path."
+                    ),
+                    details=parsed.details,
+                    check_name=parsed.name,
+                )
+            )
+            continue
         if "missing exact geometry" in parsed.lower_details:
             signals.append(
                 _signal_from_spec(
@@ -875,6 +905,20 @@ def _disconnected_geometry_signal(parsed: ParsedTestWarning) -> CompileSignal | 
     )
 
 
+def _unsupported_visual_island_signal(parsed: ParsedTestWarning) -> CompileSignal | None:
+    if not parsed.check_name.startswith("warn_if_unsupported_visual_islands"):
+        return None
+    summary = "Visual support graph found visible geometry without a support path."
+    if parsed.detail_text and "unsupported visual island" not in parsed.detail_text.lower():
+        summary = "Visual support graph reported a warning; investigate it."
+    return _signal_from_spec(
+        UNSUPPORTED_VISUAL_ISLAND_WARNING_SPEC,
+        summary=summary,
+        details=parsed.text,
+        check_name=parsed.check_name,
+    )
+
+
 def _articulation_origin_signal(parsed: ParsedTestWarning) -> CompileSignal | None:
     if not parsed.check_name.startswith("warn_if_articulation_origin_far_from_geometry("):
         return None
@@ -925,6 +969,7 @@ def _warning_signal_from_test_text(text: str) -> CompileSignal:
         _allowed_overlap_signal,
         _overlap_warning_signal,
         _disconnected_geometry_signal,
+        _unsupported_visual_island_signal,
         _articulation_origin_signal,
         _deprecated_test_api_signal,
     ):

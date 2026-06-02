@@ -51,6 +51,7 @@ class TestContextCoreMixin:
             allowances=tuple(self._allowances),
             allowed_isolated_parts=tuple(self._allow_isolated_parts),
             allowed_disconnected_islands=tuple(self._allow_disconnected_islands),
+            allowed_floating_islands=tuple(self._allow_floating_islands),
             allowed_overlaps=tuple(
                 AllowedOverlap(
                     link_a=pair[0],
@@ -533,6 +534,7 @@ class TestContextCoreMixin:
         part: object,
         *,
         reason: str,
+        allow_floating: bool = False,
     ) -> None:
         """Allow a specific part to contain disconnected geometry islands.
 
@@ -541,6 +543,14 @@ class TestContextCoreMixin:
         `fail_if_part_contains_disconnected_geometry_islands` baseline check does
         not force a fake bridging connector. Accidental seed-driven splits should
         be fixed in geometry, not allowed here.
+
+        This blanket allowance silences the warn-level connectivity check, but it
+        does NOT exempt the part from `fail_if_floating_geometry_islands` — a
+        sizeable piece separated from the body by a real gap still fails, because
+        "intentionally multi-piece" does not justify a piece floating in open
+        space. To opt a genuinely-floating-by-design piece out of the float gate
+        too, pass ``allow_floating=True`` (use sparingly; it is the deliberate
+        acknowledgement that the gap is intended, not a modeling defect).
         """
 
         part_name = _named_ref(part, kind="part")
@@ -549,6 +559,11 @@ class TestContextCoreMixin:
             raise ValueError("allow_disconnected_islands requires a non-empty reason")
         self._allow_disconnected_islands[part_name] = r
         self._allowances.append(f"allow_disconnected_islands({part_name!r}): {r}")
+        if allow_floating:
+            self._allow_floating_islands[part_name] = r
+            self._allowances.append(
+                f"allow_disconnected_islands({part_name!r}, allow_floating=True): {r}"
+            )
 
     def allow_coplanar_surfaces(
         self,
