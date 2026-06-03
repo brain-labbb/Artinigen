@@ -18,12 +18,14 @@ Violating any of them prevents `verdict=pass`.
 The single source of truth for whether a template is done is:
 
 ```bash
-uv run articraft template compile-sweep <slug> --seeds 0-49 --json
+uv run articraft template sweep-pipeline <slug>
 ```
 
 You may not declare a template complete on the strength of `pytest`,
-`scripts/check_template_qc.py`, or eyeballing previews alone. The sweep CLI
-runs the same full compile pipeline records go through. Specifically, the
+`scripts/check_template_qc.py`, or eyeballing previews alone. The pipeline
+runs incremental full sweeps (`0`, `0-4`, `0-19`, `0-49`) and stops at the
+first failing stage with a repair summary. Each seed runs the same full
+compile pipeline records go through. Specifically, the
 compiler-owned baseline now runs:
 
 - `check_model_valid` / `check_single_root_part` / `check_mesh_assets_ready`
@@ -50,17 +52,29 @@ For each iteration of authoring:
    file under `tests/agent/test_<slug>_template.py` when appropriate).
 2. Run:
    ```bash
-   uv run articraft template compile-sweep <slug> --seeds 0-49 --json
+   uv run articraft template sweep-pipeline <slug>
    ```
 3. Parse the JSON. Decide your next action from the structured signals
-   (`failure_clusters`, `coverage_gates`, `escalation`) per the rules below.
+   (`repair_summary`, stage reports, `failure_clusters`, `coverage_gates`,
+   `escalation`) per the rules below.
 4. Repeat. Do not declare done until `verdict=pass`.
 
-The sweep persists per-slug state under
+The pipeline persists per-slug state under
 `<repo_root>/.articraft/template_sweep_state/<slug>.json`. Each successive
 invocation increments `streak_count` for failure clusters that survive the
 edit, and updates `pass_rate_trend`. This is what lets the loop detect "I
 am bouncing on the same root cause."
+
+If the pipeline CLI is unavailable, use the manual fallback sequence below.
+This fallback intentionally repeats cumulative seeds; the pipeline itself only
+compiles newly added seeds within one run.
+
+```bash
+uv run articraft template compile-sweep <slug> --seeds 0
+uv run articraft template compile-sweep <slug> --seeds 0-4
+uv run articraft template compile-sweep <slug> --seeds 0-19
+uv run articraft template compile-sweep <slug> --seeds 0-49
+```
 
 ---
 
@@ -215,10 +229,11 @@ like a <category>." Always do it.
 |---|---|---|
 | `articraft_template_authoring/agent_workflow.md` §1–3 | **SPEC_ONLY** stage: read 5-star samples, write spec, wait for review | Unchanged |
 | `articraft_template_authoring/agent_workflow.md` §4.1–4.5 | Reading the approved spec, choosing skeleton templates, adapting adopted source | Still applies — write code per these sections |
-| `articraft_template_authoring/agent_workflow.md` §4.6 | "Automatic iteration loop" | **Superseded by this doc.** Use compile-sweep, not the manual checklist. |
+| `articraft_template_authoring/agent_workflow.md` §4.6 | "Automatic iteration loop" | **Superseded by this doc.** Use sweep-pipeline, not the manual checklist. |
 | `articraft_template_authoring/agent_workflow.md` §5–7 | Hard fail rules, conventions, written-pattern reference | Unchanged |
 | `articraft_template_authoring/MATURE_TEMPLATE_METHOD.md` | How to reach gold-standard maturity | Unchanged |
-| `articraft template compile-sweep <slug> --json` | Per-iteration ground-truth signal | **You read this every iteration** |
+| `articraft template sweep-pipeline <slug>` | Per-iteration ground-truth signal | **You read this every iteration** |
+| `articraft template compile-sweep <slug> --seeds X` | Manual fallback / targeted diagnosis | Use only when pipeline output asks for focused follow-up |
 | `articraft template batch <slug> --seeds X` | Promote template into real records | Run only after this doc's stop conditions are met |
 | `articraft external check <record>` | Record-level baseline + author tests | Same baseline as sweep; use it after batch to validate a specific record |
 
@@ -260,18 +275,18 @@ template module docstring. Do not lower below 600.
 
 ```bash
 # 1. Edit agent/templates/cantilever_articulated_arm.py based on spec.
-# 2. Sweep.
-uv run articraft template compile-sweep cantilever_articulated_arm \
-    --seeds 0-49 \
+# 2. Run the incremental pipeline.
+uv run articraft template sweep-pipeline cantilever_articulated_arm \
     --pass-threshold 0.95 \
     --max-workers 4 \
-    --out reports/cantilever_arm_sweep_1.json
+    --out reports/cantilever_arm_pipeline_1.json
 # 3. Inspect:
-#    - failure_clusters[0] : likely root cause + diagnosis_hint
-#    - coverage_gates      : which gates also fail
-#    - escalation.required : false on first sweep
+#    - repair_summary.failed_stage
+#    - repair_summary.top_failure_clusters[0]
+#    - repair_summary.failing_coverage_gates
+#    - repair_summary.escalation
 # 4. Apply a targeted fix to the cluster's likely root cause.
-# 5. Re-sweep. Watch streak_count on the cluster.
+# 5. Re-run the pipeline from seed 0. Watch streak_count on the cluster.
 # 6. If streak hits 3, stop patching, write a handoff note recommending
 #    config_from_seed narrowing or a slug split.
 # 7. Otherwise, repeat until verdict=pass, then visually self-review

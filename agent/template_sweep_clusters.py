@@ -63,9 +63,16 @@ DIAGNOSIS_HINTS: Mapping[str, str] = {
     "warn_if_part_contains_disconnected_geometry_islands": (
         "A single part has visual islands that don't connect. Likely cause: two "
         "decorative visuals were added to the same part with separated positions. "
-        "If intentional, demote to a warning by accepting the geometry layout; "
-        "otherwise unify the visuals or split into separate parts joined by a "
-        "fixed articulation."
+        "Fix by embedding thin labels/markers into their supporting surface, adding "
+        "a real bridge/cantilever, or splitting semantic pieces into separate parts "
+        "joined by a fixed articulation."
+    ),
+    "fail_if_part_contains_disconnected_geometry_islands": (
+        "A single part has visual islands that don't connect. In template sweep this "
+        "is a hard failure because it usually renders as part-internal floating "
+        "geometry. Fix by embedding thin labels/markers into their supporting "
+        "surface, adding a real bridge/cantilever, or splitting semantic pieces into "
+        "separate parts joined by a fixed articulation."
     ),
     "check_model_valid": (
         "Model.validate(strict=True) raised. Read failure_details for the "

@@ -420,16 +420,31 @@ Validator 表必须可直接映射到后续测试代码。
 > **该节已由 [`TEMPLATE_AUTHORING_AGENT.md`](../TEMPLATE_AUTHORING_AGENT.md) 取代。** 新的强制循环是：
 >
 > ```bash
-> uv run articraft template compile-sweep <slug> --seeds 0-49 --json
+> uv run articraft template sweep-pipeline <slug>
 > ```
 >
-> 这个 CLI 在每个 seed 上跑同 record `target=full` 的 author `run_tests` + compiler baseline（包括 `fail_if_articulation_origin_far_from_geometry`），并聚合 `failure_clusters`、`coverage_gates`（line_floor / enum_coverage / adopted_source）、跨调用 `streak_count` 和 `escalation`。本节保留作为旧实现的参考，但**不得作为完成判据**：模板必须按 `TEMPLATE_AUTHORING_AGENT.md` §4 的停止条件验收。
+> 这个 CLI 按 `0 → 0-4 → 0-19 → 0-49` 增量运行 full compile sweep，失败即停，并输出 `repair_summary`。每个 seed 仍跑同 record `target=full` 的 author `run_tests` + compiler baseline（包括 `fail_if_articulation_origin_far_from_geometry`），并在阶段 report 中聚合 `failure_clusters`、`coverage_gates`（line_floor / enum_coverage / adopted_source）、跨调用 `streak_count` 和 `escalation`。本节保留作为旧实现的参考，但**不得作为完成判据**：模板必须按 `TEMPLATE_AUTHORING_AGENT.md` §4 的停止条件验收。
+
+> 手动 fallback 是：
+>
+> ```bash
+> uv run articraft template compile-sweep <slug> --seeds 0
+> uv run articraft template compile-sweep <slug> --seeds 0-4
+> uv run articraft template compile-sweep <slug> --seeds 0-19
+> uv run articraft template compile-sweep <slug> --seeds 0-49
+> ```
+>
+> pipeline pass 后仍需单独推 viewer：
+>
+> ```bash
+> uv run articraft template batch <slug> --seeds 0-9 --agent claude-code
+> ```
 
 #### 历史描述（仅供参考）
 
 实现初稿后，agent 必须自动调到验收线，不得把调参默认交给用户。
 
-每一轮闭环（旧版手动列表，请用 `compile-sweep` 替代）：
+每一轮闭环（旧版手动列表，请用 `sweep-pipeline` 替代）：
 
 1. 运行 `uv run pytest tests/agent/test_<category_slug>_template.py`。
 2. 运行 `test "$(wc -l < agent/templates/<category_slug>.py)" -ge 1000`。

@@ -16,6 +16,12 @@ from agent.template_sweep import (
     stderr_progress_reporter,
     write_report,
 )
+from agent.template_sweep_pipeline import (
+    PipelineStageResult,
+    pipeline_report_to_json,
+    run_sweep_pipeline,
+    write_pipeline_report,
+)
 from cli.common import add_data_root_argument, warn_if_post_commit_hook_missing
 from cli.external import _compile_record, _refresh_external_record, _validate_external_record
 from storage.collections import CollectionStore
@@ -350,6 +356,70 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Suppress per-seed stderr progress lines.",
     )
 
+    pipeline = subparsers.add_parser(
+        "sweep-pipeline",
+        help="Run incremental seed0/fast/medium/final compile sweep pipeline.",
+    )
+    pipeline.add_argument("slug", choices=sorted(TEMPLATE_REGISTRY.keys()))
+    pipeline.add_argument(
+        "--pass-threshold",
+        type=float,
+        default=DEFAULT_PASS_THRESHOLD,
+        help=(
+            f"Minimum pass_rate required for each stage verdict=pass (default {DEFAULT_PASS_THRESHOLD})."
+        ),
+    )
+    pipeline.add_argument(
+        "--max-workers",
+        type=int,
+        default=None,
+        help=(
+            "ProcessPoolExecutor worker count. Defaults to min(len(stage seeds), 4); "
+            "use 1 to run sequentially in the current process."
+        ),
+    )
+    pipeline.add_argument(
+        "--sdk-package", default="sdk", help="SDK package to load (defaults to 'sdk')."
+    )
+    pipeline.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="Optional file path to write the JSON report to (in addition to stdout).",
+    )
+    pipeline.add_argument(
+        "--state-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Directory to persist per-slug streak state across pipeline runs. "
+            "Defaults to <repo_root>/.articraft/template_sweep_state when omitted. "
+            "Pass an empty string to disable streak tracking."
+        ),
+    )
+    pipeline.add_argument(
+        "--line-floor",
+        type=int,
+        default=1000,
+        help="Minimum line count for the line_floor gate (default 1000).",
+    )
+    pipeline.add_argument(
+        "--compile-timeout",
+        type=float,
+        default=DEFAULT_COMPILE_TIMEOUT_S,
+        help=(
+            "Per-seed wall-time budget in seconds. Each seed compile runs in a "
+            "fresh subprocess that is SIGKILL'd on timeout; the seed is marked "
+            "compile_timeout in the JSON. Set to 0 to disable timeouts (legacy "
+            f"in-process ProcessPool path). Default {DEFAULT_COMPILE_TIMEOUT_S:.0f}s."
+        ),
+    )
+    pipeline.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress per-seed and per-stage progress lines.",
+    )
+
     return parser
 
 
@@ -363,7 +433,7 @@ def _resolve_state_dir(repo_root: Path, override: Path | None) -> Path | None:
     if override is None:
         return Path(repo_root) / ".articraft" / "template_sweep_state"
     text = str(override).strip()
-    if not text:
+    if not text or text == ".":
         return None
     return Path(text)
 
@@ -406,6 +476,71 @@ def compile_sweep(
     return 0 if report.verdict == "pass" else 1
 
 
+def _pipeline_stage_progress(event: str, stage: PipelineStageResult) -> None:
+    if event == "start":
+        print(
+            f"[stage={stage.name}] starting added={stage.added_seeds} "
+            f"cumulative={stage.cumulative_seeds[0]}-{stage.cumulative_seeds[-1]}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+    if stage.status == "skipped":
+        print(f"[stage={stage.name}] skipped", file=sys.stderr, flush=True)
+        return
+    report = stage.report
+    elapsed = "" if report is None else f" ({report.elapsed_s:.2f}s)"
+    print(
+        f"[stage={stage.name}] {stage.status.upper()}{elapsed}",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+def sweep_pipeline(
+    *,
+    slug: str,
+    stem: str,
+    pass_threshold: float,
+    max_workers: int | None,
+    sdk_package: str,
+    out_path: Path | None,
+    state_dir: Path | None,
+    line_floor: int,
+    compile_timeout_s: float,
+    quiet: bool,
+) -> int:
+    progress = None if quiet else stderr_progress_reporter(total=DEFAULT_SEED_COUNT)
+    stage_progress = None if quiet else _pipeline_stage_progress
+    try:
+        report = run_sweep_pipeline(
+            slug=slug,
+            stem=stem,
+            sdk_package=sdk_package,
+            pass_threshold=pass_threshold,
+            max_workers=max_workers,
+            progress=progress,
+            stage_progress=stage_progress,
+            state_dir=state_dir,
+            line_floor=line_floor,
+            compile_timeout_s=compile_timeout_s,
+        )
+    except (FileNotFoundError, AttributeError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    payload = pipeline_report_to_json(report)
+    print(payload)
+    if out_path is not None:
+        write_pipeline_report(report, out_path=out_path)
+    print(
+        f"sweep-pipeline {slug} {report.verdict.upper()} "
+        f"stages={len(report.stages)} seeds={DEFAULT_SEED_COUNT} elapsed={report.elapsed_s:.2f}s",
+        file=sys.stderr,
+        flush=True,
+    )
+    return 0 if report.verdict == "pass" else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -435,6 +570,21 @@ def main(argv: list[str] | None = None) -> int:
             slug=args.slug,
             stem=TEMPLATE_REGISTRY[args.slug],
             seeds=seeds,
+            pass_threshold=float(args.pass_threshold),
+            max_workers=(None if args.max_workers is None else int(args.max_workers)),
+            sdk_package=str(args.sdk_package),
+            out_path=args.out,
+            state_dir=state_dir,
+            line_floor=int(args.line_floor),
+            compile_timeout_s=float(args.compile_timeout),
+            quiet=bool(args.quiet),
+        )
+
+    if args.command == "sweep-pipeline":
+        state_dir = _resolve_state_dir(args.repo_root, args.state_dir)
+        return sweep_pipeline(
+            slug=args.slug,
+            stem=TEMPLATE_REGISTRY[args.slug],
             pass_threshold=float(args.pass_threshold),
             max_workers=(None if args.max_workers is None else int(args.max_workers)),
             sdk_package=str(args.sdk_package),

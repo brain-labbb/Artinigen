@@ -333,15 +333,15 @@ def _add_basic_deck_controls(part: Part, r: ResolvedTurntableConfig) -> None:
         name="arm_rest_cradle",
     )
     part.visual(
-        Box((0.044, 0.003, 0.003)),
-        origin=Origin(xyz=(x0 - 0.001, y0 + 0.014, z + 0.003)),
+        Box((0.044, 0.003, 0.001)),
+        origin=Origin(xyz=(x0 - 0.001, y0 + 0.010, r.deck_top_z + 0.0003)),
         material="label",
         name="speed_selector_scale_mark",
     )
     for i, dx in enumerate((-0.015, 0.0, 0.015)):
         part.visual(
-            Box((0.003, 0.008, 0.002)),
-            origin=Origin(xyz=(x0 + dx, y0 + 0.014, z + 0.005)),
+            Box((0.003, 0.007, 0.001)),
+            origin=Origin(xyz=(x0 + dx, y0 + 0.010, r.deck_top_z + 0.0007)),
             material="label",
             name=f"speed_tick_{i}",
         )
@@ -564,27 +564,27 @@ def _build_platter_part(model: ArticulatedObject, r: ResolvedTurntableConfig) ->
         label_every = 1
     elif r.platter_decoration == "classic_strobe":
         marker_count = 24
-        marker_size = (0.0035, 0.009, 0.0015)
+        marker_size = (0.0035, 0.009, 0.002)
         marker_radius = radius * 0.985
         label_every = 2
     elif r.platter_decoration == "dense_strobe":
         marker_count = 48
-        marker_size = (0.0025, 0.0065, 0.0015)
+        marker_size = (0.0025, 0.0065, 0.002)
         marker_radius = radius * 0.990
         label_every = 3
     elif r.platter_decoration == "rim_notches":
         marker_count = 18
-        marker_size = (0.004, 0.012, 0.0015)
+        marker_size = (0.004, 0.012, 0.002)
         marker_radius = radius * 0.970
         label_every = 6
     elif r.platter_decoration == "minimal_marker":
         marker_count = 8
-        marker_size = (0.003, 0.010, 0.0015)
+        marker_size = (0.003, 0.010, 0.002)
         marker_radius = radius * 0.955
         label_every = 4
     else:
         marker_count = 12
-        marker_size = (0.0035, 0.009, 0.0015)
+        marker_size = (0.0035, 0.009, 0.002)
         marker_radius = radius * 0.980
         label_every = 2
     for i in range(marker_count):
@@ -595,7 +595,7 @@ def _build_platter_part(model: ArticulatedObject, r: ResolvedTurntableConfig) ->
                 xyz=(
                     math.cos(angle) * marker_radius,
                     math.sin(angle) * marker_radius,
-                    0.0373,
+                    0.0336,
                 ),
                 rpy=(0.0, 0.0, angle),
             ),
@@ -616,7 +616,7 @@ def _build_platter_part(model: ArticulatedObject, r: ResolvedTurntableConfig) ->
                 xyz=(
                     math.cos(adapter_angle) * radius * 0.40,
                     math.sin(adapter_angle) * radius * 0.40,
-                    0.0385,
+                    0.0378,
                 )
             ),
             material="label",
@@ -625,7 +625,7 @@ def _build_platter_part(model: ArticulatedObject, r: ResolvedTurntableConfig) ->
     elif r.platter_decoration == "minimal_marker":
         platter.visual(
             Box((radius * 0.22, 0.003, 0.0015)),
-            origin=Origin(xyz=(0.0, radius * 0.50, 0.0373), rpy=(0.0, 0.0, math.pi / 2.0)),
+            origin=Origin(xyz=(0.0, radius * 0.50, 0.0363), rpy=(0.0, 0.0, math.pi / 2.0)),
             material="label",
             name="single_index_line",
         )
@@ -719,8 +719,8 @@ def _emit_tonearm_beam(
     side_y = ux
     tube_rpy = (math.pi / 2.0, 0.0, angle + math.pi / 2.0)
     part.visual(
-        Cylinder(radius=0.020, length=0.014),
-        origin=Origin(xyz=(0.0, 0.0, 0.007)),
+        Cylinder(radius=0.020, length=0.018),
+        origin=Origin(xyz=(0.0, 0.0, 0.009)),
         material="dark_metal",
         name="pivot_collar",
     )
@@ -813,7 +813,7 @@ def _emit_tonearm_beam(
     cart_y = head_y + uy * 0.010
     part.visual(
         Box((0.018, 0.014, 0.012)),
-        origin=Origin(xyz=(cart_x, cart_y, shell_z - 0.011), rpy=(0.0, 0.0, angle)),
+        origin=Origin(xyz=(cart_x, cart_y, shell_z - 0.009), rpy=(0.0, 0.0, angle)),
         material="accent",
         name="cartridge_body",
     )
@@ -834,14 +834,23 @@ def _emit_tonearm_beam(
     stylus_x = cart_x + ux * 0.012
     stylus_y = cart_y + uy * 0.012
     part.visual(
+        Box((0.016, 0.002, 0.002)),
+        origin=Origin(
+            xyz=(cart_x + ux * 0.006, cart_y + uy * 0.006, shell_z - 0.015),
+            rpy=(0.0, 0.0, angle),
+        ),
+        material="dark_metal",
+        name="stylus_cantilever",
+    )
+    part.visual(
         Cylinder(radius=0.0013, length=0.010),
-        origin=Origin(xyz=(stylus_x, stylus_y, shell_z - 0.018)),
+        origin=Origin(xyz=(stylus_x, stylus_y, shell_z - 0.015)),
         material="dark_metal",
         name="stylus_shank",
     )
     part.visual(
         Box((0.004, 0.002, 0.004)),
-        origin=Origin(xyz=(stylus_x + ux * 0.002, stylus_y + uy * 0.002, shell_z - 0.024)),
+        origin=Origin(xyz=(stylus_x + ux * 0.002, stylus_y + uy * 0.002, shell_z - 0.021)),
         material="dark_metal",
         name="stylus_tip",
     )
@@ -973,14 +982,20 @@ def _build_modular_tonearm_head(model: ArticulatedObject, r: ResolvedTurntableCo
         name="cartridge_mount_bar",
     )
     head.visual(
+        Box((0.003, 0.014, 0.002)),
+        origin=Origin(xyz=(0.0, -0.045, -0.0135)),
+        material="dark_metal",
+        name="stylus_cantilever",
+    )
+    head.visual(
         Cylinder(radius=0.0012, length=0.009),
-        origin=Origin(xyz=(0.0, -0.048, -0.019)),
+        origin=Origin(xyz=(0.0, -0.048, -0.016)),
         material="dark_metal",
         name="stylus_shank",
     )
     head.visual(
         Box((0.004, 0.002, 0.004)),
-        origin=Origin(xyz=(0.0, -0.052, -0.024)),
+        origin=Origin(xyz=(0.0, -0.050, -0.0205)),
         material="dark_metal",
         name="stylus_tip",
     )
@@ -1097,6 +1112,15 @@ def _build_fixed_guard_frame(model: ArticulatedObject, r: ResolvedTurntableConfi
     for i, angle in enumerate((math.radians(128.0), math.radians(232.0), math.radians(326.0))):
         x = ring_radius * math.cos(angle)
         y = ring_radius * math.sin(angle)
+        guard.visual(
+            Box((ring_radius, 0.003, 0.002)),
+            origin=Origin(
+                xyz=(x * 0.5, y * 0.5, 0.002),
+                rpy=(0.0, 0.0, angle),
+            ),
+            material="dark_metal",
+            name=f"fixed_guard_radial_spoke_{i}",
+        )
         guard.visual(
             Cylinder(radius=0.013, length=0.006),
             origin=Origin(xyz=(x, y, foot_z)),
@@ -1741,7 +1765,7 @@ def run_turntable_tests(object_model: ArticulatedObject, config: TurntableConfig
     _declare_overlaps(ctx, object_model)
     ctx.check_model_valid()
     ctx.fail_if_isolated_parts()
-    ctx.warn_if_part_contains_disconnected_geometry_islands()
+    ctx.fail_if_part_contains_disconnected_geometry_islands()
     ctx.fail_if_parts_overlap_in_current_pose()
     ctx.fail_if_articulation_origin_far_from_geometry(tol=0.030)
     ctx.fail_if_joint_mating_has_gap()

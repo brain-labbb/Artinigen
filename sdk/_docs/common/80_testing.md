@@ -83,6 +83,13 @@ return ctx.report()
 - disconnected geometry-island detection within a part
 - current-pose real 3D overlap detection
 
+For procedural template sweeps, disconnected geometry islands inside a part are
+treated as failures even when the lower-level compile path reports them as
+warnings. Small same-part visuals such as labels, ticks, screw heads, markers,
+stylus tips, and trim tabs should be embedded into their carrier surface or
+connected by a real bridge/cantilever; do not leave them as air-separated
+decorative islands.
+
 Use `run_tests()` for prompt-specific exact assertions such as `expect_gap(...)`,
 `expect_overlap(...)`, `expect_contact(...)`, and `expect_within(...)`.
 

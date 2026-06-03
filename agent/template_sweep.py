@@ -9,7 +9,9 @@ seed in the requested range, it:
 3. Invokes `agent.compiler.compile_urdf_report(target="full")`, which runs
    both the author-defined `run_tests()` and the compiler-owned baseline
    (single-root, mesh assets, isolated parts, overlap, articulation-origin
-   distance).
+   distance). Template sweep also promotes compiler disconnected-geometry
+   warnings to seed failures so part-internal floating visual islands do not
+   pass as acceptable template variants.
 4. Records the verdict, primary failure type, and failure details.
 
 Subsequent phases (in this same module) layer on failure clustering, streak
@@ -38,6 +40,10 @@ from agent.models import CompileSignal
 DEFAULT_PASS_THRESHOLD = 0.95
 DEFAULT_SEED_COUNT = 50
 DEFAULT_COMPILE_TIMEOUT_S = 60.0
+_DISCONNECTED_GEOMETRY_WARNING = "Disconnected geometry islands detected"
+_DISCONNECTED_GEOMETRY_FAILURE_TYPE = (
+    "fail_if_part_contains_disconnected_geometry_islands(tol=1e-06)"
+)
 
 # Same shape as cli.template.GENERIC_MODEL_TEMPLATE; duplicated here to avoid a
 # circular import between cli.template and agent.template_sweep. If the canonical
@@ -225,6 +231,20 @@ def _resolve_config_from_seed(slug: str, seed: int) -> Any:
     return config_from_seed(seed)
 
 
+def _disconnected_geometry_warning_details(warnings: Iterable[str]) -> str | None:
+    for warning in warnings:
+        text = str(warning)
+        if _DISCONNECTED_GEOMETRY_WARNING in text:
+            return (
+                "Template sweep treats compiler disconnected-geometry warnings as failures. "
+                "Fix floating visuals inside the named part by embedding them into the "
+                "supporting surface, adding a real bridge/cantilever, or splitting them "
+                "into separate fixed parts.\n"
+                f"{text[:2000]}"
+            )
+    return None
+
+
 def _compile_one(slug: str, stem: str, seed: int, sdk_package: str) -> SeedOutcome:
     """Run a single (slug, seed) compile and return its outcome.
 
@@ -240,13 +260,26 @@ def _compile_one(slug: str, stem: str, seed: int, sdk_package: str) -> SeedOutco
             encoding="utf-8",
         )
         try:
-            compile_urdf_report(
+            compile_report = compile_urdf_report(
                 script_path,
                 sdk_package=sdk_package,
                 run_checks=True,
                 target="full",
                 rewrite_visual_glb=False,
             )
+            disconnected_details = _disconnected_geometry_warning_details(compile_report.warnings)
+            if disconnected_details is not None:
+                return SeedOutcome(
+                    seed=seed,
+                    verdict="fail",
+                    config=config_dict,
+                    failure_type=_DISCONNECTED_GEOMETRY_FAILURE_TYPE,
+                    failure_type_normalized=_normalize_failure_type(
+                        _DISCONNECTED_GEOMETRY_FAILURE_TYPE
+                    ),
+                    failure_details=disconnected_details,
+                    elapsed_s=time.monotonic() - start,
+                )
         except Exception as exc:  # noqa: BLE001 — captured into structured outcome
             failure_type, details = _extract_failure(exc)
             return SeedOutcome(
@@ -475,21 +508,18 @@ def _run_seeds_parallel(
     return [outcomes[seed] for seed in seeds]
 
 
-def run_sweep(
+def run_seed_outcomes(
     *,
     slug: str,
     stem: str,
     seeds: list[int],
     sdk_package: str = "sdk",
-    pass_threshold: float = DEFAULT_PASS_THRESHOLD,
     max_workers: int | None = None,
     repo_root: Path | None = None,
     progress: Callable[[SeedOutcome], None] | None = None,
-    state_dir: Path | None = None,
-    line_floor: int = 1000,
     compile_timeout_s: float = 0.0,
-) -> SweepReport:
-    """Run a multi-seed compile sweep and return the structured report.
+) -> list[SeedOutcome]:
+    """Compile the requested seeds and return raw per-seed outcomes.
 
     `max_workers=1` (or `None` when there is a single seed) runs sequentially in
     the current process. Anything else uses a ProcessPoolExecutor (in-process
@@ -504,10 +534,9 @@ def run_sweep(
     if not template_path.exists():
         raise FileNotFoundError(f"agent/templates/{slug}.py not found (looked at {template_path})")
 
-    started = time.monotonic()
     workers = max_workers if max_workers is not None else min(len(seeds), 4)
     if workers <= 1 or len(seeds) == 1:
-        outcomes = _run_seeds_sequential(
+        return _run_seeds_sequential(
             slug,
             stem,
             seeds,
@@ -516,18 +545,37 @@ def run_sweep(
             compile_timeout_s=compile_timeout_s,
             repo_root=repo_root,
         )
-    else:
-        outcomes = _run_seeds_parallel(
-            slug,
-            stem,
-            seeds,
-            sdk_package,
-            workers,
-            progress,
-            compile_timeout_s=compile_timeout_s,
-            repo_root=repo_root,
-        )
-    elapsed = time.monotonic() - started
+    return _run_seeds_parallel(
+        slug,
+        stem,
+        seeds,
+        sdk_package,
+        workers,
+        progress,
+        compile_timeout_s=compile_timeout_s,
+        repo_root=repo_root,
+    )
+
+
+def build_sweep_report_from_outcomes(
+    *,
+    slug: str,
+    stem: str,
+    seeds: list[int],
+    outcomes: list[SeedOutcome],
+    pass_threshold: float = DEFAULT_PASS_THRESHOLD,
+    repo_root: Path | None = None,
+    state_dir: Path | None = None,
+    line_floor: int = 1000,
+    elapsed_s: float = 0.0,
+) -> SweepReport:
+    """Aggregate existing outcomes into the same report shape used by run_sweep."""
+    if not seeds:
+        raise ValueError("seeds must contain at least one entry")
+    repo_root = repo_root or Path(__file__).resolve().parents[1]
+    template_path = _template_module_path(slug, repo_root=repo_root)
+    if not template_path.exists():
+        raise FileNotFoundError(f"agent/templates/{slug}.py not found (looked at {template_path})")
 
     passed_seeds = [o.seed for o in outcomes if o.verdict == "pass"]
     failed_outcomes = [o for o in outcomes if o.verdict == "fail"]
@@ -584,11 +632,51 @@ def run_sweep(
         pass_rate=round(pass_rate, 6),
         pass_threshold=pass_threshold,
         verdict=verdict,
-        elapsed_s=round(elapsed, 3),
+        elapsed_s=round(elapsed_s, 3),
         failure_clusters=clusters,
         cluster_streaks=cluster_streaks,
         escalation=escalation_payload,
         coverage_gates=gates.to_dict(),
+    )
+
+
+def run_sweep(
+    *,
+    slug: str,
+    stem: str,
+    seeds: list[int],
+    sdk_package: str = "sdk",
+    pass_threshold: float = DEFAULT_PASS_THRESHOLD,
+    max_workers: int | None = None,
+    repo_root: Path | None = None,
+    progress: Callable[[SeedOutcome], None] | None = None,
+    state_dir: Path | None = None,
+    line_floor: int = 1000,
+    compile_timeout_s: float = 0.0,
+) -> SweepReport:
+    """Run a multi-seed compile sweep and return the structured report."""
+    started = time.monotonic()
+    outcomes = run_seed_outcomes(
+        slug=slug,
+        stem=stem,
+        seeds=seeds,
+        sdk_package=sdk_package,
+        max_workers=max_workers,
+        repo_root=repo_root,
+        progress=progress,
+        compile_timeout_s=compile_timeout_s,
+    )
+    elapsed = time.monotonic() - started
+    return build_sweep_report_from_outcomes(
+        slug=slug,
+        stem=stem,
+        seeds=seeds,
+        outcomes=outcomes,
+        pass_threshold=pass_threshold,
+        repo_root=repo_root,
+        state_dir=state_dir,
+        line_floor=line_floor,
+        elapsed_s=elapsed,
     )
 
 

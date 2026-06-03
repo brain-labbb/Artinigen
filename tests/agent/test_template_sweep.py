@@ -10,6 +10,7 @@ from agent.template_sweep import (
     SeedOutcome,
     SweepReport,
     _config_to_dict,
+    _disconnected_geometry_warning_details,
     _extract_failure,
     _normalize_failure_type,
     parse_seed_spec,
@@ -99,6 +100,21 @@ def test_extract_failure_for_bare_runtime_exception_uses_signal_code() -> None:
     failure_type, details = _extract_failure(exc)
     assert failure_type == "COMPILE_RUNTIME_FAILURE"
     assert "boom" in details
+
+
+def test_disconnected_geometry_warning_details_promotes_template_warning() -> None:
+    details = _disconnected_geometry_warning_details(
+        [
+            "unrelated warning",
+            "warn_if_part_contains_disconnected_geometry_islands(tol=1e-06): "
+            "Disconnected geometry islands detected:\n"
+            "part='head' connected=2/3 disconnected=[stylus_tip:Box]",
+        ]
+    )
+
+    assert details is not None
+    assert "Template sweep treats compiler disconnected-geometry warnings as failures" in details
+    assert "stylus_tip" in details
 
 
 def test_run_sweep_handles_mixed_pass_fail(monkeypatch, tmp_path: Path) -> None:
