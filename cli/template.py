@@ -86,6 +86,7 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     "rolling_toolbox_with_telescoping_handle": "rolling_toolbox",
     "refrigerator_with_hinged_doors": "refrigerator",
     "revolving_door": "revolving_door",
+    "robotic_arms": "robotic_arms",
     "simple_aframe_step_ladder": "simple_aframe_step_ladder",
     "stand_mixer": "stand_mixer",
 }
