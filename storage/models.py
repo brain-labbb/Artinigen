@@ -222,7 +222,6 @@ class CompileReport:
     overlap_allowances: list[dict[str, Any]] = field(default_factory=list)
     metrics: dict[str, Any] = field(default_factory=dict)
     signal_bundle: dict[str, Any] | None = None
-    quality_report: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
@@ -237,8 +236,6 @@ class CompileReport:
         }
         if self.signal_bundle is not None:
             payload["signal_bundle"] = dict(self.signal_bundle)
-        if self.quality_report is not None:
-            payload["quality_report"] = dict(self.quality_report)
         return payload
 
 

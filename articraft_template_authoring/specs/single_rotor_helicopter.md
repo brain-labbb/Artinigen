@@ -81,8 +81,8 @@ pattern: `mixed`
 | part | slot | visual_count | 描述 | 来源 |
 |---|---|---:|---|---|
 | `fuselage` / `airframe` | A | ~15-40 | cabin, tail boom, skids/wheels, doors cutouts, stabilizer details | S1/S2 |
-| `main_rotor` | B | ~3-5 | central hub and five main blades | S1/S2 |
-| `tail_rotor` | C | ~3 | fin/boom anti-torque rotor | S1/S2 |
+| `main_rotor` | B | variable | central hub and 3-8 main blades | S1/S2 + reviewer-gated count extrapolation |
+| `tail_rotor` | C | variable | fin/boom anti-torque rotor with 2-5 blades | S1/S2 + reviewer-gated count extrapolation |
 | `service_door` / `cockpit_door` / `cabin_door` | D | ~0-3 each | hinged or sliding access doors | S1/S2 |
 
 ## 关节（Joints）
@@ -100,19 +100,20 @@ pattern: `mixed`
 | `main_rotor_style` | enum | `five_blade_fire_rotor` / `tall_mast_transport_rotor` | `five_blade_fire_rotor` | Slot B | S1/S2 |
 | `tail_rotor_style` | enum | `compact_tail_rotor` / `fin_mounted_tail_rotor` | `compact_tail_rotor` | Slot C | S1/S2 |
 | `door_style` | enum | `service_and_crew_hinges` / `cockpit_hinges_and_cabin_slide` / `none` | `service_and_crew_hinges` | Slot D | S1/S2 |
-| `main_blade_count` | int | 5 only from sources | 5 | do not generalize until more sources | S1/S2 |
+| `main_blade_count` | int | `3..8` | 5 | sampled blade multiplicity; seed 0 remains source anchor | S1/S2 + reviewer-gated count extrapolation |
+| `tail_blade_count` | int | `2..5` | 4 | sampled tail blade multiplicity; seed 0 remains source anchor | S1/S2 + reviewer-gated count extrapolation |
 
 ## Multiplicity / Copy Logic
 
-- `main_blade_count` is fixed at `N=5` from the two available 5-star sources. It is not randomly sampled in this SPEC_ONLY draft.
+- `main_blade_count`: `N_range=3..8`, sampling domain=`all integers`; seed 0 uses `N=5` to preserve the source-backed anchor.
 - The copied object is main-rotor blade geometry inside the Slot B `main_rotor` part. Blades do not get per-blade pitch joints in the current source-backed domain.
 - Naming should use `main_blade_i` for named visuals when exposed. The single moving articulation remains `main_rotor_spin`.
-- Placement is radial around the mast/hub in the rotor disk: blade `i` uses phase `i * 360° / 5`, and every blade root must connect to a visible hub/root socket.
-- Tail-rotor blade count is source-local visual detail, not an independent multiplicity parameter in this spec.
+- Placement is radial around the mast/hub in the rotor disk: blade `i` uses phase `i * 360° / main_blade_count`, and every blade root must connect to a visible hub/root socket.
+- `tail_blade_count`: `N_range=2..5`, sampling domain=`all integers`; seed 0 uses `N=4`. The copied object is tail-rotor blade/cuff/link visual geometry inside the Slot C `tail_rotor` part. The single moving articulation remains `tail_rotor_spin`, with radial placement around the horizontal tail axis.
 
 ## 拓扑多样性审计
 
-总组合数：`2 airframe × 2 main_rotor × 2 tail_rotor × 3 door_style = 24`。预计 `module_topology_diversity` 门控（>=5 distinct）能过：probably yes because door slot changes REVOLUTE vs PRISMATIC sets and airframe/rotor modules change part counts, but reviewer should accept the 2-candidate fallback explicitly.
+总组合数：`2 airframe × 2 main_rotor × 2 tail_rotor × 3 door_style × 6 main_blade_count × 4 tail_blade_count = 576`。预计 `module_topology_diversity` 门控（>=5 distinct）能过：probably yes because door slot changes REVOLUTE vs PRISMATIC sets and airframe/rotor modules change part counts; blade-count multiplicity also changes repeated visual topology while preserving one main rotor assembly and one tail rotor assembly.
 
 | slot | candidate_count | 是否 >=3 | 备注 |
 |---|---:|---|---|

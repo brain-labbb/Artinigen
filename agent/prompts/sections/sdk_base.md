@@ -15,7 +15,6 @@ TESTING
 - Use `sdk.TestContext`, return `ctx.report()`, and let `compile_model` own the baseline sanity/QC pass.
 - Prefer `TestContext(object_model)`; do not pass asset roots in new code.
 - Use `run_tests()` for prompt-specific exact checks, targeted pose checks, and explicit allowances only.
-- Treat overlap findings as classification tasks first: decide whether the reported intersection is intentional design embedding that should be covered by an element-scoped `ctx.allow_overlap(...)`, or an unintended collision that needs geometry, mount, or pose changes. Accepted intentional cases include proxy nesting, captured pins or shafts, seated trim, and compliant compression.
-- Pair every `ctx.allow_overlap(...)` with both named elements (`elem_a` and `elem_b`) and at least one exact proof check such as `expect_within(...)`, `expect_overlap(...)`, `expect_gap(..., max_penetration=...)`, `expect_contact(...)`, or a decisive pose check.
-- Do not use `allow_isolated_part(...)`, broad `allow_overlap(part_a, part_b)`, or `allow_disconnected_islands(..., allow_floating=True)` to make final-quality geometry pass. Fix the support path instead.
+- Treat overlap findings as classification tasks first: decide whether the reported intersection is intentional design embedding that should be covered by a scoped `ctx.allow_overlap(...)`, or an unintended collision that needs geometry, mount, or pose changes. Accepted intentional cases include proxy nesting, captured pins or shafts, seated trim, and compliant compression.
+- Pair every `ctx.allow_overlap(...)` with at least one exact proof check such as `expect_within(...)`, `expect_overlap(...)`, `expect_gap(..., max_penetration=...)`, `expect_contact(...)`, or a decisive pose check.
 </modeling>

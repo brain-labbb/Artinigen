@@ -1,21 +1,18 @@
 """Coverage gates for `articraft template compile-sweep`.
 
-Independent gates feed into the top-level verdict:
+Three independent gates feed into the top-level verdict:
 
-1. `enum_coverage` — every Literal[...] value declared on the template's
+1. `line_floor` — template file must be at least N lines (default 1000).
+2. `enum_coverage` — every Literal[...] value declared on the template's
    input Config dataclass must be exercised by at least one **passing** seed
    in the sweep. If a declared enum value never appears in the sample (or
    appears only in failing seeds), the gate fails and reports the missing
    pairs.
-2. `adopted_source` — if the corresponding spec markdown has an "Adopted
+3. `adopted_source` — if the corresponding spec markdown has an "Adopted
    Source Index" table, every `source_id` declared there must appear in the
    template as a `# adopted: <id>` marker (so structural reuse of 5-star
    sample code is auditable). If the spec is absent or has no table, the
    gate reports `status="skipped"` rather than failing.
-3. `anchor_geometry_match` (non-modular only) — single-anchor fingerprint
-   check.
-4. `module_topology_diversity` (modular only) — ≥5 distinct slot_choice
-   tuples across passing seeds.
 
 All gates produce structured per-gate JSON; the suite-level verdict is set
 elsewhere (in `run_sweep`) based on `gate.status` plus pass-rate.
@@ -37,6 +34,8 @@ from agent.template_sweep_anchor import (
     extract_fingerprint_from_anchor,
     extract_fingerprint_from_template,
 )
+
+DEFAULT_LINE_FLOOR = 1000
 
 # Temporary kill-switches for the new coverage gates.
 # Set to False while existing templates are grandfathered: the conventions
@@ -71,30 +70,26 @@ class CoverageGateResult:
 
 @dataclass(slots=True)
 class CoverageGates:
+    line_floor: CoverageGateResult
     enum_coverage: CoverageGateResult
     adopted_source: CoverageGateResult
     anchor_geometry_match: CoverageGateResult
-    module_topology_diversity: CoverageGateResult | None = None
 
     def _iter_gates(self):
-        gates = [
+        return (
+            self.line_floor,
             self.enum_coverage,
             self.adopted_source,
             self.anchor_geometry_match,
-        ]
-        if self.module_topology_diversity is not None:
-            gates.append(self.module_topology_diversity)
-        return tuple(gates)
+        )
 
     def to_dict(self) -> dict[str, Any]:
-        out: dict[str, Any] = {
+        return {
+            "line_floor": self.line_floor.to_dict(),
             "enum_coverage": self.enum_coverage.to_dict(),
             "adopted_source": self.adopted_source.to_dict(),
             "anchor_geometry_match": self.anchor_geometry_match.to_dict(),
         }
-        if self.module_topology_diversity is not None:
-            out["module_topology_diversity"] = self.module_topology_diversity.to_dict()
-        return out
 
     def all_pass_or_skipped(self) -> bool:
         return all(gate.status in {"pass", "skipped"} for gate in self._iter_gates())
@@ -104,7 +99,31 @@ class CoverageGates:
 
 
 # --------------------------------------------------------------------------- #
-# Gate: enum coverage
+# Gate 1: line floor
+# --------------------------------------------------------------------------- #
+
+
+def check_line_floor(line_count: int, *, floor: int = DEFAULT_LINE_FLOOR) -> CoverageGateResult:
+    if line_count >= floor:
+        return CoverageGateResult(
+            name="line_floor",
+            status="pass",
+            details={"line_count": line_count, "floor": floor},
+        )
+    return CoverageGateResult(
+        name="line_floor",
+        status="fail",
+        details={"line_count": line_count, "floor": floor},
+        reason=(
+            f"template has {line_count} lines, below the {floor}-line floor; "
+            "templates at this stage almost always need more parametric branches "
+            "or richer _build_* coverage to be production-quality."
+        ),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Gate 2: enum coverage
 # --------------------------------------------------------------------------- #
 
 
@@ -200,7 +219,7 @@ def check_enum_coverage(slug: str, outcomes: Sequence[SeedOutcome]) -> CoverageG
 
 
 # --------------------------------------------------------------------------- #
-# Gate: adopted source lint
+# Gate 3: adopted source lint
 # --------------------------------------------------------------------------- #
 
 _SOURCE_ID_RE = re.compile(r"^\|\s*(S\d+)\s*\|", re.MULTILINE)
@@ -299,7 +318,7 @@ def check_adopted_source(slug: str, *, repo_root: Path) -> CoverageGateResult:
 
 
 # --------------------------------------------------------------------------- #
-# Gate: anchor_geometry_match
+# Gate 4: anchor_geometry_match
 # --------------------------------------------------------------------------- #
 
 _PRIMARY_ANCHOR_RE = re.compile(
@@ -412,91 +431,6 @@ def check_anchor_geometry_match(
 
 
 # --------------------------------------------------------------------------- #
-# Modular-template detection + Gate: module_topology_diversity
-# --------------------------------------------------------------------------- #
-
-
-def _is_modular_template(slug: str) -> bool:
-    """A template opts into the modular regime by setting ``__modular__ = True``
-    at module scope (see ``agent/templates/_modular.py``). Modular templates
-    pick component modules per slot rather than emitting a single fixed part
-    tree, so anchor_geometry_match (a single-anchor full-fingerprint gate)
-    does not apply."""
-    try:
-        module = importlib.import_module(f"agent.templates.{slug}")
-    except Exception:  # noqa: BLE001 — non-modular fallback path
-        return False
-    return bool(getattr(module, "__modular__", False))
-
-
-def check_module_topology_diversity(
-    slug: str,
-    outcomes: Sequence[SeedOutcome],
-    *,
-    min_distinct: int = 5,
-) -> CoverageGateResult:
-    """Across the seeds in the sweep, the modular template must produce at
-    least ``min_distinct`` unique slot_choice tuples (the (slot, module)
-    list returned by ``slot_choices_for_seed``).
-
-    Only counts seeds that **passed** their per-seed compile — a topology
-    that always fails doesn't count toward diversity.
-    """
-    try:
-        module = importlib.import_module(f"agent.templates.{slug}")
-    except Exception as exc:  # noqa: BLE001
-        return CoverageGateResult(
-            name="module_topology_diversity",
-            status="fail",
-            details={"slug": slug, "error_kind": type(exc).__name__},
-            reason=f"could not import template: {type(exc).__name__}: {exc}",
-        )
-    if not hasattr(module, "slot_choices_for_seed"):
-        return CoverageGateResult(
-            name="module_topology_diversity",
-            status="skipped",
-            details={"slug": slug, "reason": "template has no slot_choices_for_seed()"},
-            reason=(
-                "template flagged __modular__ but does not export "
-                "slot_choices_for_seed(seed); cannot evaluate topology diversity."
-            ),
-        )
-
-    distinct: set[tuple[tuple[str, str], ...]] = set()
-    for outcome in outcomes:
-        if outcome.verdict != "pass":
-            continue
-        try:
-            picks = module.slot_choices_for_seed(outcome.seed)
-        except Exception:  # noqa: BLE001 — seed-specific failure shouldn't blow up the gate
-            continue
-        distinct.add(tuple((str(s), str(m)) for s, m in picks))
-
-    details = {
-        "min_distinct": min_distinct,
-        "observed_distinct": len(distinct),
-        "sample_combinations": sorted(["+".join(m for _, m in combo) for combo in distinct]),
-    }
-    if len(distinct) >= min_distinct:
-        return CoverageGateResult(
-            name="module_topology_diversity",
-            status="pass",
-            details=details,
-        )
-    return CoverageGateResult(
-        name="module_topology_diversity",
-        status="fail",
-        details=details,
-        reason=(
-            f"modular template {slug!r} produced only {len(distinct)} distinct "
-            f"slot_choice combinations across passing seeds (need >= {min_distinct}). "
-            "Either add more module candidates per slot, or widen the RNG so seeds "
-            "actually exercise the existing candidates."
-        ),
-    )
-
-
-# --------------------------------------------------------------------------- #
 # Aggregate
 # --------------------------------------------------------------------------- #
 
@@ -504,8 +438,10 @@ def check_module_topology_diversity(
 def evaluate_gates(
     *,
     slug: str,
+    line_count: int,
     outcomes: Sequence[SeedOutcome],
     repo_root: Path,
+    line_floor: int = DEFAULT_LINE_FLOOR,
 ) -> CoverageGates:
     if ADOPTED_SOURCE_GATE_ENABLED:
         adopted_source = check_adopted_source(slug, repo_root=repo_root)
@@ -533,30 +469,10 @@ def evaluate_gates(
                 "in agent/template_sweep_coverage.py)."
             ),
         )
-
-    is_modular = _is_modular_template(slug)
-    if is_modular:
-        # Modular templates pick component modules per seed; the
-        # whole-template single-anchor gate doesn't apply.
-        anchor_geometry_match = CoverageGateResult(
-            name="anchor_geometry_match",
-            status="skipped",
-            details={"modular": True},
-            reason=(
-                "template is flagged __modular__ — anchor responsibility is at "
-                "the module-interface level (validated at build time by the "
-                "assembler's _validate_pair). Diversity is enforced by the "
-                "module_topology_diversity gate instead."
-            ),
-        )
-        module_topology_diversity = check_module_topology_diversity(slug, outcomes)
-    else:
-        anchor_geometry_match = check_anchor_geometry_match(slug, repo_root=repo_root)
-        module_topology_diversity = None
-
+    anchor_geometry_match = check_anchor_geometry_match(slug, repo_root=repo_root)
     return CoverageGates(
+        line_floor=check_line_floor(line_count, floor=line_floor),
         enum_coverage=enum_coverage,
         adopted_source=adopted_source,
         anchor_geometry_match=anchor_geometry_match,
-        module_topology_diversity=module_topology_diversity,
     )

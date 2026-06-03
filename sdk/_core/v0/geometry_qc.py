@@ -39,24 +39,6 @@ def _aabb_size(aabb: AABB) -> Vec3:
     return (mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2])
 
 
-def _aabb_diag(aabb: AABB) -> float:
-    sx, sy, sz = _aabb_size(aabb)
-    return math.sqrt(sx * sx + sy * sy + sz * sz)
-
-
-def _aabb_volume(aabb: AABB) -> float:
-    sx, sy, sz = _aabb_size(aabb)
-    if sx <= 0.0 or sy <= 0.0 or sz <= 0.0:
-        return 0.0
-    return sx * sy * sz
-
-
-def _aabb_union(aabbs: Sequence[AABB]) -> AABB:
-    mns = tuple(min(a[0][i] for a in aabbs) for i in range(3))
-    mxs = tuple(max(a[1][i] for a in aabbs) for i in range(3))
-    return (mns, mxs)  # type: ignore[return-value]
-
-
 @dataclass(frozen=True)
 class _OBB:
     center: Vec3
@@ -327,18 +309,6 @@ class UnsupportedPartFinding:
 
 
 @dataclass(frozen=True)
-class UnsupportedVisualIslandFinding:
-    pose_index: int
-    pose: Dict[str, float]
-    component: Tuple[str, ...]
-    root_component: Tuple[str, ...]
-    nearest_element: Optional[str]
-    min_distance: Optional[float]
-    contact_tol: float
-    backend: str
-
-
-@dataclass(frozen=True)
 class JointOriginDistanceFinding:
     joint: str
     parent: str
@@ -355,15 +325,6 @@ class PartGeometryConnectivityFinding:
     total: int
     disconnected: Tuple[str, ...]
     contact_tol: float
-    # Part bounding-box diagonal, used to relativize the per-island gap/size below.
-    part_diag: float = 0.0
-    # One entry per disconnected island (non-largest connected group):
-    #   (label, gap_rel, size_rel)
-    # gap_rel  = AABB separation from the island to the largest group / part_diag
-    # size_rel = island AABB diagonal / part_diag
-    # These let callers tell a genuinely floating chunk (large gap + sizeable) from
-    # near-touching detail/repeats (sub-tolerance gap) without re-deriving geometry.
-    islands: Tuple[Tuple[str, float, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -401,16 +362,6 @@ class _CompiledCollisionEntry:
     name: Optional[str]
     geometry_name: str
     origin: Origin
-
-
-@dataclass(frozen=True)
-class _VisualSupportNode:
-    label: str
-    part_name: str
-    elem_name: Optional[str]
-    geometry_name: str
-    collision_obj: object
-    aabb: AABB
 
 
 def _transform_aabb(aabb: AABB, tf: Mat4) -> AABB:
@@ -1578,213 +1529,11 @@ def _find_unsupported_parts_physical(
     return findings
 
 
-def _entry_display_label(part_name: str, entry_index: int, entry: _CompiledCollisionEntry) -> str:
-    elem = entry.name if isinstance(entry.name, str) and entry.name.strip() else f"#{entry_index}"
-    return f"{part_name}/{elem}:{entry.geometry_name}"
-
-
-def _visual_support_tol(aabb_a: AABB, aabb_b: AABB) -> float:
-    min_diag = min(_aabb_diag(aabb_a), _aabb_diag(aabb_b))
-    if not math.isfinite(min_diag) or min_diag <= 0.0:
-        return 0.001
-    return max(0.001, min(0.006, 0.005 * min_diag))
-
-
-def _nondegenerate_aabb(aabb: AABB) -> bool:
-    return all(math.isfinite(v) for point in aabb for v in point) and _aabb_diag(aabb) > 1e-8
-
-
-def _supported_mating_pairs(compiled_model: object) -> set[tuple[str, str, str, str]]:
-    """Return (parent, parent_elem, child, child_elem) pairs whose MatingContract passes."""
-
-    failed_joints = {
-        finding.joint
-        for finding in find_joint_mating_findings(compiled_model, validate_model=False)
-    }
-    pairs: set[tuple[str, str, str, str]] = set()
-    joints = getattr(compiled_model, "articulations", None)
-    if not isinstance(joints, list):
-        return pairs
-    for joint in joints:
-        joint_name = str(getattr(joint, "name", "") or "")
-        if joint_name in failed_joints:
-            continue
-        mating = getattr(joint, "mating", None)
-        if mating is None:
-            continue
-        parent = getattr(joint, "parent", None)
-        child = getattr(joint, "child", None)
-        if not isinstance(parent, str) or not isinstance(child, str):
-            continue
-        pairs.add(
-            (
-                parent,
-                str(getattr(mating, "parent_face_geometry", "")),
-                child,
-                str(getattr(mating, "child_face_geometry", "")),
-            )
-        )
-    return pairs
-
-
-def _find_unsupported_visual_islands_physical(
-    model: object,
-    *,
-    asset_root: Optional[Path],
-    max_pose_samples: int,
-    contact_tol: float,
-    seed: int,
-    validate_model: bool = True,
-) -> List[UnsupportedVisualIslandFinding]:
-    compiled_model = compile_object_model_with_exact_collisions(
-        model,  # type: ignore[arg-type]
-        asset_root=asset_root,
-        validate=validate_model,
-    )
-    resolved_asset_root = resolve_asset_root(asset_root, compiled_model, model)
-    links, joints = _resolve_model_links_and_joints(compiled_model)
-    if not links:
-        return []
-
-    try:
-        import fcl  # type: ignore[import-not-found]
-    except Exception as exc:
-        raise ValidationError(
-            "find_unsupported_visual_islands(...) requires FCL support for contact queries."
-        ) from exc
-    if not all(hasattr(fcl, attr) for attr in ("distance", "DistanceRequest", "DistanceResult")):
-        raise ValidationError(
-            "find_unsupported_visual_islands(...) requires FCL distance queries "
-            "(`distance`, `DistanceRequest`, `DistanceResult`)."
-        )
-
-    poses = generate_pose_samples(compiled_model, max_samples=max_pose_samples, seed=int(seed))
-    mesh_cache: Dict[tuple[Path, Optional[Vec3]], object] = {}
-    support_from_mating = _supported_mating_pairs(compiled_model)
-    findings: list[UnsupportedVisualIslandFinding] = []
-    root_parts = set(_root_part_names([str(getattr(link, "name", "")) for link in links], joints))
-
-    for pose_index, pose in enumerate(poses):
-        tf = compute_part_world_transforms(compiled_model, pose)
-        nodes: list[_VisualSupportNode] = []
-        by_part_elem: dict[tuple[str, str], list[str]] = {}
-        for link in links:
-            part_name = getattr(link, "name", None)
-            if not isinstance(part_name, str) or not part_name:
-                continue
-            part_tf = tf.get(part_name, _identity4())
-            for entry_index, entry in enumerate(
-                _compiled_part_collision_entries(
-                    link,
-                    asset_root=resolved_asset_root,
-                    mesh_cache=mesh_cache,
-                    part_tf=part_tf,
-                )
-            ):
-                if not _nondegenerate_aabb(entry.aabb):
-                    continue
-                label = _entry_display_label(part_name, entry_index, entry)
-                node = _VisualSupportNode(
-                    label=label,
-                    part_name=part_name,
-                    elem_name=entry.name,
-                    geometry_name=entry.geometry_name,
-                    collision_obj=entry.collision_obj,
-                    aabb=entry.aabb,
-                )
-                nodes.append(node)
-                if isinstance(entry.name, str) and entry.name:
-                    by_part_elem.setdefault((part_name, entry.name), []).append(label)
-
-        if len(nodes) <= 1:
-            continue
-
-        node_by_label = {node.label: node for node in nodes}
-        adjacency: dict[str, set[str]] = {node.label: set() for node in nodes}
-        pair_min_distances: dict[tuple[str, str], float] = {}
-
-        for i in range(len(nodes)):
-            a = nodes[i]
-            for j in range(i + 1, len(nodes)):
-                b = nodes[j]
-                key = _pair_key(a.label, b.label)
-                aabb_sep = _aabb_separation_distance(a.aabb, b.aabb)
-                tol = max(float(contact_tol), _visual_support_tol(a.aabb, b.aabb))
-                pair_distance = float(aabb_sep)
-                pair_supported = False
-                if aabb_sep <= tol:
-                    collided, distance = _collision_pair_metrics(a.collision_obj, b.collision_obj)
-                    pair_distance = float(distance)
-                    pair_supported = bool(collided or distance <= tol)
-                pair_min_distances[key] = pair_distance
-                if pair_supported:
-                    adjacency[a.label].add(b.label)
-                    adjacency[b.label].add(a.label)
-
-        for parent, parent_elem, child, child_elem in support_from_mating:
-            for parent_label in by_part_elem.get((parent, parent_elem), ()):
-                for child_label in by_part_elem.get((child, child_elem), ()):
-                    if parent_label in adjacency and child_label in adjacency:
-                        adjacency[parent_label].add(child_label)
-                        adjacency[child_label].add(parent_label)
-                        pair_min_distances[_pair_key(parent_label, child_label)] = 0.0
-
-        components = _connected_components([node.label for node in nodes], adjacency)
-        root_components = [
-            component
-            for component in components
-            if any(node_by_label[label].part_name in root_parts for label in component)
-        ]
-
-        def _component_weight(component: tuple[str, ...]) -> tuple[float, float, int]:
-            aabbs = [node_by_label[label].aabb for label in component]
-            return (
-                sum(_aabb_volume(aabb) for aabb in aabbs),
-                _aabb_diag(_aabb_union(aabbs)),
-                len(component),
-            )
-
-        if root_components:
-            root_component = max(root_components, key=_component_weight)
-        else:
-            root_component = max(components, key=_component_weight)
-        grounded = set(root_component)
-
-        for component in components:
-            if any(label in grounded for label in component):
-                continue
-            nearest_element: Optional[str] = None
-            min_distance: Optional[float] = None
-            for label in component:
-                for grounded_label in grounded:
-                    distance = pair_min_distances.get(_pair_key(label, grounded_label))
-                    if distance is None:
-                        continue
-                    if min_distance is None or distance < min_distance:
-                        min_distance = float(distance)
-                        nearest_element = grounded_label
-            findings.append(
-                UnsupportedVisualIslandFinding(
-                    pose_index=pose_index,
-                    pose=dict(pose),
-                    component=tuple(component),
-                    root_component=tuple(root_component),
-                    nearest_element=nearest_element,
-                    min_distance=min_distance,
-                    contact_tol=float(contact_tol),
-                    backend="fcl",
-                )
-            )
-
-    return findings
-
-
 def find_joint_origin_distance_findings(
     model: object,
     *,
     asset_root: Optional[Path] = None,
     tol: float = 0.015,
-    bbox_relative: float = 0.0,
     validate_model: bool = True,
 ) -> List[JointOriginDistanceFinding]:
     compiled_model = compile_object_model_with_exact_collisions(
@@ -1842,16 +1591,6 @@ def find_joint_origin_distance_findings(
         if not parent_entries or not child_entries:
             continue
 
-        effective_tol = float(tol)
-        if bbox_relative > 0.0:
-            p_lo = [min(e.aabb[0][i] for e in parent_entries) for i in range(3)]
-            p_hi = [max(e.aabb[1][i] for e in parent_entries) for i in range(3)]
-            c_lo = [min(e.aabb[0][i] for e in child_entries) for i in range(3)]
-            c_hi = [max(e.aabb[1][i] for e in child_entries) for i in range(3)]
-            p_diag = math.sqrt(sum((p_hi[i] - p_lo[i]) ** 2 for i in range(3)))
-            c_diag = math.sqrt(sum((c_hi[i] - c_lo[i]) ** 2 for i in range(3)))
-            effective_tol = max(effective_tol, float(bbox_relative) * max(p_diag, c_diag))
-
         parent_distance = min(
             _collision_pair_metrics(parent_probe, entry.collision_obj)[1]
             for entry in parent_entries
@@ -1859,7 +1598,7 @@ def find_joint_origin_distance_findings(
         child_distance = min(
             _collision_pair_metrics(child_probe, entry.collision_obj)[1] for entry in child_entries
         )
-        if parent_distance > effective_tol or child_distance > effective_tol:
+        if parent_distance > float(tol) or child_distance > float(tol):
             findings.append(
                 JointOriginDistanceFinding(
                     joint=joint_name,
@@ -1867,7 +1606,7 @@ def find_joint_origin_distance_findings(
                     child=child_name,
                     parent_distance=float(parent_distance),
                     child_distance=float(child_distance),
-                    tol=float(effective_tol),
+                    tol=float(tol),
                 )
             )
     return findings
@@ -2084,7 +1823,6 @@ def find_part_geometry_connectivity_findings(
     *,
     asset_root: Optional[Path] = None,
     contact_tol: float = 1e-6,
-    relative_contact_tol: float = 0.0,
     validate_model: bool = True,
 ) -> List[PartGeometryConnectivityFinding]:
     compiled_model = compile_object_model_with_exact_collisions(
@@ -2112,13 +1850,6 @@ def find_part_geometry_connectivity_findings(
         if len(entries) <= 1:
             continue
 
-        # Relativize the contact tolerance to the part size so that sub-millimeter
-        # tessellation gaps and "resting on" decoration (beads, blade tips, panels)
-        # merge into the body instead of registering as spurious islands. Only ever
-        # loosens past the absolute floor.
-        part_diag = _aabb_diag(_aabb_union([entry.aabb for entry in entries]))
-        effective_tol = max(float(contact_tol), float(relative_contact_tol) * part_diag)
-
         remaining = set(range(len(entries)))
         connected_groups: list[set[int]] = []
         while remaining:
@@ -2133,7 +1864,7 @@ def find_part_geometry_connectivity_findings(
                     collided, distance = _collision_pair_metrics(
                         current_obj, candidate.collision_obj
                     )
-                    if collided or distance <= effective_tol:
+                    if collided or distance <= float(contact_tol):
                         current_group.add(idx)
                         queue.append(idx)
             connected_groups.append(current_group)
@@ -2143,42 +1874,23 @@ def find_part_geometry_connectivity_findings(
         if len(largest_group) == len(entries):
             continue
 
-        def _entry_label(idx: int) -> str:
-            entry = entries[idx]
-            item_name = entry.name
-            if isinstance(item_name, str) and item_name:
-                return f"{item_name}:{entry.geometry_name}"
-            return f"#{idx}:{entry.geometry_name}"
-
-        main_aabbs = [entries[idx].aabb for idx in largest_group]
         disconnected: list[str] = []
-        islands: list[tuple[str, float, float]] = []
-        for group in connected_groups:
-            if group is largest_group:
+        for idx, entry in enumerate(entries):
+            if idx in largest_group:
                 continue
-            group_indices = sorted(group)
-            for idx in group_indices:
-                disconnected.append(_entry_label(idx))
-            group_aabbs = [entries[idx].aabb for idx in group_indices]
-            gap = min(
-                _aabb_separation_distance(island_aabb, main_aabb)
-                for island_aabb in group_aabbs
-                for main_aabb in main_aabbs
-            )
-            island_diag = _aabb_diag(_aabb_union(group_aabbs))
-            gap_rel = (gap / part_diag) if part_diag > 0.0 else 0.0
-            size_rel = (island_diag / part_diag) if part_diag > 0.0 else 0.0
-            label = ", ".join(_entry_label(idx) for idx in group_indices)
-            islands.append((label, gap_rel, size_rel))
+            item_name = entry.name
+            geometry_name = entry.geometry_name
+            if isinstance(item_name, str) and item_name:
+                disconnected.append(f"{item_name}:{geometry_name}")
+            else:
+                disconnected.append(f"#{idx}:{geometry_name}")
         findings.append(
             PartGeometryConnectivityFinding(
                 part=part_name,
                 connected=len(largest_group),
                 total=len(entries),
                 disconnected=tuple(disconnected),
-                contact_tol=float(effective_tol),
-                part_diag=part_diag,
-                islands=tuple(islands),
+                contact_tol=float(contact_tol),
             )
         )
     return findings
@@ -2202,34 +1914,6 @@ def find_unsupported_parts(
     flagged even when those parts still touch each other.
     """
     return _find_unsupported_parts_physical(
-        model,
-        asset_root=asset_root,
-        max_pose_samples=max_pose_samples,
-        contact_tol=float(contact_tol),
-        seed=int(seed),
-        validate_model=validate_model,
-    )
-
-
-def find_unsupported_visual_islands(
-    model: object,
-    *,
-    asset_root: Optional[Path] = None,
-    max_pose_samples: int = 1,
-    contact_tol: float = 1e-6,
-    seed: int = 0,
-    validate_model: bool = True,
-) -> List[UnsupportedVisualIslandFinding]:
-    """
-    Find visible visual-element components that have no contact path to the
-    object's grounded support component.
-
-    Unlike part-level support, this operates on every compiled visual/collision
-    element, including disconnected elements inside the same part. A disconnected
-    detail is valid only when it touches, slightly embeds into, or is supported by
-    some other visible geometry.
-    """
-    return _find_unsupported_visual_islands_physical(
         model,
         asset_root=asset_root,
         max_pose_samples=max_pose_samples,

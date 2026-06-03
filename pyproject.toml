@@ -94,22 +94,7 @@ exclude-newer-package = { anthropic = "2026-05-12T00:00:00Z" }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Use `-n0` on an invocation to force serial execution for debugging.
-# Per-template asset tests (`test_<slug>_template.py`) are auto-tagged
-# `template_asset` (see tests/agent/conftest.py) and excluded by default: the
-# authoritative signal for a template is `compile-sweep`, not pytest. Run them
-# explicitly with `pytest -m template_asset` (a command-line `-m` overrides the
-# default below). The sweep/coverage ENGINE tests are not tagged and still run.
-addopts = [
-    "--import-mode=importlib",
-    "-n",
-    "auto",
-    "--dist=worksteal",
-    "-m",
-    "not template_asset",
-]
-markers = [
-    "template_asset: per-template structure-lock test; optional, excluded from the default run",
-]
+addopts = ["--import-mode=importlib", "-n", "auto", "--dist=worksteal"]
 
 [tool.ruff]
 line-length = 100

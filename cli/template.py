@@ -58,26 +58,14 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     "desk_with_drawer_card_catalog": "desk_with_drawer",
     "desktop_monitor_with_tilt_swivel_stand": "desktop_monitor",
     "monitor_mount": "monitor_mount",
+    "paper_cutter_guillotine": "paper_cutter_guillotine",
     "desktop_pc_tower": "desktop_pc_tower",
     "display_freezer_with_sliding_glass_lids": "display_freezer",
     "dj_equipment": "dj_equipment",
     "drone": "drone",
-    "traditional_windmill": "traditional_windmill",
-    "overshot_waterwheel": "overshot_waterwheel",
-    "globe": "globe",
-    "parabolic_dish_on_azimuth_elevation_mount": "parabolic_dish",
-    "satellite_with_articulated_solar_panels": "satellite_with_articulated_solar_panels",
-    "single_rotor_helicopter": "single_rotor_helicopter",
-    "turntable": "turntable",
-    "bell_tower_with_swinging_bell": "bell_tower_with_swinging_bell",
-    "turnstile_gates": "turnstile_gates",
     "graphics_card_with_cooling_fans": "graphics_card",
-    "lighthouse_with_rotating_beacon_assembly": "lighthouse_with_rotating_beacon_assembly",
     "louvered_shutter_assembly": "louvered_shutter",
-    "metronome": "metronome",
-    "paper_cutter_guillotine": "paper_cutter_guillotine",
     "retractable_utility_knife": "retractable_utility_knife",
-    "singleleaf_drawbridge": "singleleaf_drawbridge",
     "screwcap_bottle": "screwcap_bottle",
     "screwin_light_bulb_with_socket": "screwin_light_bulb_with_socket",
     "serial_elbow_arm": "serial_elbow_arm",
@@ -85,6 +73,8 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     "sliding_window": "sliding_window",
     "tackle_box_with_simple_hinged_lid": "tackle_box",
     "telescoping_boom": "telescoping_boom",
+    "turntable": "turntable",
+    "wind_turbine": "wind_turbine",
     "standing_desk_with_synchronous_telescoping_legs_and_articulated_controls": "standing_desk",
     "platform_cart": "platform_cart",
     "rolling_toolbox_with_telescoping_handle": "rolling_toolbox",
@@ -92,20 +82,6 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     "revolving_door": "revolving_door",
     "simple_aframe_step_ladder": "simple_aframe_step_ladder",
     "stand_mixer": "stand_mixer",
-    # Pre-registered for in-progress modular templates (specs approved; .py may
-    # not exist yet — registry only builds CLI choices, the module is imported
-    # lazily at compile-sweep time, so unwritten slugs are safe here).
-    "single_revolute_hinge": "single_revolute_hinge",
-    "threestage_telescoping_slide": "threestage_telescoping_slide",
-    "twojoint_prismatic_chain": "twojoint_prismatic_chain",
-    "twojoint_revolute_chain": "twojoint_revolute_chain",
-    "usb_drive_with_swivel_cover": "usb_drive_with_swivel_cover",
-    "wheelbarrow": "wheelbarrow",
-    "wheelie_bin_with_hinged_lid": "wheelie_bin_with_hinged_lid",
-    "wind_turbine": "wind_turbine",
-    "zippo_lighter": "zippo_lighter",
-    "robotic_arms": "robotic_arms",
-    "robotic_leg": "robotic_leg",
 }
 
 GENERIC_MODEL_TEMPLATE = """from __future__ import annotations
@@ -324,17 +300,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(f"Minimum pass_rate required for verdict=pass (default {DEFAULT_PASS_THRESHOLD})."),
     )
     sweep.add_argument(
-        "--quality-profile",
-        choices=("final", "dev", "legacy"),
-        default="final",
-        help=(
-            "Quality gate profile. final is the default final-template gate "
-            "(all sampled seeds must pass and high-risk allowances fail); dev "
-            "keeps threshold-based iteration but reports quality risk; legacy "
-            "keeps pre-final behavior for historical debugging."
-        ),
-    )
-    sweep.add_argument(
         "--max-workers",
         type=int,
         default=None,
@@ -361,6 +326,12 @@ def _build_parser() -> argparse.ArgumentParser:
             "Defaults to <repo_root>/.articraft/template_sweep_state when omitted. "
             "Pass an empty string to disable streak tracking."
         ),
+    )
+    sweep.add_argument(
+        "--line-floor",
+        type=int,
+        default=1000,
+        help="Minimum line count for the line_floor gate (default 1000).",
     )
     sweep.add_argument(
         "--compile-timeout",
@@ -403,11 +374,11 @@ def compile_sweep(
     stem: str,
     seeds: list[int],
     pass_threshold: float,
-    quality_profile: str,
     max_workers: int | None,
     sdk_package: str,
     out_path: Path | None,
     state_dir: Path | None,
+    line_floor: int,
     compile_timeout_s: float,
     quiet: bool,
 ) -> int:
@@ -419,10 +390,10 @@ def compile_sweep(
             seeds=seeds,
             sdk_package=sdk_package,
             pass_threshold=pass_threshold,
-            quality_profile=quality_profile,
             max_workers=max_workers,
             progress=progress,
             state_dir=state_dir,
+            line_floor=line_floor,
             compile_timeout_s=compile_timeout_s,
         )
     except (FileNotFoundError, AttributeError, ValueError) as exc:
@@ -465,11 +436,11 @@ def main(argv: list[str] | None = None) -> int:
             stem=TEMPLATE_REGISTRY[args.slug],
             seeds=seeds,
             pass_threshold=float(args.pass_threshold),
-            quality_profile=str(args.quality_profile),
             max_workers=(None if args.max_workers is None else int(args.max_workers)),
             sdk_package=str(args.sdk_package),
             out_path=args.out,
             state_dir=state_dir,
+            line_floor=int(args.line_floor),
             compile_timeout_s=float(args.compile_timeout),
             quiet=bool(args.quiet),
         )

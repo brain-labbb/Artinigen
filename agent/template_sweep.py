@@ -35,7 +35,7 @@ from agent.compiler import compile_urdf_report
 from agent.feedback import compile_signal_bundle_from_exception
 from agent.models import CompileSignal
 
-DEFAULT_PASS_THRESHOLD = 0.85
+DEFAULT_PASS_THRESHOLD = 0.95
 DEFAULT_SEED_COUNT = 50
 DEFAULT_COMPILE_TIMEOUT_S = 60.0
 
@@ -79,12 +79,9 @@ class SeedOutcome:
     failure_type_normalized: str | None
     failure_details: str | None
     elapsed_s: float
-    warnings: list[str] = field(default_factory=list)
-    signal_summary: str | None = None
-    quality_report: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        payload = {
+        return {
             "seed": self.seed,
             "verdict": self.verdict,
             "config": self.config,
@@ -93,24 +90,6 @@ class SeedOutcome:
             "failure_details": self.failure_details,
             "elapsed_s": self.elapsed_s,
         }
-        if self.warnings:
-            payload["warnings"] = list(self.warnings)
-        if self.signal_summary is not None:
-            payload["signal_summary"] = self.signal_summary
-        if self.quality_report is not None:
-            payload["quality_report"] = dict(self.quality_report)
-            summary = self.quality_report.get("quality_summary")
-            gates = self.quality_report.get("quality_gates")
-            if isinstance(summary, dict):
-                payload["quality_summary"] = dict(summary)
-            if isinstance(gates, dict):
-                payload["quality_gates"] = dict(gates)
-                payload["quality_gate_failures"] = [
-                    name
-                    for name, gate in gates.items()
-                    if isinstance(gate, dict) and gate.get("status") == "fail"
-                ]
-        return payload
 
 
 @dataclass(slots=True)
@@ -126,7 +105,6 @@ class SweepReport:
     line_count: int
     pass_rate: float
     pass_threshold: float
-    quality_profile: str
     verdict: str
     elapsed_s: float
     failure_clusters: list[Any] = field(default_factory=list)
@@ -134,7 +112,6 @@ class SweepReport:
     escalation: dict[str, Any] | None = None
     coverage_gates: dict[str, Any] | None = None
     extra: dict[str, Any] = field(default_factory=dict)
-    seed_outcomes: list[SeedOutcome] = field(default_factory=list)
 
     def _cluster_dict(self, cluster: Any) -> dict[str, Any]:
         d = cluster.to_dict()
@@ -149,14 +126,10 @@ class SweepReport:
             "seeds_requested": self.seeds_requested,
             "passed_seeds": self.passed_seeds,
             "failed_seeds": [outcome.to_dict() for outcome in self.failed_outcomes],
-            "seed_outcomes": [
-                outcome.to_dict() for outcome in (self.seed_outcomes or self.failed_outcomes)
-            ],
             "failure_clusters": [self._cluster_dict(c) for c in self.failure_clusters],
             "line_count": self.line_count,
             "pass_rate": self.pass_rate,
             "pass_threshold": self.pass_threshold,
-            "quality_profile": self.quality_profile,
             "verdict": self.verdict,
             "elapsed_s": self.elapsed_s,
         }
@@ -230,11 +203,6 @@ def _extract_failure(exc: BaseException) -> tuple[str, str]:
     return type(exc).__name__, str(exc)
 
 
-def _quality_report_from_exception(exc: BaseException) -> dict[str, Any] | None:
-    quality_report = getattr(exc, "compile_quality_report", None)
-    return dict(quality_report) if isinstance(quality_report, dict) else None
-
-
 def _line_count(path: Path) -> int:
     try:
         with path.open("r", encoding="utf-8") as fp:
@@ -257,13 +225,7 @@ def _resolve_config_from_seed(slug: str, seed: int) -> Any:
     return config_from_seed(seed)
 
 
-def _compile_one(
-    slug: str,
-    stem: str,
-    seed: int,
-    sdk_package: str,
-    quality_profile: str,
-) -> SeedOutcome:
+def _compile_one(slug: str, stem: str, seed: int, sdk_package: str) -> SeedOutcome:
     """Run a single (slug, seed) compile and return its outcome.
 
     Designed to be safe in either main process or a subprocess.
@@ -278,17 +240,15 @@ def _compile_one(
             encoding="utf-8",
         )
         try:
-            report = compile_urdf_report(
+            compile_urdf_report(
                 script_path,
                 sdk_package=sdk_package,
                 run_checks=True,
                 target="full",
                 rewrite_visual_glb=False,
-                quality_profile=quality_profile,
             )
         except Exception as exc:  # noqa: BLE001 — captured into structured outcome
             failure_type, details = _extract_failure(exc)
-            bundle = compile_signal_bundle_from_exception(exc)
             return SeedOutcome(
                 seed=seed,
                 verdict="fail",
@@ -297,9 +257,6 @@ def _compile_one(
                 failure_type_normalized=_normalize_failure_type(failure_type),
                 failure_details=details,
                 elapsed_s=time.monotonic() - start,
-                warnings=[str(item) for item in getattr(exc, "warnings", []) or []],
-                signal_summary=bundle.summary,
-                quality_report=_quality_report_from_exception(exc),
             )
     return SeedOutcome(
         seed=seed,
@@ -309,9 +266,6 @@ def _compile_one(
         failure_type_normalized=None,
         failure_details=None,
         elapsed_s=time.monotonic() - start,
-        warnings=[str(item) for item in report.warnings],
-        signal_summary=report.signal_bundle.summary,
-        quality_report=report.quality_report,
     )
 
 
@@ -321,7 +275,7 @@ import sys
 import traceback
 from agent.template_sweep import _compile_one
 try:
-    outcome = _compile_one({slug!r}, {stem!r}, {seed}, {sdk_package!r}, {quality_profile!r})
+    outcome = _compile_one({slug!r}, {stem!r}, {seed}, {sdk_package!r})
     sys.stdout.write(json.dumps(outcome.to_dict()))
 except BaseException as exc:
     sys.stderr.write(traceback.format_exc())
@@ -338,15 +292,6 @@ def _seed_outcome_from_dict(payload: dict) -> SeedOutcome:
         failure_type_normalized=payload.get("failure_type_normalized"),
         failure_details=payload.get("failure_details"),
         elapsed_s=float(payload.get("elapsed_s") or 0.0),
-        warnings=[str(item) for item in payload.get("warnings") or []],
-        signal_summary=(
-            None if payload.get("signal_summary") is None else str(payload.get("signal_summary"))
-        ),
-        quality_report=(
-            dict(payload["quality_report"])
-            if isinstance(payload.get("quality_report"), dict)
-            else None
-        ),
     )
 
 
@@ -379,40 +324,11 @@ def _subprocess_crash_outcome(seed: int, returncode: int, stderr: str) -> SeedOu
     )
 
 
-def _quality_summary_for_outcomes(outcomes: Iterable[SeedOutcome]) -> dict[str, Any]:
-    totals = {
-        "unsupported_visual_islands": 0,
-        "broad_overlap_allowances": 0,
-        "floating_allowances": 0,
-        "isolated_allowances": 0,
-        "sampled_pose_failures": 0,
-    }
-    failed_quality_gates: dict[str, list[int]] = {}
-    for outcome in outcomes:
-        report = outcome.quality_report or {}
-        summary = report.get("quality_summary")
-        if isinstance(summary, dict):
-            for key in totals:
-                value = summary.get(key)
-                if isinstance(value, (int, float)):
-                    totals[key] += int(value)
-        gates = report.get("quality_gates")
-        if isinstance(gates, dict):
-            for name, gate in gates.items():
-                if isinstance(gate, dict) and gate.get("status") == "fail":
-                    failed_quality_gates.setdefault(str(name), []).append(outcome.seed)
-    return {
-        "totals": totals,
-        "failed_gates": failed_quality_gates,
-    }
-
-
 def _compile_one_via_subprocess(
     slug: str,
     stem: str,
     seed: int,
     sdk_package: str,
-    quality_profile: str,
     *,
     timeout_s: float,
     repo_root: Path,
@@ -422,11 +338,7 @@ def _compile_one_via_subprocess(
     `compile_timeout` SeedOutcome is returned so the sweep can continue past
     templates that hang inside non-Python-interruptible QC code (e.g. fcl)."""
     code = _SUBPROCESS_WORKER_SOURCE.format(
-        slug=slug,
-        stem=stem,
-        seed=seed,
-        sdk_package=sdk_package,
-        quality_profile=quality_profile,
+        slug=slug, stem=stem, seed=seed, sdk_package=sdk_package
     )
     try:
         proc = subprocess.run(
@@ -456,7 +368,6 @@ def _run_seeds_sequential(
     stem: str,
     seeds: Iterable[int],
     sdk_package: str,
-    quality_profile: str,
     progress: Callable[[SeedOutcome], None] | None = None,
     *,
     compile_timeout_s: float = 0.0,
@@ -470,12 +381,11 @@ def _run_seeds_sequential(
                 stem,
                 seed,
                 sdk_package,
-                quality_profile,
                 timeout_s=compile_timeout_s,
                 repo_root=repo_root or Path(__file__).resolve().parents[1],
             )
         else:
-            outcome = _compile_one(slug, stem, seed, sdk_package, quality_profile)
+            outcome = _compile_one(slug, stem, seed, sdk_package)
         outcomes.append(outcome)
         if progress is not None:
             progress(outcome)
@@ -487,7 +397,6 @@ def _run_seeds_parallel(
     stem: str,
     seeds: list[int],
     sdk_package: str,
-    quality_profile: str,
     max_workers: int,
     progress: Callable[[SeedOutcome], None] | None = None,
     *,
@@ -518,7 +427,6 @@ def _run_seeds_parallel(
                     stem,
                     seed,
                     sdk_package,
-                    quality_profile,
                     timeout_s=compile_timeout_s,
                     repo_root=root,
                 ): seed
@@ -545,8 +453,7 @@ def _run_seeds_parallel(
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         future_map = {
-            executor.submit(_compile_one, slug, stem, seed, sdk_package, quality_profile): seed
-            for seed in seeds
+            executor.submit(_compile_one, slug, stem, seed, sdk_package): seed for seed in seeds
         }
         for future in concurrent.futures.as_completed(future_map):
             seed = future_map[future]
@@ -575,11 +482,11 @@ def run_sweep(
     seeds: list[int],
     sdk_package: str = "sdk",
     pass_threshold: float = DEFAULT_PASS_THRESHOLD,
-    quality_profile: str = "final",
     max_workers: int | None = None,
     repo_root: Path | None = None,
     progress: Callable[[SeedOutcome], None] | None = None,
     state_dir: Path | None = None,
+    line_floor: int = 1000,
     compile_timeout_s: float = 0.0,
 ) -> SweepReport:
     """Run a multi-seed compile sweep and return the structured report.
@@ -592,9 +499,6 @@ def run_sweep(
     """
     if not seeds:
         raise ValueError("seeds must contain at least one entry")
-    quality_profile_key = str(quality_profile or "final").strip().lower()
-    if quality_profile_key not in {"final", "dev", "legacy"}:
-        raise ValueError("quality_profile must be one of: final, dev, legacy")
     repo_root = repo_root or Path(__file__).resolve().parents[1]
     template_path = _template_module_path(slug, repo_root=repo_root)
     if not template_path.exists():
@@ -608,7 +512,6 @@ def run_sweep(
             stem,
             seeds,
             sdk_package,
-            quality_profile_key,
             progress,
             compile_timeout_s=compile_timeout_s,
             repo_root=repo_root,
@@ -619,7 +522,6 @@ def run_sweep(
             stem,
             seeds,
             sdk_package,
-            quality_profile_key,
             workers,
             progress,
             compile_timeout_s=compile_timeout_s,
@@ -647,18 +549,13 @@ def run_sweep(
 
     gates = evaluate_gates(
         slug=slug,
+        line_count=line_count,
         outcomes=outcomes,
         repo_root=repo_root,
+        line_floor=line_floor,
     )
 
-    quality_summary = _quality_summary_for_outcomes(outcomes)
-    if quality_profile_key == "final":
-        quality_ok = not quality_summary.get("failed_gates")
-        threshold_ok = pass_rate == 1.0
-    else:
-        quality_ok = True
-        threshold_ok = pass_rate >= pass_threshold
-    verdict = "pass" if threshold_ok and quality_ok and gates.all_pass_or_skipped() else "fail"
+    verdict = "pass" if pass_rate >= pass_threshold and gates.all_pass_or_skipped() else "fail"
 
     cluster_streaks: dict[str, int] = {sig: 1 for sig in cluster_signatures}
     escalation_payload: dict[str, Any] | None = None
@@ -686,15 +583,12 @@ def run_sweep(
         line_count=line_count,
         pass_rate=round(pass_rate, 6),
         pass_threshold=pass_threshold,
-        quality_profile=quality_profile_key,
         verdict=verdict,
         elapsed_s=round(elapsed, 3),
         failure_clusters=clusters,
         cluster_streaks=cluster_streaks,
         escalation=escalation_payload,
         coverage_gates=gates.to_dict(),
-        extra={"quality_summary": quality_summary},
-        seed_outcomes=outcomes,
     )
 
 

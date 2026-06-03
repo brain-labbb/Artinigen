@@ -1,7 +1,6 @@
-# Modular Spec Review Template
+# Spec Review Template
 
-用于人工审核 agent 写出的 `articraft_template_authoring/specs/<slug>.md`。
-包括**槽位 / 候选模块 / 拓扑组合**的审核维度。
+用于人工审核 agent 写出的 `specs/<category_slug>.md`。
 
 ## Review Target
 
@@ -10,76 +9,28 @@
 | category_slug | <category_slug> |
 | spec path | articraft_template_authoring/specs/<category_slug>.md |
 | reviewer status | pending / approved / rejected |
-| pattern | <linear_chain / parallel_children / multiplicity / mixed> |
 
 ## 必查项
 
-### 样本阅读完整性
-
-- [ ] agent 是否声明已枚举并完整读取该类别**全部** 5 星样本的
-      `model.py / revision.json / record.json / prompt`（不允许抽样）。
-- [ ] 已读但未采纳为模块来源的样本，是否在阅读摘要里列出并写了未采纳理由。
-
-### 槽位设计
-
-- [ ] 槽位数是否落在 **2-4** 之间。
-- [ ] 如果是 5 个或以上，是否有理由（一般要折叠为 multiplicity）。
-- [ ] 槽位之间是否**物理可串/并**（chain 的相邻 mating face 在 5 星样本里
-      真实存在；parallel children 的所有 child 都能 parent 到同一 chassis）。
-- [ ] 每个槽位代表的是**独立的结构变化轴**，不是同一个 part 的装饰变化。
-
-### 候选模块设计
-
-- [ ] **每槽位至少 3 个候选模块**。如果不足 3 个，spec 必须给出明确理由
-      （比如某类别 5 星样本只有 2 种结构家族），且降级到 2，不能 1。
-- [ ] 每个候选模块都有 `model.py:Lx-Ly` 引用来自一个真实 5 星样本。
-- [ ] 每个候选模块是**结构性差异**（不同 part 数 / 不同 joint 拓扑 /
-      不同主 mesh），而不是参数微调换皮（颜色、比例、装饰位置）。
-- [ ] 每槽位**恰好标了一个 seed=0 anchor**。
-- [ ] anchor module 是从某个真实 5 星样本来的（不能是 agent 自己设计的
-      合成结构）。
-
-### 槽位图（pattern）
-
-- [ ] `pattern` 字段对（linear_chain / parallel_children / multiplicity / mixed）。
-- [ ] 如果是 `multiplicity`，是否明确写了可采样 `N_min..N_max`、离散集合
-      或固定 N 个同构复制件；范围是否合理、有来源或 reviewer-gated 外推说明
-      （例如 fan blades 3-8、arm links 1-5、three branches fixed 3），且不是
-      只写抽象的 `N` 或把固定单件硬写成 `*_count=fixed 1`。
-- [ ] 如果是 `parallel_children`，spec 是否说清楚 chassis 模块怎么暴露
-      共用 attachment surface。
-
-### 拓扑多样性
-
-- [ ] spec 的"拓扑多样性审计"算出来的总组合数 ≥ 8（最低吃饱
-      `module_topology_diversity ≥ 5`）。
-- [ ] 多样性源是**模块级**变化（结构性），不是参数级。
-
-### Parts / Joints
-
-- [ ] 每槽位的每个 module 都列出了它会 emit 的 part 列表。
-- [ ] joint 表覆盖：chain joints（slot 间） + internal joints（slot 内部）。
-- [ ] 关节 type / axis / origin / range 明确。
-- [ ] 标出哪些 joint 准备 grandfather（no MatingContract）—— 一般是
-      pin-through-sleeve / 多体 captured pivot 这种 MatingContract 建模不了
-      的几何。
-
-
-
-- [ ] 这个类别确实**值得用 modular**（5 星样本拓扑显著不同），不是
-      结构性变化不足的类别。
-- [ ] 跟已有 spec 没有重复（
-      要说清两个 spec 的覆盖边界）。
-
-### Validator / Reject
-
-- [ ] Validator 列了 author_run_tests 该检查的关键点。
-- [ ] Reject cases 覆盖了哪些样本应该被识别为不属于这个模板。
-
-### 实现可行性提示
-
-- [ ] 是否有"模板实现备注"说明哪些 helper 共享、哪些 inter-part 重叠
-      预期、哪些 joint grandfather。
+- [ ] agent 是否声明已枚举并完整读取该类别全部 5 星样本的 `model.py / revision.json / record.json`。
+- [ ] spec 是否只保留被采纳为模板依据的 `model.py:Lx-Ly` 来源索引，没有把已读但未采用的样本索引塞进来。
+- [ ] Parts / Joints / 关键参数的来源索引是否来自适合模板复用的 5 星样本代码片段。
+- [ ] 核心身份是否清楚，能否区分相邻类别。
+- [ ] required parts 是否过多，是否混入了单样本特有装饰。
+- [ ] optional parts 是否合理。
+- [ ] 关节 type / axis / origin / range 是否明确。
+- [ ] 参数是否能产生结构级变化，而不是只换色。
+- [ ] 是否包含 `部件多样性审计（Part Diversity Audit）`。
+- [ ] 审计是否覆盖所有核心部件类型，而不是只检查整机有没有 enum。
+- [ ] 若某部件存在连续尺寸无法表达的定性差异，是否补了 `*_shape / *_style / *_profile / *_variant / *_layout`。
+- [ ] 若某部件没有观察到多样性，是否记录 `observed_variation = none`；若只有尺寸/角度变化，是否说明连续参数足够。
+- [ ] `已有模板写法参考` 是否只用于定位旧 11 个 gold-standard 模板的骨架、SDK 写法、测试风格，以及新 20+ 模板的二级经验，而不是决定或替代被采纳的 5 星样本源码片段。
+- [ ] 若 spec 覆盖多个不兼容主运动 spine，是否已标注建议拆分 slug 或明确模板阶段只实现的稳定子域。
+- [ ] spec 中被采纳的 5 星样本片段是否足够支持后续模板 helper / part / joint 的实际源码改编，而不是只作为阅读引用。
+- [ ] 参数表是否支持拓扑匹配的约束派生：先确定外壳 / frame / base / rail / hinge line / axis / socket / contact plane / symmetry plane 等主约束基准，再派生数量、尺寸、origin、orientation、joint range；没有把抽屉柜公式机械套到其他拓扑。
+- [ ] 关节表是否体现真实部件语义：父件、子件、closed pose、运动方向、axis、origin、range 都明确。
+- [ ] Validator 是否能转成测试。
+- [ ] Reject cases 是否覆盖关键失败模式。
 
 ## 审核结论
 
@@ -87,24 +38,12 @@
 approved / rejected
 ```
 
-把 spec frontmatter 的 `status` 改成相应值。
-
 ## 修改意见
 
 ```text
 ...
 ```
 
-## 审核通过后的实现阶段提醒
+## Template 阶段提醒
 
-审核通过后 agent 进入 TEMPLATE_AFTER_REVIEW 阶段。重点提醒：
-
-- **3 个 reference 模板**（knife / monitor_mount /
-  dj_equipment）是 modular 模板的骨架来源，**不**直接用旧 11 个
-  gold-standard 模板的代码骨架。
-- 实现阶段必须读 `MATURE_METHOD.md` 和根
-  `MODULAR_TEMPLATE_AUTHORING.md`。
-- 完工标准：final sweep `verdict=pass`, `pass_rate == 1.0`,
-  `quality_summary.failed_gates == {}`, diversity ≥ 5,
-  10 seed batch viewer 自检干净。
-- 单类别串行 + 自闭环修，最多 2-3 个同族模板一组推进。
+审核通过后，agent 写模板时应优先改编 spec 中已采纳并带 `model.py:Lx-Ly` 索引的 5 星样本部件 / 关节 / 参数代码。模板文件至少 1000 行，且 1000 是下限不是上限。旧 11 个 gold-standard 模板用于统一代码结构、SDK 用法、palette、validator 和测试风格；新 20+ 模板可作为拆分、seed domain、QC/预览修复和测试断言的二级参考；`MATURE_TEMPLATE_METHOD.md` 用于决定拆分/收窄、参数化、拓扑匹配的空间约束、joint 语义、seed domain、`resolve_config`、QC 和自动调参闭环。抽屉柜 envelope-first 只是一个约束例子，不是通用公式。多类别模板实现必须逐个或最多 2-3 个同族模板一组推进；测试、QC、预览和明显调参问题必须由 agent 自己闭环解决。

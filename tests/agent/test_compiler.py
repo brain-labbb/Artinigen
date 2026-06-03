@@ -16,8 +16,6 @@ def _write_isolated_part_model_script(
     *,
     allowed_part: str | None = None,
     disconnected_base: bool = False,
-    allow_disconnected_base: bool = False,
-    allow_floating_base: bool = False,
 ) -> None:
     # Layout (z-up):
     #   base    : visual at z-extent [0.00, 0.10] (centered at z=0.05)
@@ -74,14 +72,8 @@ def _write_isolated_part_model_script(
         lines.append(
             f"    ctx.allow_isolated_part({allowed_part!r}, reason='intentionally freestanding decorative part')"
         )
-    if allow_disconnected_base:
-        floating_kwarg = ", allow_floating=True" if allow_floating_base else ""
-        lines.append(
-            "    ctx.allow_disconnected_islands('base', "
-            f"reason='base is intentionally two separate plates'{floating_kwarg})"
-        )
     lines.append("    ctx.fail_if_isolated_parts()")
-    if disconnected_base and not allow_disconnected_base:
+    if disconnected_base:
         lines.append("    ctx.warn_if_part_contains_disconnected_geometry_islands()")
     lines.extend(
         [
@@ -91,15 +83,7 @@ def _write_isolated_part_model_script(
     script_path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def _write_overlap_allowance_model_script(
-    script_path: Path, *, element_level: bool = False
-) -> None:
-    allowance_line = (
-        "    ctx.allow_overlap('base', 'child', elem_a='base_box', elem_b='child_box', "
-        "reason='named bearing sleeve nests into the mount')"
-        if element_level
-        else "    ctx.allow_overlap('base', 'child', reason='bearing sleeve nests into the mount')"
-    )
+def _write_overlap_allowance_model_script(script_path: Path) -> None:
     script_path.write_text(
         "\n".join(
             [
@@ -109,9 +93,9 @@ def _write_overlap_allowance_model_script(
                 "",
                 "object_model = ArticulatedObject(name='overlap_allowance')",
                 "base = object_model.part('base')",
-                "base.visual(Box((0.1, 0.1, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.05)), name='base_box')",
+                "base.visual(Box((0.1, 0.1, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.05)))",
                 "child = object_model.part('child')",
-                "child.visual(Box((0.08, 0.08, 0.08)), origin=Origin(xyz=(0.0, 0.0, 0.04)), name='child_box')",
+                "child.visual(Box((0.08, 0.08, 0.08)), origin=Origin(xyz=(0.0, 0.0, 0.04)))",
                 "object_model.articulation(",
                 "    'base_to_child',",
                 "    ArticulationType.FIXED,",
@@ -122,83 +106,7 @@ def _write_overlap_allowance_model_script(
                 "",
                 "def run_tests():",
                 "    ctx = TestContext(object_model)",
-                allowance_line,
-                "    return ctx.report()",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-
-def _write_unsupported_visual_island_script(script_path: Path) -> None:
-    script_path.write_text(
-        "\n".join(
-            [
-                "from __future__ import annotations",
-                "",
-                "from sdk import ArticulatedObject, Box, Origin, TestContext",
-                "",
-                "object_model = ArticulatedObject(name='unsupported_visual_island')",
-                "base = object_model.part('base')",
-                "base.visual(Box((0.2, 0.2, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.05)), name='base_block')",
-                "base.visual(Box((0.04, 0.04, 0.02)), origin=Origin(xyz=(0.0, 0.0, 0.16)), name='floating_tick')",
-                "",
-                "def run_tests():",
-                "    ctx = TestContext(object_model)",
-                "    return ctx.report()",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-
-def _write_supported_disconnected_visual_script(script_path: Path) -> None:
-    script_path.write_text(
-        "\n".join(
-            [
-                "from __future__ import annotations",
-                "",
-                "from sdk import ArticulatedObject, ArticulationType, Box, Origin, TestContext",
-                "",
-                "object_model = ArticulatedObject(name='supported_disconnected_visual')",
-                "base = object_model.part('base')",
-                "base.visual(Box((0.2, 0.2, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.05)), name='base_block')",
-                "base.visual(Box((0.04, 0.04, 0.02)), origin=Origin(xyz=(0.13, 0.0, 0.16)), name='remote_tick')",
-                "pedestal = object_model.part('pedestal')",
-                "pedestal.visual(Box((0.06, 0.04, 0.15)), origin=Origin(xyz=(0.03, 0.0, 0.075)), name='remote_support')",
-                "object_model.articulation(",
-                "    'base_to_pedestal',",
-                "    ArticulationType.FIXED,",
-                "    parent=base,",
-                "    child=pedestal,",
-                "    origin=Origin(xyz=(0.1, 0.0, 0.0)),",
-                ")",
-                "",
-                "def run_tests():",
-                "    ctx = TestContext(object_model)",
-                "    return ctx.report()",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-
-def _write_floating_allowance_script(script_path: Path) -> None:
-    script_path.write_text(
-        "\n".join(
-            [
-                "from __future__ import annotations",
-                "",
-                "from sdk import ArticulatedObject, Box, Origin, TestContext",
-                "",
-                "object_model = ArticulatedObject(name='floating_allowance')",
-                "base = object_model.part('base')",
-                "base.visual(Box((0.1, 0.1, 0.1)), origin=Origin(xyz=(0.0, 0.0, 0.05)))",
-                "base.visual(Box((0.1, 0.1, 0.1)), origin=Origin(xyz=(0.4, 0.0, 0.05)))",
-                "",
-                "def run_tests():",
-                "    ctx = TestContext(object_model)",
-                "    ctx.allow_disconnected_islands('base', reason='two separate plates', allow_floating=True)",
+                "    ctx.allow_overlap('base', 'child', reason='bearing sleeve nests into the mount')",
                 "    return ctx.report()",
             ]
         ),
@@ -484,119 +392,6 @@ def test_compile_urdf_report_honors_authored_overlap_allowances_in_automated_bas
     )
 
 
-def test_compile_urdf_report_final_fails_for_unsupported_visual_island(tmp_path: Path) -> None:
-    script_path = tmp_path / "model.py"
-    _write_unsupported_visual_island_script(script_path)
-
-    with pytest.raises(RuntimeError, match="fail_if_unsupported_visual_islands") as excinfo:
-        compile_urdf_report(
-            script_path,
-            run_checks=True,
-            target="full",
-            quality_profile="final",
-        )
-
-    quality_report = getattr(excinfo.value, "compile_quality_report")
-    assert quality_report["quality_summary"]["unsupported_visual_islands"] >= 1
-    assert quality_report["quality_gates"]["visual_support_graph"]["status"] == "fail"
-    signal_bundle = getattr(excinfo.value, "compile_signal_bundle")
-    assert any(signal.kind == "unsupported_visual_island" for signal in signal_bundle.signals)
-
-
-def test_compile_urdf_report_dev_reports_unsupported_visual_island_without_blocking(
-    tmp_path: Path,
-) -> None:
-    script_path = tmp_path / "model.py"
-    _write_unsupported_visual_island_script(script_path)
-
-    report = compile_urdf_report(
-        script_path,
-        run_checks=True,
-        target="full",
-        quality_profile="dev",
-    )
-
-    assert "<robot" in report.urdf_xml
-    assert report.quality_report is not None
-    assert report.quality_report["quality_summary"]["unsupported_visual_islands"] >= 1
-    assert any(
-        signal.kind == "unsupported_visual_island" for signal in report.signal_bundle.signals
-    )
-
-
-def test_compile_urdf_report_final_allows_supported_disconnected_visual(
-    tmp_path: Path,
-) -> None:
-    script_path = tmp_path / "model.py"
-    _write_supported_disconnected_visual_script(script_path)
-
-    report = compile_urdf_report(
-        script_path,
-        run_checks=True,
-        target="full",
-        quality_profile="final",
-    )
-
-    assert "<robot" in report.urdf_xml
-    assert report.quality_report is not None
-    assert report.quality_report["quality_gates"]["visual_support_graph"]["status"] == "pass"
-
-
-def test_compile_urdf_report_final_rejects_broad_overlap_allowance(
-    tmp_path: Path,
-) -> None:
-    script_path = tmp_path / "model.py"
-    _write_overlap_allowance_model_script(script_path)
-
-    with pytest.raises(RuntimeError, match="check_final_allowance_policy") as excinfo:
-        compile_urdf_report(
-            script_path,
-            run_checks=True,
-            target="full",
-            quality_profile="final",
-        )
-
-    quality_report = getattr(excinfo.value, "compile_quality_report")
-    assert quality_report["quality_summary"]["broad_overlap_allowances"] == 1
-    assert quality_report["quality_gates"]["allowance_policy"]["status"] == "fail"
-
-
-def test_compile_urdf_report_final_accepts_element_level_overlap_allowance(
-    tmp_path: Path,
-) -> None:
-    script_path = tmp_path / "model.py"
-    _write_overlap_allowance_model_script(script_path, element_level=True)
-
-    report = compile_urdf_report(
-        script_path,
-        run_checks=True,
-        target="full",
-        quality_profile="final",
-    )
-
-    assert "<robot" in report.urdf_xml
-    assert report.quality_report is not None
-    assert report.quality_report["quality_summary"]["broad_overlap_allowances"] == 0
-    assert report.quality_report["quality_gates"]["allowance_policy"]["status"] == "pass"
-
-
-def test_compile_urdf_report_final_rejects_floating_allowance(tmp_path: Path) -> None:
-    script_path = tmp_path / "model.py"
-    _write_floating_allowance_script(script_path)
-
-    with pytest.raises(RuntimeError, match="check_final_allowance_policy") as excinfo:
-        compile_urdf_report(
-            script_path,
-            run_checks=True,
-            target="full",
-            quality_profile="final",
-        )
-
-    quality_report = getattr(excinfo.value, "compile_quality_report")
-    assert quality_report["quality_summary"]["floating_allowances"] == 1
-    assert quality_report["quality_gates"]["allowance_policy"]["status"] == "fail"
-
-
 def test_compile_urdf_report_unrelated_isolated_part_allowance_does_not_suppress_failure(
     tmp_path: Path,
 ) -> None:
@@ -799,24 +594,14 @@ def test_compile_urdf_report_preserves_disconnected_geometry_warnings_on_success
     ]
 
 
-def test_compile_urdf_report_keeps_disconnected_geometry_as_warning_with_island_allowance(
+def test_compile_urdf_report_keeps_disconnected_geometry_as_warning_with_isolated_part_allowance(
     tmp_path: Path,
 ) -> None:
-    # The baseline runs warn_if_part_contains_disconnected_geometry_islands()
-    # (part-internal connectivity is WARN-level). Declaring
-    # allow_disconnected_islands() for a genuinely multi-piece part suppresses
-    # the raw island finding and surfaces an explicit "allowed by justification"
-    # warning instead. The 'base' island here is float-grade (large gap), so the
-    # stricter float gate would fail it unless the allowance also opts out via
-    # allow_floating=True — verifying the explicit float escape hatch threads
-    # through while still emitting the allowed-by-justification warning.
     script_path = tmp_path / "model.py"
     _write_isolated_part_model_script(
         script_path,
         allowed_part="antenna",
         disconnected_base=True,
-        allow_disconnected_base=True,
-        allow_floating_base=True,
     )
 
     report = compile_urdf_report(script_path, run_checks=True, target="full")
@@ -824,36 +609,9 @@ def test_compile_urdf_report_keeps_disconnected_geometry_as_warning_with_island_
     assert "<robot" in report.urdf_xml
     assert report.signal_bundle.status == "success"
     assert any(
-        "Disconnected geometry islands allowed by justification" in warning and "'base'" in warning
+        warning.startswith("warn_if_part_contains_disconnected_geometry_islands(tol=1e-06):")
         for warning in report.warnings
     )
-
-
-def test_compile_urdf_report_floating_island_fails_despite_blanket_island_allowance(
-    tmp_path: Path,
-) -> None:
-    # A blanket allow_disconnected_islands('base') silences the WARN-level
-    # connectivity check, but it must NOT exempt a sizeable far-floating island
-    # from the stricter float gate: "intentionally multi-piece" does not justify
-    # a piece floating in open space. Only allow_floating=True does (covered by
-    # the test above). Here the 'base' second plate sits at a large gap, so the
-    # float gate fails the compile even though the part is blanket-allowed.
-    script_path = tmp_path / "model.py"
-    _write_isolated_part_model_script(
-        script_path,
-        allowed_part="antenna",
-        disconnected_base=True,
-        allow_disconnected_base=True,
-        allow_floating_base=False,
-    )
-
-    with pytest.raises(RuntimeError, match="fail_if_floating_geometry_islands"):
-        compile_urdf_report(
-            script_path,
-            run_checks=True,
-            target="full",
-            quality_profile="legacy",
-        )
 
 
 def test_compile_urdf_report_suppresses_duplicate_manual_baseline_failures(tmp_path: Path) -> None:

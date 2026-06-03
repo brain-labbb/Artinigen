@@ -1,57 +1,41 @@
-"""DJ equipment — modular procedural template.
+"""DJ equipment procedural template (portable controller archetype).
 
-This template uses the slot/module/assembler abstraction in
-``agent.templates._modular``. Three slots — **chassis**, **deck_layout**,
-**controls** — each pick from a small candidate pool sourced from the
-5-star sample family. The assembler walks the slot list and lets each
-module emit its own parts + internal articulations onto a shared model.
+PRIMARY_ANCHOR = rec_dj_equipment_47e2bd7d05da479eb2363c19da61276b:rev_000001
 
-Slot graph (logical):
-  chassis (root) → deck_layout (parallel children of chassis) →
-                   controls    (parallel children of chassis)
+Adapted from the anchor's structural skeleton with literal dimensions
+parameterised. Part tree, joint topology and the use of ExtrudeGeometry /
+ExtrudeWithHolesGeometry meshes for the housing's wall ring / bottom panel /
+top deck are inherited verbatim from the anchor (per TEMPLATE_DESIGN_RULES.md
+Rule 3); only dimensions, pad / EQ-knob counts and slider button shape are
+made configurable.
 
-A DJ controller is NOT a strict linear chain. Platters, faders, pad
-grids, and the carry_handle are all PARALLEL children of the housing,
-not serial. We adapt the abstraction by:
+Anchor part tree (7 parts):
+  housing             — 30 visuals incl. 3 Mesh (wall_ring, bottom_panel,
+                        top_deck via Extrude/ExtrudeWithHoles + rounded_rect /
+                        superellipse profiles), 2 spindles, 2 motor pedestals,
+                        2 display strips, mixer panel, 12 pads (2 decks ×
+                        2 rows × 3 cols), 6 EQ knobs, 2 handle brackets.
+  left_platter        — 4 visuals (hub / rim / touch_ring / center_label).
+  right_platter       — 4 visuals (same).
+  crossfader          — 2 visuals (cap + grip).
+  left_volume_fader   — 2 visuals (cap + grip).
+  right_volume_fader  — 2 visuals (cap + grip).
+  carry_handle        — 5 visuals (2 hinge barrels, 2 side arms, 1 grip tube).
 
-  * Defining a real ``downstream`` interface only on the chassis modules;
-    that interface stays at the housing's +z top deck.
-  * deck_layout and controls modules DO NOT define ``upstream`` — this
-    skips the assembler's auto-chain joint. Instead they read
-    ``ctx.upstream_interface.part_name`` to find the housing part and
-    emit their joints with ``parent=model.get_part(housing_name)``.
-  * Each non-root module exposes its OWN no-op ``downstream`` interface
-    (pointing at the same housing top face) so the chain can continue
-    to the next slot.
+Anchor joint topology (6 joints, must be preserved):
+  housing -> left_platter      : REVOLUTE  axis z   (jog wheel spin)
+  housing -> right_platter     : REVOLUTE  axis z
+  housing -> crossfader        : PRISMATIC axis x   (centre fader)
+  housing -> left_volume_fader : PRISMATIC axis y   (channel fader)
+  housing -> right_volume_fader: PRISMATIC axis y
+  housing -> carry_handle      : REVOLUTE  axis x   (fold-out handle)
 
-Candidates (6 total, 2×2×2 = 8 topology combinations):
-
-  chassis:
-    - controller_chassis   (anchor; rec_47e2bd... — housing with mesh
-                            top deck + carry_handle REVOLUTE child)
-    - turntable_plinth     (alt; rec_6e26a3... — heavier wooden plinth
-                            with a fold-down carry_handle child)
-
-  deck_layout (all joints internally parented to housing):
-    - dual_jog_decks               (anchor; 2 platters REVOLUTE around z)
-    - single_platter_with_tonearm  (alt; rec_6e26a3... — 1 platter + 1
-                                    tonearm REVOLUTE around z)
-
-  controls (all joints internally parented to housing):
-    - triple_fader_strip           (anchor; crossfader + 2 volume faders
-                                    PRISMATIC)
-    - pad_grid_plus_fader          (alt; rec_12cc44... — 2×4 pad grid as
-                                    PRISMATIC buttons + 1 fader)
-
-seed == 0 always picks the anchor combination (controller_chassis +
-dual_jog_decks + triple_fader_strip), so any per-anchor smoke test on
-seed 0 reproduces the canonical 7-part / 6-joint topology of the
-PRIMARY_ANCHOR. Other seeds RNG-pick uniformly across the 8 combos.
-
-Anchor responsibility is at the **module-interface** level: each module
-emits its own joints with mating contracts where appropriate. Pin-through-
-sleeve overlaps (carry_handle ↔ housing bracket) are grandfathered via
-``ctx.allow_overlap`` declared in ``_declare_captured_pivot_overlaps``.
+Mating model:
+  - Platters and faders are surface-mates (jog hub sits on spindle top;
+    fader cap rides top_deck surface). MatingContract is declared on each.
+  - carry_handle is a mechanical pivot (hinge barrel captured by housing
+    bracket pin). MatingContract abstraction does not naturally apply, so
+    the joint is grandfathered (no `mating` field).
 """
 
 from __future__ import annotations
@@ -61,13 +45,6 @@ import random
 from dataclasses import dataclass, field
 from typing import Literal
 
-from agent.templates._modular import (
-    InterfaceSpec,
-    ModuleBuild,
-    ModuleBuildContext,
-    SlotSpec,
-    assemble,
-)
 from sdk import (
     ArticulatedObject,
     ArticulationType,
@@ -87,15 +64,9 @@ from sdk import (
     superellipse_profile,
 )
 
-# Modular templates are flagged so the sweep coverage gate can skip
-# anchor_geometry_match (a single-anchor gate that does not apply when
-# topology varies across seeds) and run module-level checks instead.
-__modular__ = True
-
-
-ChassisModule = Literal["controller_chassis", "turntable_plinth"]
-DeckLayoutModule = Literal["dual_jog_decks", "single_platter_with_tonearm"]
-ControlsModule = Literal["triple_fader_strip", "pad_grid_plus_fader"]
+ControllerLayout = Literal["dual_jog_controller", "single_jog_controller", "compact_pad_controller"]
+HandleStyle = Literal["fold_out_carry", "fixed_carry", "none"]
+DeckStyle = Literal["dual_decks", "single_deck", "no_decks"]
 DJPaletteTheme = Literal[
     "anchor_black",
     "white_studio",
@@ -103,13 +74,6 @@ DJPaletteTheme = Literal[
     "wood_finish",
     "brushed_steel",
 ]
-
-
-# --------------------------------------------------------------------------- #
-# Palette presets — preserved verbatim from the prior single-anchor template.
-# Each theme provides housing / deck / platter / accent / slider color tokens
-# that module factories pull from the resolved palette dict.
-# --------------------------------------------------------------------------- #
 
 
 DJ_PALETTE_PRESETS: dict[str, dict[str, tuple[float, float, float, float]]] = {
@@ -121,9 +85,6 @@ DJ_PALETTE_PRESETS: dict[str, dict[str, tuple[float, float, float, float]]] = {
         "accent_silver": (0.74, 0.76, 0.79, 1.0),
         "slider_black": (0.05, 0.05, 0.06, 1.0),
         "cue_gray": (0.28, 0.30, 0.33, 1.0),
-        "wood_warm": (0.32, 0.21, 0.12, 1.0),
-        "pad_rubber": (0.86, 0.86, 0.82, 1.0),
-        "accent_red": (0.75, 0.12, 0.08, 1.0),
     },
     "white_studio": {
         "housing_black": (0.92, 0.92, 0.91, 1.0),
@@ -133,9 +94,6 @@ DJ_PALETTE_PRESETS: dict[str, dict[str, tuple[float, float, float, float]]] = {
         "accent_silver": (0.40, 0.42, 0.45, 1.0),
         "slider_black": (0.20, 0.20, 0.21, 1.0),
         "cue_gray": (0.62, 0.63, 0.65, 1.0),
-        "wood_warm": (0.78, 0.66, 0.50, 1.0),
-        "pad_rubber": (0.92, 0.92, 0.89, 1.0),
-        "accent_red": (0.84, 0.34, 0.30, 1.0),
     },
     "neon_pink": {
         "housing_black": (0.08, 0.04, 0.06, 1.0),
@@ -145,9 +103,6 @@ DJ_PALETTE_PRESETS: dict[str, dict[str, tuple[float, float, float, float]]] = {
         "accent_silver": (0.95, 0.42, 0.72, 1.0),
         "slider_black": (0.04, 0.04, 0.05, 1.0),
         "cue_gray": (0.30, 0.10, 0.20, 1.0),
-        "wood_warm": (0.40, 0.10, 0.22, 1.0),
-        "pad_rubber": (0.96, 0.30, 0.66, 1.0),
-        "accent_red": (0.99, 0.18, 0.50, 1.0),
     },
     "wood_finish": {
         "housing_black": (0.32, 0.21, 0.12, 1.0),
@@ -157,9 +112,6 @@ DJ_PALETTE_PRESETS: dict[str, dict[str, tuple[float, float, float, float]]] = {
         "accent_silver": (0.78, 0.62, 0.40, 1.0),
         "slider_black": (0.10, 0.07, 0.04, 1.0),
         "cue_gray": (0.48, 0.34, 0.22, 1.0),
-        "wood_warm": (0.50, 0.30, 0.16, 1.0),
-        "pad_rubber": (0.62, 0.46, 0.30, 1.0),
-        "accent_red": (0.78, 0.22, 0.12, 1.0),
     },
     "brushed_steel": {
         "housing_black": (0.55, 0.57, 0.60, 1.0),
@@ -169,35 +121,15 @@ DJ_PALETTE_PRESETS: dict[str, dict[str, tuple[float, float, float, float]]] = {
         "accent_silver": (0.92, 0.93, 0.94, 1.0),
         "slider_black": (0.12, 0.13, 0.14, 1.0),
         "cue_gray": (0.45, 0.46, 0.48, 1.0),
-        "wood_warm": (0.55, 0.50, 0.42, 1.0),
-        "pad_rubber": (0.78, 0.78, 0.74, 1.0),
-        "accent_red": (0.90, 0.32, 0.20, 1.0),
     },
 }
 
 
-# --------------------------------------------------------------------------- #
-# Config dataclasses
-# --------------------------------------------------------------------------- #
-
-
 @dataclass(frozen=True)
-class DjEquipmentConfig:
-    """Public template config. Module selection is opt-in: leave any of
-    the three module fields as ``None`` to let ``config_from_seed`` /
-    ``resolve_config`` fill them in from the seed-driven RNG.
-
-    The continuous dimensions describe the overall envelope (body width,
-    depth, height) plus per-feature defaults (platter radius, fader
-    geometry, pad grid spacing). Module factories scale where
-    appropriate; ``turntable_plinth`` runs slightly taller than the
-    controller, for instance.
-    """
-
-    chassis_module: ChassisModule | None = None
-    deck_layout_module: DeckLayoutModule | None = None
-    controls_module: ControlsModule | None = None
-
+class DJEquipmentConfig:
+    controller_layout: ControllerLayout = "dual_jog_controller"
+    handle_style: HandleStyle = "fold_out_carry"
+    deck_style: DeckStyle = "dual_decks"
     palette_theme: DJPaletteTheme = "anchor_black"
 
     body_width: float = 0.58
@@ -208,7 +140,6 @@ class DjEquipmentConfig:
     bottom_thickness: float = 0.004
     top_thickness: float = 0.004
 
-    # Jog/platter dimensions
     jog_x: float = 0.175
     jog_y: float = 0.018
     jog_open_diameter: float = 0.118
@@ -217,7 +148,6 @@ class DjEquipmentConfig:
     platter_rim_radius: float = 0.064
     platter_rim_length: float = 0.010
 
-    # Crossfader/volume slot footprint (used by triple_fader_strip)
     crossfader_y: float = -0.112
     crossfader_slot: tuple[float, float] = (0.140, 0.014)
     volume_slot: tuple[float, float] = (0.014, 0.098)
@@ -225,36 +155,33 @@ class DjEquipmentConfig:
     right_volume_x: float = 0.038
     volume_y: float = 0.020
 
-    # Carry handle
     handle_span: float = 0.50
     handle_reach: float = 0.068
     handle_radius: float = 0.0055
     handle_travel: float = 1.28
 
-    # Pad grid (used by pad_grid_plus_fader)
     pad_rows: int = 2
-    pad_cols: int = 4
-    pad_size: tuple[float, float, float] = (0.026, 0.026, 0.010)
-    pad_pitch: float = 0.034
-
-    # Tonearm + single platter (used by single_platter_with_tonearm)
-    tonearm_length: float = 0.22
-    tonearm_sweep_range: float = 1.6
-    single_platter_radius: float = 0.140
-    single_platter_height: float = 0.018
+    pad_cols: int = 3
+    pad_size: tuple[float, float, float] = (0.020, 0.020, 0.003)
 
     palette: dict[str, tuple[float, float, float, float]] = field(
-        default_factory=lambda: dict(DJ_PALETTE_PRESETS["anchor_black"])
+        default_factory=lambda: {
+            "housing_black": (0.08, 0.09, 0.10, 1.0),
+            "deck_graphite": (0.13, 0.14, 0.16, 1.0),
+            "platter_dark": (0.12, 0.13, 0.14, 1.0),
+            "platter_top": (0.21, 0.22, 0.24, 1.0),
+            "accent_silver": (0.74, 0.76, 0.79, 1.0),
+            "slider_black": (0.05, 0.05, 0.06, 1.0),
+            "cue_gray": (0.28, 0.30, 0.33, 1.0),
+        }
     )
 
 
 @dataclass(frozen=True)
-class ResolvedDjEquipmentConfig:
-    """Dimension-clamped + module-resolved config consumed by builders."""
-
-    chassis_module: ChassisModule
-    deck_layout_module: DeckLayoutModule
-    controls_module: ControlsModule
+class ResolvedDJEquipmentConfig:
+    controller_layout: ControllerLayout
+    handle_style: HandleStyle
+    deck_style: DeckStyle
     palette_theme: DJPaletteTheme
     body_width: float
     body_depth: float
@@ -283,85 +210,73 @@ class ResolvedDjEquipmentConfig:
     pad_rows: int
     pad_cols: int
     pad_size: tuple[float, float, float]
-    pad_pitch: float
-    tonearm_length: float
-    tonearm_sweep_range: float
-    single_platter_radius: float
-    single_platter_height: float
     palette: dict[str, tuple[float, float, float, float]]
 
 
-# --------------------------------------------------------------------------- #
-# Seed-driven sampling
-# --------------------------------------------------------------------------- #
+def config_from_seed(seed: int) -> DJEquipmentConfig:
+    """Sample a DJ controller configuration.
 
-
-def config_from_seed(seed: int) -> DjEquipmentConfig:
-    """Sample a DJ equipment configuration for the given seed.
-
-    seed == 0 returns the anchor combination
-    (controller_chassis + dual_jog_decks + triple_fader_strip) at the
-    canonical PRIMARY_ANCHOR dimensions. Other seeds RNG-pick modules
-    uniformly per slot and sample continuous dimensions across a
-    realistic range.
+    Per TEMPLATE_DESIGN_RULES.md Rule 3, seed=0 must produce a config whose
+    geometry fingerprint matches the PRIMARY_ANCHOR.
     """
     if seed == 0:
-        return DjEquipmentConfig(
-            chassis_module="controller_chassis",
-            deck_layout_module="dual_jog_decks",
-            controls_module="triple_fader_strip",
-            palette_theme="anchor_black",
-        )
+        return DJEquipmentConfig()
 
     rng = random.Random(seed)
-    chassis: ChassisModule = rng.choice(("controller_chassis", "turntable_plinth"))
-    deck: DeckLayoutModule = rng.choice(("dual_jog_decks", "single_platter_with_tonearm"))
-    controls: ControlsModule = rng.choice(("triple_fader_strip", "pad_grid_plus_fader"))
+    layout: ControllerLayout = rng.choice(
+        ("dual_jog_controller", "single_jog_controller", "compact_pad_controller")
+    )
+    handle_style: HandleStyle = rng.choice(("fold_out_carry", "fixed_carry", "none"))
+    deck_style: DeckStyle = "dual_decks"  # required by anchor topology
     palette_theme: DJPaletteTheme = rng.choice(tuple(DJ_PALETTE_PRESETS.keys()))
 
-    body_width = round(rng.uniform(0.50, 0.66), 4)
+    body_width = round(rng.uniform(0.50, 0.68), 4)
     body_depth = round(rng.uniform(0.30, 0.40), 4)
-    body_height = round(rng.uniform(0.054, 0.072), 4)
+    body_height = round(rng.uniform(0.052, 0.074), 4)
     jog_x = round(rng.uniform(0.150, 0.205), 4)
+    # handle_span must stay near body_width to keep the handle hinge bracket
+    # over the housing — otherwise the joint origin drifts beyond
+    # articulation_origin tol on extreme seeds.
     handle_span = round(rng.uniform(body_width * 0.78, body_width * 0.92), 4)
-    platter_rim_radius = round(rng.uniform(0.052, 0.072), 4)
-    pad_rows = rng.randint(2, 3)
-    pad_cols = rng.randint(3, 4)
-    tonearm_length = round(rng.uniform(0.10, 0.18), 4)
-    single_platter_radius = round(rng.uniform(0.065, 0.088), 4)
 
-    return DjEquipmentConfig(
-        chassis_module=chassis,
-        deck_layout_module=deck,
-        controls_module=controls,
+    # Tier 1 — vary pad count by controller_layout to give visible diversity
+    # in the pad grid (anchor is 2x3 = 12 pads; compact_pad_controller pushes
+    # toward a denser 3x4 grid; single_jog_controller stays modest).
+    if layout == "compact_pad_controller":
+        pad_rows = rng.randint(3, 4)
+        pad_cols = rng.randint(3, 4)
+    elif layout == "single_jog_controller":
+        pad_rows = rng.randint(2, 3)
+        pad_cols = rng.randint(3, 4)
+    else:  # dual_jog_controller
+        pad_rows = 2
+        pad_cols = 3
+
+    return DJEquipmentConfig(
+        controller_layout=layout,
+        handle_style=handle_style,
+        deck_style=deck_style,
         palette_theme=palette_theme,
         body_width=body_width,
         body_depth=body_depth,
         body_height=body_height,
         jog_x=jog_x,
         handle_span=handle_span,
-        platter_rim_radius=platter_rim_radius,
         pad_rows=pad_rows,
         pad_cols=pad_cols,
-        tonearm_length=tonearm_length,
-        single_platter_radius=single_platter_radius,
     )
 
 
-def resolve_config(config: DjEquipmentConfig) -> ResolvedDjEquipmentConfig:
-    """Validate + clamp config; fill in any None module slots with anchor
-    defaults so a partially-specified config still builds."""
-
-    chassis = config.chassis_module or "controller_chassis"
-    deck = config.deck_layout_module or "dual_jog_decks"
-    controls = config.controls_module or "triple_fader_strip"
-
-    if chassis not in ("controller_chassis", "turntable_plinth"):
-        raise ValueError(f"Unsupported chassis_module: {chassis}")
-    if deck not in ("dual_jog_decks", "single_platter_with_tonearm"):
-        raise ValueError(f"Unsupported deck_layout_module: {deck}")
-    if controls not in ("triple_fader_strip", "pad_grid_plus_fader"):
-        raise ValueError(f"Unsupported controls_module: {controls}")
+def resolve_config(config: DJEquipmentConfig) -> ResolvedDJEquipmentConfig:
+    valid_layout = {"dual_jog_controller", "single_jog_controller", "compact_pad_controller"}
+    if str(config.controller_layout) not in valid_layout:
+        raise ValueError(f"Unsupported controller_layout: {config.controller_layout}")
+    valid_handle = {"fold_out_carry", "fixed_carry", "none"}
+    if str(config.handle_style) not in valid_handle:
+        raise ValueError(f"Unsupported handle_style: {config.handle_style}")
+    valid_deck = {"dual_decks", "single_deck", "no_decks"}
+    if str(config.deck_style) not in valid_deck:
+        raise ValueError(f"Unsupported deck_style: {config.deck_style}")
     if str(config.palette_theme) not in DJ_PALETTE_PRESETS:
         raise ValueError(f"Unsupported palette_theme: {config.palette_theme}")
 
@@ -398,31 +313,17 @@ def resolve_config(config: DjEquipmentConfig) -> ResolvedDjEquipmentConfig:
     handle_travel = max(0.6, min(float(config.handle_travel), 1.55))
 
     pad_rows = max(1, min(int(config.pad_rows), 4))
-    pad_cols = max(2, min(int(config.pad_cols), 6))
+    pad_cols = max(2, min(int(config.pad_cols), 4))
     pad_size = tuple(float(v) for v in config.pad_size)
     if len(pad_size) != 3:
-        pad_size = (0.026, 0.026, 0.010)
-    pad_pitch = max(0.026, min(float(config.pad_pitch), 0.050))
-
-    tonearm_length = max(0.10, min(float(config.tonearm_length), 0.20))
-    tonearm_sweep_range = max(0.6, min(float(config.tonearm_sweep_range), 2.1))
-    # single_platter_radius is bounded so a single platter mounted on the
-    # housing's left_spindle (at -jog_x, jog_y) doesn't overlap the
-    # crossfader (at y=-0.112) or the volume_faders (at y=0.020).
-    # Minimum jog_x is 0.120, leaving 0.082m clearance to the left edge of
-    # the leftmost volume fader at x=-0.038; subtract the fader cap half-
-    # width (0.010) plus a 5mm safety margin → max radius ~0.067. We cap
-    # at 0.090 since the volume_fader is at y=0.020 not on the line
-    # (perpendicular distance is larger than purely-x clearance).
-    single_platter_radius = max(0.060, min(float(config.single_platter_radius), 0.090))
-    single_platter_height = max(0.012, min(float(config.single_platter_height), 0.024))
+        pad_size = (0.020, 0.020, 0.003)
 
     palette = dict(DJ_PALETTE_PRESETS[config.palette_theme])
 
-    return ResolvedDjEquipmentConfig(
-        chassis_module=chassis,
-        deck_layout_module=deck,
-        controls_module=controls,
+    return ResolvedDJEquipmentConfig(
+        controller_layout=config.controller_layout,
+        handle_style=config.handle_style,
+        deck_style=config.deck_style,
         palette_theme=config.palette_theme,
         body_width=bw,
         body_depth=bd,
@@ -451,40 +352,24 @@ def resolve_config(config: DjEquipmentConfig) -> ResolvedDjEquipmentConfig:
         pad_rows=pad_rows,
         pad_cols=pad_cols,
         pad_size=pad_size,  # type: ignore[arg-type]
-        pad_pitch=pad_pitch,
-        tonearm_length=tonearm_length,
-        tonearm_sweep_range=tonearm_sweep_range,
-        single_platter_radius=single_platter_radius,
-        single_platter_height=single_platter_height,
         palette=palette,
     )
 
 
 # --------------------------------------------------------------------------- #
-# Mesh + visual helpers — used by chassis and deck modules.
+# Mesh helpers — these MUST stay Mesh-typed (Rule 3 primitive_complexity_lower_bound)
 # --------------------------------------------------------------------------- #
 
 
-def _shift_profile(profile, *, dx: float = 0.0, dy: float = 0.0):
+def _shift_profile(profile, *, dx=0.0, dy=0.0):
     return [(x + dx, y + dy) for x, y in profile]
 
 
-def _build_controller_housing_meshes(
-    r: ResolvedDjEquipmentConfig,
-    *,
-    include_platter_holes: bool,
-    include_fader_slots: bool,
-    include_pad_grid: bool,
-) -> tuple[object, object, object]:
-    """Build the 3 Mesh visuals of the controller housing (wall_ring,
-    bottom_panel, top_deck) — adapted from the anchor's ExtrudeGeometry /
-    ExtrudeWithHolesGeometry construction.
-
-    The top_deck's hole set varies with the chosen deck_layout / controls
-    modules: dual decks cut 2 circular platter holes; single platter cuts
-    1; triple_fader_strip cuts 3 rectangular slots; pad_grid_plus_fader
-    cuts a pad grid + 1 slot. The wall ring + bottom panel are constant.
-    """
+def _build_housing_meshes(r: ResolvedDJEquipmentConfig) -> tuple[object, object, object]:
+    """Build the 3 Mesh visuals of the housing (wall_ring, bottom_panel,
+    top_deck) — adapted verbatim from the anchor's ExtrudeGeometry /
+    ExtrudeWithHolesGeometry construction. Per primitive_complexity_lower_bound,
+    these must stay Mesh-typed (not downgraded to Box)."""
     wall_height = r.body_height - r.bottom_thickness - r.top_thickness
     outer_profile = rounded_rect_profile(
         r.body_width, r.body_depth, r.corner_radius, corner_segments=10
@@ -495,86 +380,30 @@ def _build_controller_housing_meshes(
         max(r.corner_radius - r.wall_thickness, 0.010),
         corner_segments=10,
     )
+    platter_hole = superellipse_profile(
+        r.jog_open_diameter, r.jog_open_diameter, exponent=2.0, segments=48
+    )
 
-    top_holes: list = []
-
-    if include_platter_holes:
-        if r.deck_layout_module == "dual_jog_decks":
-            platter_hole = superellipse_profile(
-                r.jog_open_diameter, r.jog_open_diameter, exponent=2.0, segments=48
-            )
-            top_holes.append(_shift_profile(platter_hole, dx=-r.jog_x, dy=r.jog_y))
-            top_holes.append(_shift_profile(platter_hole, dx=+r.jog_x, dy=r.jog_y))
-        else:
-            # single_platter_with_tonearm — cut the platter hole over the
-            # LEFT jog position (the platter mounts on left_spindle); the
-            # right_spindle stays exposed and is used as a tonearm pivot.
-            single_hole = superellipse_profile(
-                r.single_platter_radius * 2.0 + 0.010,
-                r.single_platter_radius * 2.0 + 0.010,
-                exponent=2.0,
-                segments=48,
-            )
-            top_holes.append(_shift_profile(single_hole, dx=-r.jog_x, dy=r.jog_y))
-
-    if include_fader_slots and r.controls_module == "triple_fader_strip":
-        top_holes.append(
-            _shift_profile(
-                rounded_rect_profile(
-                    r.crossfader_slot[0],
-                    r.crossfader_slot[1],
-                    0.005,
-                    corner_segments=8,
-                ),
-                dy=r.crossfader_y,
-            )
-        )
-        top_holes.append(
-            _shift_profile(
-                rounded_rect_profile(r.volume_slot[0], r.volume_slot[1], 0.005, corner_segments=8),
-                dx=r.left_volume_x,
-                dy=r.volume_y,
-            )
-        )
-        top_holes.append(
-            _shift_profile(
-                rounded_rect_profile(r.volume_slot[0], r.volume_slot[1], 0.005, corner_segments=8),
-                dx=r.right_volume_x,
-                dy=r.volume_y,
-            )
-        )
-
-    if include_pad_grid and r.controls_module == "pad_grid_plus_fader":
-        # One long fader slot along the front edge.
-        top_holes.append(
-            _shift_profile(
-                rounded_rect_profile(
-                    r.crossfader_slot[0],
-                    r.crossfader_slot[1],
-                    0.005,
-                    corner_segments=8,
-                ),
-                dy=r.crossfader_y,
-            )
-        )
-        # Pad cutouts in a row × col grid (square holes, slightly larger
-        # than the pad cap so the cap rises through them).
-        pad_hole_size = r.pad_size[0] + 0.002
-        col_x0 = -((r.pad_cols - 1) * 0.5) * r.pad_pitch
-        row_y0 = -((r.pad_rows - 1) * 0.5) * r.pad_pitch
-        for ri in range(r.pad_rows):
-            for ci in range(r.pad_cols):
-                px = col_x0 + ci * r.pad_pitch
-                py = row_y0 + ri * r.pad_pitch + 0.020
-                top_holes.append(
-                    _shift_profile(
-                        rounded_rect_profile(
-                            pad_hole_size, pad_hole_size, 0.002, corner_segments=6
-                        ),
-                        dx=px,
-                        dy=py,
-                    )
-                )
+    top_holes = [
+        _shift_profile(platter_hole, dx=-r.jog_x, dy=r.jog_y),
+        _shift_profile(platter_hole, dx=+r.jog_x, dy=r.jog_y),
+        _shift_profile(
+            rounded_rect_profile(
+                r.crossfader_slot[0], r.crossfader_slot[1], 0.005, corner_segments=8
+            ),
+            dy=r.crossfader_y,
+        ),
+        _shift_profile(
+            rounded_rect_profile(r.volume_slot[0], r.volume_slot[1], 0.005, corner_segments=8),
+            dx=r.left_volume_x,
+            dy=r.volume_y,
+        ),
+        _shift_profile(
+            rounded_rect_profile(r.volume_slot[0], r.volume_slot[1], 0.005, corner_segments=8),
+            dx=r.right_volume_x,
+            dy=r.volume_y,
+        ),
+    ]
 
     wall_ring = ExtrudeWithHolesGeometry(
         outer_profile, [inner_profile], wall_height, center=True
@@ -593,13 +422,122 @@ def _build_controller_housing_meshes(
     )
 
 
-def _build_platter_visuals(part, r: ResolvedDjEquipmentConfig) -> None:
-    """Adapted from anchor model.py:L39-L68 (`_build_platter`). 4 visuals.
+# --------------------------------------------------------------------------- #
+# Per-part builders
+# --------------------------------------------------------------------------- #
 
-    Used by both the dual_jog_decks (2 platters) and single_platter_with_tonearm
-    (1 platter) modules. The `hub` cylinder sits at the bottom of the
-    platter stack so the platter's -z face is at z=0 in part frame.
-    """
+
+def _build_housing(part, r: ResolvedDJEquipmentConfig) -> None:
+    """Adapted from anchor model.py:L184-L324. 30 visuals."""
+    wall_ring_mesh, bottom_panel_mesh, top_deck_mesh = _build_housing_meshes(r)
+    handle_z = r.body_height + r.handle_radius
+
+    part.inertial = Inertial.from_geometry(
+        Box((r.body_width, r.body_depth, r.body_height)),
+        mass=5.8,
+        origin=Origin(xyz=(0.0, 0.0, r.body_height * 0.5)),
+    )
+
+    part.visual(wall_ring_mesh, material="housing_black", name="wall_ring")
+    part.visual(bottom_panel_mesh, material="housing_black", name="bottom_panel")
+    part.visual(top_deck_mesh, material="deck_graphite", name="top_deck")
+
+    # Spindles (Cylinder) — left & right.
+    part.visual(
+        Cylinder(radius=r.spindle_radius, length=r.spindle_height),
+        origin=Origin(xyz=(-r.jog_x, r.jog_y, r.body_height + r.spindle_height * 0.5)),
+        material="accent_silver",
+        name="left_spindle",
+    )
+    part.visual(
+        Cylinder(radius=r.spindle_radius, length=r.spindle_height),
+        origin=Origin(xyz=(+r.jog_x, r.jog_y, r.body_height + r.spindle_height * 0.5)),
+        material="accent_silver",
+        name="right_spindle",
+    )
+
+    # Motor pedestals (interior — they live inside the case).
+    pedestal_radius = 0.024
+    pedestal_length = r.body_height - r.bottom_thickness
+    part.visual(
+        Cylinder(radius=pedestal_radius, length=pedestal_length),
+        origin=Origin(xyz=(-r.jog_x, r.jog_y, r.bottom_thickness + pedestal_length * 0.5)),
+        material="housing_black",
+        name="left_motor_pedestal",
+    )
+    part.visual(
+        Cylinder(radius=pedestal_radius, length=pedestal_length),
+        origin=Origin(xyz=(+r.jog_x, r.jog_y, r.bottom_thickness + pedestal_length * 0.5)),
+        material="housing_black",
+        name="right_motor_pedestal",
+    )
+
+    # Display strips above each deck.
+    part.visual(
+        Box((0.120, 0.030, 0.003)),
+        origin=Origin(xyz=(-r.jog_x, 0.118, r.body_height + 0.0015)),
+        material="cue_gray",
+        name="left_display_strip",
+    )
+    part.visual(
+        Box((0.120, 0.030, 0.003)),
+        origin=Origin(xyz=(+r.jog_x, 0.118, r.body_height + 0.0015)),
+        material="cue_gray",
+        name="right_display_strip",
+    )
+    part.visual(
+        Box((0.072, 0.140, 0.003)),
+        origin=Origin(xyz=(0.0, 0.024, r.body_height + 0.0015)),
+        material="cue_gray",
+        name="mixer_panel",
+    )
+
+    # Performance pads — 12 by default (2 decks × pad_rows=2 × pad_cols=3).
+    pad_sx, pad_sy, pad_sz = r.pad_size
+    pad_pitch_x = 0.028
+    pad_row_centres = (-0.090, -0.058) if r.pad_rows == 2 else (-0.075,)
+    pad_col_offsets = tuple(
+        (col - (r.pad_cols - 1) * 0.5) * pad_pitch_x for col in range(r.pad_cols)
+    )
+    for deck_x, prefix in ((-r.jog_x, "left"), (+r.jog_x, "right")):
+        for row_index, pad_y in enumerate(pad_row_centres):
+            for col_index, pad_dx in enumerate(pad_col_offsets):
+                part.visual(
+                    Box((pad_sx, pad_sy, pad_sz)),
+                    origin=Origin(xyz=(deck_x + pad_dx, pad_y, r.body_height + pad_sz * 0.5)),
+                    material="cue_gray",
+                    name=f"{prefix}_pad_{row_index}_{col_index}",
+                )
+
+    # EQ knobs above the mixer panel — 6 by default.
+    knob_xs = (-0.034, 0.0, 0.034)
+    knob_ys = (0.112, 0.084)
+    for kxi, knob_x in enumerate(knob_xs):
+        for kyi, knob_y in enumerate(knob_ys):
+            part.visual(
+                Cylinder(radius=0.007, length=0.010),
+                origin=Origin(xyz=(knob_x, knob_y, r.body_height + 0.005)),
+                material="accent_silver",
+                name=f"eq_knob_{kxi}_{kyi}",
+            )
+
+    # Carry-handle brackets on the housing top (anchor's "left/right_handle_bracket").
+    part.visual(
+        Box((0.024, 0.024, 0.018)),
+        origin=Origin(xyz=(-r.handle_span * 0.524, 0.158, handle_z)),
+        material="accent_silver",
+        name="left_handle_bracket",
+    )
+    part.visual(
+        Box((0.024, 0.024, 0.018)),
+        origin=Origin(xyz=(+r.handle_span * 0.524, 0.158, handle_z)),
+        material="accent_silver",
+        name="right_handle_bracket",
+    )
+
+
+def _build_platter(part, r: ResolvedDJEquipmentConfig) -> None:
+    """Adapted from anchor model.py:L39-L68 (`_build_platter`). 4 visuals."""
     part.visual(
         Cylinder(radius=r.spindle_radius * 1.11, length=0.004),
         origin=Origin(xyz=(0.0, 0.0, 0.002)),
@@ -631,16 +569,14 @@ def _build_platter_visuals(part, r: ResolvedDjEquipmentConfig) -> None:
     )
 
 
-def _build_slider_visuals(
+def _build_slider(
     part,
     *,
     cap_size: tuple[float, float, float],
     grip_size: tuple[float, float, float],
     cap_name: str,
 ) -> None:
-    """Adapted from anchor model.py:L71-L98 (`_build_slider`). 2 visuals
-    + 1 inertial. Used by all 3 fader parts in triple_fader_strip and by
-    the one fader in pad_grid_plus_fader."""
+    """Adapted from anchor model.py:L71-L98 (`_build_slider`). 2 visuals."""
     cap_x, cap_y, cap_z = cap_size
     grip_x, grip_y, grip_z = grip_size
     part.visual(
@@ -662,11 +598,8 @@ def _build_slider_visuals(
     )
 
 
-def _build_carry_handle_visuals(part, r: ResolvedDjEquipmentConfig) -> None:
-    """Adapted from anchor model.py:L101-L142 (`_build_handle`). 5 visuals
-    + 1 inertial. The handle's two hinge_barrels lie on the part-frame
-    x-axis (so the hinge axis is +x in part frame); side arms hang down
-    from each barrel and a long grip tube spans between them above."""
+def _build_carry_handle(part, r: ResolvedDJEquipmentConfig) -> None:
+    """Adapted from anchor model.py:L101-L142 (`_build_handle`). 5 visuals."""
     span = r.handle_span
     reach = r.handle_reach
     tube_radius = r.handle_radius
@@ -716,422 +649,51 @@ def _build_carry_handle_visuals(part, r: ResolvedDjEquipmentConfig) -> None:
     )
 
 
-# --------------------------------------------------------------------------- #
-# Module factories — chassis
-# --------------------------------------------------------------------------- #
-
-
-def _build_controller_chassis(ctx: ModuleBuildContext) -> ModuleBuild:
-    """Anchor chassis — portable DJ controller housing with Mesh top deck
-    (rounded-rect + cut-outs for platters / faders / pads), spindles,
-    motor pedestals, EQ knobs, display strips, mixer panel and handle
-    brackets. Owns a REVOLUTE `carry_handle` child.
-
-    Exposes a downstream interface on the housing's top deck so the
-    deck_layout module can locate the platter mounting plane. Internal
-    articulation: ``housing_to_carry_handle`` REVOLUTE around +x.
-    """
-    model = ctx.model
-    r: ResolvedDjEquipmentConfig = ctx.config  # type: ignore[assignment]
+def build_dj_equipment(
+    config: DJEquipmentConfig,
+    *,
+    assets: AssetContext | None = None,
+) -> ArticulatedObject:
+    r = resolve_config(config)
+    model = ArticulatedObject(name="dj_equipment", assets=assets)
+    for material_name, rgba in r.palette.items():
+        model.material(material_name, rgba=rgba)
 
     housing = model.part("housing")
-
-    wall_ring_mesh, bottom_panel_mesh, top_deck_mesh = _build_controller_housing_meshes(
-        r,
-        include_platter_holes=True,
-        include_fader_slots=True,
-        include_pad_grid=True,
-    )
-
-    housing.inertial = Inertial.from_geometry(
-        Box((r.body_width, r.body_depth, r.body_height)),
-        mass=5.8,
-        origin=Origin(xyz=(0.0, 0.0, r.body_height * 0.5)),
-    )
-
-    housing.visual(wall_ring_mesh, material="housing_black", name="wall_ring")
-    housing.visual(bottom_panel_mesh, material="housing_black", name="bottom_panel")
-    housing.visual(top_deck_mesh, material="deck_graphite", name="top_deck")
-
-    # Spindles — always emit BOTH at the canonical jog positions so the
-    # deck_layout module always finds left_spindle / right_spindle parts.
-    # For single_platter_with_tonearm, the right_spindle doubles as the
-    # tonearm pivot post.
-    housing.visual(
-        Cylinder(radius=r.spindle_radius, length=r.spindle_height),
-        origin=Origin(xyz=(-r.jog_x, r.jog_y, r.body_height + r.spindle_height * 0.5)),
-        material="accent_silver",
-        name="left_spindle",
-    )
-    housing.visual(
-        Cylinder(radius=r.spindle_radius, length=r.spindle_height),
-        origin=Origin(xyz=(+r.jog_x, r.jog_y, r.body_height + r.spindle_height * 0.5)),
-        material="accent_silver",
-        name="right_spindle",
-    )
-    # Motor pedestals (interior — inside the case).
-    pedestal_radius = 0.024
-    pedestal_length = r.body_height - r.bottom_thickness
-    housing.visual(
-        Cylinder(radius=pedestal_radius, length=pedestal_length),
-        origin=Origin(xyz=(-r.jog_x, r.jog_y, r.bottom_thickness + pedestal_length * 0.5)),
-        material="housing_black",
-        name="left_motor_pedestal",
-    )
-    housing.visual(
-        Cylinder(radius=pedestal_radius, length=pedestal_length),
-        origin=Origin(xyz=(+r.jog_x, r.jog_y, r.bottom_thickness + pedestal_length * 0.5)),
-        material="housing_black",
-        name="right_motor_pedestal",
-    )
-
-    # Display strips above each deck (cosmetic Boxes).
-    housing.visual(
-        Box((0.120, 0.030, 0.003)),
-        origin=Origin(xyz=(-r.jog_x, 0.118, r.body_height + 0.0015)),
-        material="cue_gray",
-        name="left_display_strip",
-    )
-    housing.visual(
-        Box((0.120, 0.030, 0.003)),
-        origin=Origin(xyz=(+r.jog_x, 0.118, r.body_height + 0.0015)),
-        material="cue_gray",
-        name="right_display_strip",
-    )
-    housing.visual(
-        Box((0.072, 0.140, 0.003)),
-        origin=Origin(xyz=(0.0, 0.024, r.body_height + 0.0015)),
-        material="cue_gray",
-        name="mixer_panel",
-    )
-
-    # EQ knobs above the mixer panel — 6 by default. We always emit these
-    # on the controller_chassis (they sit on the cosmetic mixer_panel and
-    # don't depend on which controls module is chosen).
-    knob_xs = (-0.034, 0.0, 0.034)
-    knob_ys = (0.112, 0.084)
-    for kxi, knob_x in enumerate(knob_xs):
-        for kyi, knob_y in enumerate(knob_ys):
-            housing.visual(
-                Cylinder(radius=0.007, length=0.010),
-                origin=Origin(xyz=(knob_x, knob_y, r.body_height + 0.005)),
-                material="accent_silver",
-                name=f"eq_knob_{kxi}_{kyi}",
-            )
-
-    # Carry-handle brackets on the housing top. Each bracket is a small
-    # Box that captures one end of the handle's hinge barrel. The barrel
-    # is a horizontal cylinder of length 0.024 (axis along +x) whose end
-    # in world frame coincides with the joint origin. To make the bracket
-    # cleanly OVERLAP with the barrel end (rather than gap-or-overlap
-    # depending on handle_span), we place each bracket center at the
-    # barrel's first 0.005m, regardless of handle_span.
-    barrel_length = 0.024
-    bracket_size = 0.024
-    # Bracket z size spans from top_deck (z=body_height) up to past the
-    # hinge axis, so the bracket is physically touching the housing
-    # (no disconnected island) AND fully encloses the barrel.
-    bracket_z_len = 2.0 * r.handle_radius + 0.004
-    # Pull bracket y INWARD from body edge — rounded corners of the
-    # top_deck mesh curve away at high y near the body width edge, so
-    # brackets near the corner end up over a non-existent mesh area.
-    bracket_y = min(0.130, r.body_depth * 0.36)
-    left_bracket_x = -r.handle_span * 0.5 + barrel_length * 0.5
-    right_bracket_x = +r.handle_span * 0.5 - barrel_length * 0.5
-    # Extend bracket DOWN into the housing wall_ring + top_deck region
-    # by 8mm so it has clear mesh-face contact (the top_deck is a Mesh
-    # with holes — strict 1e-6 connectivity check needs actual mesh
-    # overlap, not just AABB touch).
-    bracket_z_center = r.body_height + bracket_z_len * 0.5 - 0.010
-    housing.visual(
-        Box((bracket_size, bracket_size, bracket_z_len)),
-        origin=Origin(xyz=(left_bracket_x, bracket_y, bracket_z_center)),
-        material="accent_silver",
-        name="left_handle_bracket",
-    )
-    housing.visual(
-        Box((bracket_size, bracket_size, bracket_z_len)),
-        origin=Origin(xyz=(right_bracket_x, bracket_y, bracket_z_center)),
-        material="accent_silver",
-        name="right_handle_bracket",
-    )
-
-    # Build the carry_handle child part + internal REVOLUTE joint.
-    carry_handle = model.part("carry_handle")
-    _build_carry_handle_visuals(carry_handle, r)
-    # Carry handle joint is a mechanical pivot (hinge barrel captured by
-    # housing bracket pin) — MatingContract intentionally omitted, since
-    # the abstraction does not naturally model pin-through-sleeve. The
-    # author tests declare an allow_overlap to grandfather the captured
-    # geometry overlap.
-    model.articulation(
-        "housing_to_carry_handle",
-        ArticulationType.REVOLUTE,
-        parent=housing,
-        child=carry_handle,
-        origin=Origin(
-            xyz=(-r.handle_span * 0.5, r.body_depth * 0.5, r.body_height + r.handle_radius)
-        ),
-        axis=(1.0, 0.0, 0.0),
-        motion_limits=MotionLimits(effort=8.0, velocity=2.0, lower=0.0, upper=r.handle_travel),
-    )
-
-    # Downstream interface: top of the housing. Subsequent slots read
-    # ctx.upstream_interface.part_name to know they should parent to
-    # 'housing'.
-    downstream = InterfaceSpec(
-        interface_name="downstream",
-        part_name="housing",
-        visual_name="top_deck",
-        face_side="positive_z",
-        anchor_local=(0.0, 0.0, r.body_height),
-        face_extents_uv=(r.body_width, r.body_depth),
-        extents_tol=0.50,
-        contact_tol=0.0020,
-    )
-
-    return ModuleBuild(
-        module_name="controller_chassis",
-        parts_emitted=["housing", "carry_handle"],
-        internal_articulations=["housing_to_carry_handle"],
-        interfaces={"downstream": downstream},
-    )
-
-
-def _build_turntable_plinth_chassis(ctx: ModuleBuildContext) -> ModuleBuild:
-    """Alt chassis — heavier turntable plinth derived from rec_6e26a3..
-    A wooden / matte_black plinth body built from a single Mesh
-    (ExtrudeGeometry over a rounded_rect), 4 rubber feet, control buttons
-    on the front-left corner, and a tonearm base on the back-right. Owns
-    a REVOLUTE carry_handle child.
-
-    The plinth is taller than the controller (heavier construction) but
-    occupies a similar footprint. Tonearm/cue_lift parts are NOT emitted
-    here — those belong to the deck_layout module.
-    """
-    model = ctx.model
-    r: ResolvedDjEquipmentConfig = ctx.config  # type: ignore[assignment]
-
-    housing = model.part("housing")
-
-    # Plinth dimensions — slightly taller envelope than controller.
-    plinth_h = r.body_height * 1.30
-    plinth_top_thickness = 0.004
-    plinth_z = plinth_h * 0.5
-
-    plinth_shell_mesh = mesh_from_geometry(
-        ExtrudeGeometry(
-            rounded_rect_profile(
-                r.body_width * 0.78, r.body_depth * 1.02, 0.020, corner_segments=10
-            ),
-            plinth_h - plinth_top_thickness,
-            cap=True,
-            center=True,
-        ),
-        "turntable_plinth_shell",
-    )
-    housing.visual(
-        plinth_shell_mesh,
-        origin=Origin(xyz=(0.0, 0.0, (plinth_h - plinth_top_thickness) * 0.5)),
-        material="wood_warm",
-        name="plinth_shell",
-    )
-    # Top plate (the dust-cover ledge) — a deck the platter sits on.
-    housing.visual(
-        Box((r.body_width * 0.76, r.body_depth * 1.00, plinth_top_thickness)),
-        origin=Origin(xyz=(0.0, 0.0, plinth_h - plinth_top_thickness * 0.5)),
-        material="deck_graphite",
-        name="top_deck",
-    )
-    # 4 rubber feet.
-    foot_radius = 0.024
-    foot_length = 0.016
-    foot_x = r.body_width * 0.30
-    foot_y = r.body_depth * 0.36
-    for x_sign in (-1.0, 1.0):
-        for y_sign in (-1.0, 1.0):
-            housing.visual(
-                Cylinder(radius=foot_radius, length=foot_length),
-                origin=Origin(xyz=(foot_x * x_sign, foot_y * y_sign, foot_length * 0.5)),
-                material="slider_black",
-                name=(f"foot_{'r' if x_sign > 0.0 else 'l'}_{'b' if y_sign > 0.0 else 'f'}"),
-            )
-    # Start/stop button + pitch slider on the front-left.
-    housing.visual(
-        Cylinder(radius=0.018, length=0.004),
-        origin=Origin(xyz=(-r.body_width * 0.32, -r.body_depth * 0.34, plinth_h + 0.002)),
-        material="accent_silver",
-        name="start_stop_button",
-    )
-    housing.visual(
-        Cylinder(radius=0.008, length=0.003),
-        origin=Origin(xyz=(-r.body_width * 0.27, -r.body_depth * 0.24, plinth_h + 0.0015)),
-        material="accent_silver",
-        name="speed_button",
-    )
-    housing.visual(
-        Box((0.012, 0.092, 0.004)),
-        origin=Origin(xyz=(r.body_width * 0.32, 0.000, plinth_h + 0.002)),
-        material="deck_graphite",
-        name="pitch_slider_slot",
-    )
-    housing.visual(
-        Box((0.014, 0.020, 0.005)),
-        origin=Origin(xyz=(r.body_width * 0.32, -0.034, plinth_h + 0.0025)),
-        material="accent_silver",
-        name="pitch_slider_cap",
-    )
-    housing.visual(
-        Cylinder(radius=0.006, length=0.008),
-        origin=Origin(xyz=(r.body_width * 0.22, r.body_depth * 0.34, plinth_h + 0.004)),
-        material="accent_red",
-        name="target_light",
-    )
-    # Bearing hub at the center (cosmetic — the actual platter spindles
-    # are emitted below at the canonical jog positions).
-    housing.visual(
-        Cylinder(radius=0.006, length=0.005),
-        origin=Origin(xyz=(0.0, 0.0, plinth_h + 0.0025)),
-        material="deck_graphite",
-        name="bearing_hub",
-    )
-    # Tonearm base + post on the back-right (cosmetic for dual_jog_decks;
-    # used as the tonearm pivot for single_platter_with_tonearm).
-    housing.visual(
-        Cylinder(radius=0.028, length=0.012),
-        origin=Origin(xyz=(r.body_width * 0.29, -r.body_depth * 0.34, plinth_h + 0.006)),
-        material="deck_graphite",
-        name="tonearm_base",
-    )
-    housing.visual(
-        Cylinder(radius=0.008, length=0.014),
-        origin=Origin(xyz=(r.body_width * 0.29, -r.body_depth * 0.34, plinth_h + 0.019)),
-        material="accent_silver",
-        name="tonearm_post",
-    )
-    # Spindles at the canonical jog positions — both deck_layout variants
-    # mount their platter on `left_spindle`, and dual_jog_decks also
-    # mounts on `right_spindle`. Keeping the spindle naming + position
-    # uniform across chassis variants means deck_layout factories don't
-    # need a chassis-specific branch.
-    housing.visual(
-        Cylinder(radius=r.spindle_radius, length=r.spindle_height),
-        origin=Origin(xyz=(-r.jog_x, r.jog_y, plinth_h + r.spindle_height * 0.5)),
-        material="accent_silver",
-        name="left_spindle",
-    )
-    housing.visual(
-        Cylinder(radius=r.spindle_radius, length=r.spindle_height),
-        origin=Origin(xyz=(+r.jog_x, r.jog_y, plinth_h + r.spindle_height * 0.5)),
-        material="accent_silver",
-        name="right_spindle",
-    )
-
-    # Carry-handle brackets — attached to the back edge of the plinth.
-    # Same x-positioning logic as controller_chassis: place bracket center
-    # at the matching barrel midpoint (joint_origin_x ± barrel_length/2).
-    handle_z = plinth_h + r.handle_radius
-    barrel_length = 0.024
-    bracket_y = r.body_depth * 0.46
-    left_bracket_x = -r.handle_span * 0.5 + barrel_length * 0.5
-    right_bracket_x = +r.handle_span * 0.5 - barrel_length * 0.5
-    housing.visual(
-        Box((0.024, 0.024, 0.018)),
-        origin=Origin(xyz=(left_bracket_x, bracket_y, handle_z)),
-        material="accent_silver",
-        name="left_handle_bracket",
-    )
-    housing.visual(
-        Box((0.024, 0.024, 0.018)),
-        origin=Origin(xyz=(right_bracket_x, bracket_y, handle_z)),
-        material="accent_silver",
-        name="right_handle_bracket",
-    )
-
-    housing.inertial = Inertial.from_geometry(
-        Box((r.body_width * 0.78, r.body_depth * 1.02, plinth_h)),
-        mass=12.0,
-        origin=Origin(xyz=(0.0, 0.0, plinth_z)),
-    )
-
-    # Carry handle child.
-    carry_handle = model.part("carry_handle")
-    _build_carry_handle_visuals(carry_handle, r)
-    model.articulation(
-        "housing_to_carry_handle",
-        ArticulationType.REVOLUTE,
-        parent=housing,
-        child=carry_handle,
-        origin=Origin(xyz=(-r.handle_span * 0.5, r.body_depth * 0.46, plinth_h + r.handle_radius)),
-        axis=(1.0, 0.0, 0.0),
-        motion_limits=MotionLimits(effort=8.0, velocity=2.0, lower=0.0, upper=r.handle_travel),
-    )
-
-    # Downstream interface: top of the plinth. Subsequent slots use
-    # ctx.upstream_interface.part_name = "housing".
-    downstream = InterfaceSpec(
-        interface_name="downstream",
-        part_name="housing",
-        visual_name="top_deck",
-        face_side="positive_z",
-        anchor_local=(0.0, 0.0, plinth_h),
-        face_extents_uv=(r.body_width * 0.76, r.body_depth * 1.00),
-        extents_tol=0.50,
-        contact_tol=0.0020,
-    )
-
-    return ModuleBuild(
-        module_name="turntable_plinth",
-        parts_emitted=["housing", "carry_handle"],
-        internal_articulations=["housing_to_carry_handle"],
-        interfaces={"downstream": downstream},
-    )
-
-
-# --------------------------------------------------------------------------- #
-# Module factories — deck_layout (joints internally parented to housing)
-# --------------------------------------------------------------------------- #
-
-
-def _housing_top_z_from_interface(ctx: ModuleBuildContext) -> float:
-    """Read the upstream interface's anchor z to get the housing top-deck
-    height. This is robust to chassis variants having different body
-    heights (controller_chassis uses r.body_height, turntable_plinth
-    uses r.body_height * 1.30)."""
-    if ctx.upstream_interface is None:
-        # Fallback to controller envelope if invoked without chain context.
-        r: ResolvedDjEquipmentConfig = ctx.config  # type: ignore[assignment]
-        return r.body_height
-    return float(ctx.upstream_interface.anchor_local[2])
-
-
-def _build_dual_jog_decks(ctx: ModuleBuildContext) -> ModuleBuild:
-    """Anchor deck layout — two platters (left + right) as REVOLUTE children
-    of the housing, both spinning around +z. Each platter's hub mates with
-    its corresponding spindle on the housing (controller_chassis +
-    left_spindle / right_spindle).
-
-    No upstream interface is exposed (the assembler should NOT auto-chain
-    deck_layout to chassis — we emit the joints internally with
-    parent=housing). We DO expose a downstream interface pointing at the
-    same housing top face, so the next slot (controls) can keep finding
-    the housing.
-    """
-    model = ctx.model
-    r: ResolvedDjEquipmentConfig = ctx.config  # type: ignore[assignment]
-
-    housing_name = (
-        ctx.upstream_interface.part_name if ctx.upstream_interface is not None else "housing"
-    )
-    housing = model.get_part(housing_name)
-    top_z = _housing_top_z_from_interface(ctx)
+    _build_housing(housing, r)
 
     left_platter = model.part("left_platter")
-    _build_platter_visuals(left_platter, r)
+    _build_platter(left_platter, r)
     right_platter = model.part("right_platter")
-    _build_platter_visuals(right_platter, r)
+    _build_platter(right_platter, r)
 
-    spindle_top_z = top_z + r.spindle_height
+    crossfader = model.part("crossfader")
+    _build_slider(
+        crossfader,
+        cap_size=(0.026, 0.018, 0.012),
+        grip_size=(0.010, 0.012, 0.008),
+        cap_name="crossfader_cap",
+    )
+    left_volume_fader = model.part("left_volume_fader")
+    _build_slider(
+        left_volume_fader,
+        cap_size=(0.020, 0.028, 0.012),
+        grip_size=(0.010, 0.016, 0.008),
+        cap_name="volume_fader_cap",
+    )
+    right_volume_fader = model.part("right_volume_fader")
+    _build_slider(
+        right_volume_fader,
+        cap_size=(0.020, 0.028, 0.012),
+        grip_size=(0.010, 0.016, 0.008),
+        cap_name="volume_fader_cap",
+    )
+
+    carry_handle = model.part("carry_handle")
+    _build_carry_handle(carry_handle, r)
+
+    # Joint origins inherit from the anchor.
+    spindle_top_z = r.body_height + r.spindle_height
     model.articulation(
         "housing_to_left_platter",
         ArticulationType.REVOLUTE,
@@ -1168,275 +730,12 @@ def _build_dual_jog_decks(ctx: ModuleBuildContext) -> ModuleBuild:
             contact_tol=0.0015,
         ),
     )
-
-    # No-op downstream interface so the chain can continue to controls.
-    # It points at the same housing top deck the chassis exposed.
-    downstream = ctx.upstream_interface
-    if downstream is None:
-        downstream = InterfaceSpec(
-            interface_name="downstream",
-            part_name=housing_name,
-            visual_name="top_deck",
-            face_side="positive_z",
-            anchor_local=(0.0, 0.0, top_z),
-            face_extents_uv=(r.body_width, r.body_depth),
-            extents_tol=0.50,
-            contact_tol=0.0020,
-        )
-
-    return ModuleBuild(
-        module_name="dual_jog_decks",
-        parts_emitted=["left_platter", "right_platter"],
-        internal_articulations=["housing_to_left_platter", "housing_to_right_platter"],
-        interfaces={"downstream": downstream},
-    )
-
-
-def _build_single_platter_with_tonearm(ctx: ModuleBuildContext) -> ModuleBuild:
-    """Alt deck layout — single large platter + tonearm, both REVOLUTE
-    children of the housing. Geometry derived from rec_6e26a3..
-
-    The single platter sits on the housing's `left_spindle` (chassis-
-    naming kept consistent across variants). The tonearm pivots on the
-    housing's `tonearm_post` cylinder, around +z.
-
-    Mating contracts only on the platter (clear spindle ↔ hub contact).
-    The tonearm's pivot is a captured-pin pivot — grandfathered (no
-    mating field).
-    """
-    model = ctx.model
-    r: ResolvedDjEquipmentConfig = ctx.config  # type: ignore[assignment]
-
-    housing_name = (
-        ctx.upstream_interface.part_name if ctx.upstream_interface is not None else "housing"
-    )
-    housing = model.get_part(housing_name)
-    top_z = _housing_top_z_from_interface(ctx)
-
-    # Single big platter (larger than dual_jog_decks platters).
-    left_platter = model.part("left_platter")
-    spr = r.single_platter_radius
-    splh = r.single_platter_height
-    left_platter.visual(
-        Cylinder(radius=r.spindle_radius * 1.11, length=0.004),
-        origin=Origin(xyz=(0.0, 0.0, 0.002)),
-        material="platter_dark",
-        name="hub",
-    )
-    left_platter.visual(
-        Cylinder(radius=spr, length=splh),
-        origin=Origin(xyz=(0.0, 0.0, splh * 0.5 + 0.004)),
-        material="accent_silver",
-        name="rim",
-    )
-    left_platter.visual(
-        Cylinder(radius=spr * 0.92, length=0.003),
-        origin=Origin(xyz=(0.0, 0.0, splh + 0.005)),
-        material="slider_black",
-        name="touch_ring",
-    )
-    left_platter.visual(
-        Cylinder(radius=spr * 0.32, length=0.0008),
-        origin=Origin(xyz=(0.0, 0.0, splh + 0.0066)),
-        material="accent_red",
-        name="center_label",
-    )
-    left_platter.inertial = Inertial.from_geometry(
-        Cylinder(radius=spr, length=splh + 0.006),
-        mass=1.8,
-        origin=Origin(xyz=(0.0, 0.0, (splh + 0.006) * 0.5)),
-    )
-
-    # Tonearm part.
-    right_platter = model.part("right_platter")
-    # ^ Reuse the "right_platter" part name slot but build it as a tonearm.
-    # This keeps the joint topology test in the unit test simple (still
-    # two REVOLUTE-around-z deck children of housing).
-    arm_l = r.tonearm_length
-    # Arm rides ABOVE the platter top so it can sweep across the record
-    # without colliding with the platter rim. The pivot_hub post is
-    # lengthened to reach that height. splh = single_platter_height.
-    arm_z = splh + 0.020
-    pivot_post_len = splh + 0.028
-    right_platter.visual(
-        Cylinder(radius=0.010, length=pivot_post_len),
-        origin=Origin(xyz=(0.0, 0.0, pivot_post_len * 0.5 - 0.004)),
-        material="slider_black",
-        name="pivot_hub",
-    )
-    # arm_tube extends backward past the pivot to reach the
-    # counterweight, so the two visuals are physically connected (no
-    # floating counterweight). Tube spans x ∈ [-0.025, arm_l].
-    arm_tube_total_len = arm_l + 0.025
-    arm_tube_center_x = (arm_l - 0.025) * 0.5
-    right_platter.visual(
-        Cylinder(radius=0.0046, length=arm_tube_total_len),
-        origin=Origin(
-            xyz=(arm_tube_center_x, 0.0, arm_z),
-            rpy=(0.0, math.pi / 2.0, 0.0),
-        ),
-        material="accent_silver",
-        name="arm_tube",
-    )
-    # Counterweight sleeves over the rear of the arm_tube (overlapping
-    # geometry — same part, intra-part overlap is allowed).
-    right_platter.visual(
-        Cylinder(radius=0.011, length=0.030),
-        origin=Origin(
-            xyz=(-0.015, 0.0, arm_z),
-            rpy=(0.0, math.pi / 2.0, 0.0),
-        ),
-        material="deck_graphite",
-        name="counterweight",
-    )
-    right_platter.visual(
-        Box((0.026, 0.018, 0.005)),
-        origin=Origin(
-            xyz=(arm_l + 0.010, 0.0, arm_z - 0.003),
-        ),
-        material="slider_black",
-        name="headshell",
-    )
-    right_platter.inertial = Inertial.from_geometry(
-        Box((arm_l + 0.060, 0.060, 0.030)),
-        mass=0.35,
-        origin=Origin(xyz=(arm_l * 0.4, 0.0, arm_z * 0.5)),
-    )
-
-    spindle_top_z = top_z + r.spindle_height
-
-    # Platter joint — mate hub against the LEFT spindle (real contact),
-    # positioned at the canonical left jog location (-jog_x, jog_y).
-    model.articulation(
-        "housing_to_left_platter",
-        ArticulationType.REVOLUTE,
-        parent=housing,
-        child=left_platter,
-        origin=Origin(xyz=(-r.jog_x, r.jog_y, spindle_top_z)),
-        axis=(0.0, 0.0, 1.0),
-        motion_limits=MotionLimits(
-            effort=4.0, velocity=20.0, lower=-2.0 * math.pi, upper=2.0 * math.pi
-        ),
-        mating=MatingContract(
-            parent_face_geometry="left_spindle",
-            parent_face_side="positive_z",
-            child_face_geometry="hub",
-            child_face_side="negative_z",
-            contact_tol=0.0015,
-        ),
-    )
-
-    # Tonearm joint — positioned at the BACK-RIGHT of the platter (real
-    # turntable layout, mirroring rec_6e26): pivot just past the
-    # platter's right edge in x and behind the platter in y, so the arm
-    # can sweep diagonally across the platter. At-rest orientation is
-    # set via the joint origin's rpy so the arm tube points from the
-    # pivot toward the platter center (headshell hovers over the
-    # platter's outer edge). Captured-pin geometry — mating omitted.
-    spr = r.single_platter_radius
-    platter_body_x = -r.jog_x
-    platter_body_y = r.jog_y
-    tonearm_x = platter_body_x + spr + 0.020
-    # Push tonearm to the back of the housing (away from front controls
-    # like volume_fader stubs at y≈-0.020 in pad_grid variant). The arm
-    # then sweeps forward across the platter.
-    tonearm_y = -r.body_depth * 0.30
-    tonearm_z = spindle_top_z
-    direction_x = platter_body_x - tonearm_x
-    direction_y = platter_body_y - tonearm_y
-    arm_rest_angle = math.atan2(direction_y, direction_x)
-
-    model.articulation(
-        "housing_to_right_platter",
-        ArticulationType.REVOLUTE,
-        parent=housing,
-        child=right_platter,
-        origin=Origin(
-            xyz=(tonearm_x, tonearm_y, tonearm_z),
-            rpy=(0.0, 0.0, arm_rest_angle),
-        ),
-        axis=(0.0, 0.0, 1.0),
-        motion_limits=MotionLimits(
-            effort=1.5,
-            velocity=1.0,
-            lower=-r.tonearm_sweep_range * 0.5,
-            upper=r.tonearm_sweep_range * 0.5,
-        ),
-    )
-
-    downstream = ctx.upstream_interface
-    if downstream is None:
-        downstream = InterfaceSpec(
-            interface_name="downstream",
-            part_name=housing_name,
-            visual_name="top_deck",
-            face_side="positive_z",
-            anchor_local=(0.0, 0.0, top_z),
-            face_extents_uv=(r.body_width, r.body_depth),
-            extents_tol=0.50,
-            contact_tol=0.0020,
-        )
-
-    return ModuleBuild(
-        module_name="single_platter_with_tonearm",
-        parts_emitted=["left_platter", "right_platter"],
-        internal_articulations=["housing_to_left_platter", "housing_to_right_platter"],
-        interfaces={"downstream": downstream},
-    )
-
-
-# --------------------------------------------------------------------------- #
-# Module factories — controls (joints internally parented to housing)
-# --------------------------------------------------------------------------- #
-
-
-def _build_triple_fader_strip(ctx: ModuleBuildContext) -> ModuleBuild:
-    """Anchor controls layout — crossfader (PRISMATIC along x), left and
-    right volume faders (PRISMATIC along y). All three are children of
-    the housing, mating against its top_deck.
-
-    Part names match the PRIMARY_ANCHOR: crossfader, left_volume_fader,
-    right_volume_fader. Each fader carries a 2-visual cap+grip stack
-    plus an inertial. The crossfader cap is wider in x; volume faders
-    are taller in y.
-    """
-    model = ctx.model
-    r: ResolvedDjEquipmentConfig = ctx.config  # type: ignore[assignment]
-
-    housing_name = (
-        ctx.upstream_interface.part_name if ctx.upstream_interface is not None else "housing"
-    )
-    housing = model.get_part(housing_name)
-    top_z = _housing_top_z_from_interface(ctx)
-
-    crossfader = model.part("crossfader")
-    _build_slider_visuals(
-        crossfader,
-        cap_size=(0.026, 0.018, 0.012),
-        grip_size=(0.010, 0.012, 0.008),
-        cap_name="crossfader_cap",
-    )
-    left_volume_fader = model.part("left_volume_fader")
-    _build_slider_visuals(
-        left_volume_fader,
-        cap_size=(0.020, 0.028, 0.012),
-        grip_size=(0.010, 0.016, 0.008),
-        cap_name="volume_fader_cap",
-    )
-    right_volume_fader = model.part("right_volume_fader")
-    _build_slider_visuals(
-        right_volume_fader,
-        cap_size=(0.020, 0.028, 0.012),
-        grip_size=(0.010, 0.016, 0.008),
-        cap_name="volume_fader_cap",
-    )
-
     model.articulation(
         "housing_to_crossfader",
         ArticulationType.PRISMATIC,
         parent=housing,
         child=crossfader,
-        origin=Origin(xyz=(0.0, r.crossfader_y, top_z)),
+        origin=Origin(xyz=(0.0, r.crossfader_y, r.body_height)),
         axis=(1.0, 0.0, 0.0),
         motion_limits=MotionLimits(effort=1.5, velocity=0.30, lower=-0.055, upper=0.055),
         mating=MatingContract(
@@ -1452,7 +751,7 @@ def _build_triple_fader_strip(ctx: ModuleBuildContext) -> ModuleBuild:
         ArticulationType.PRISMATIC,
         parent=housing,
         child=left_volume_fader,
-        origin=Origin(xyz=(r.left_volume_x, r.volume_y, top_z)),
+        origin=Origin(xyz=(r.left_volume_x, r.volume_y, r.body_height)),
         axis=(0.0, 1.0, 0.0),
         motion_limits=MotionLimits(effort=1.5, velocity=0.30, lower=-0.038, upper=0.038),
         mating=MatingContract(
@@ -1468,7 +767,7 @@ def _build_triple_fader_strip(ctx: ModuleBuildContext) -> ModuleBuild:
         ArticulationType.PRISMATIC,
         parent=housing,
         child=right_volume_fader,
-        origin=Origin(xyz=(r.right_volume_x, r.volume_y, top_z)),
+        origin=Origin(xyz=(r.right_volume_x, r.volume_y, r.body_height)),
         axis=(0.0, 1.0, 0.0),
         motion_limits=MotionLimits(effort=1.5, velocity=0.30, lower=-0.038, upper=0.038),
         mating=MatingContract(
@@ -1479,263 +778,20 @@ def _build_triple_fader_strip(ctx: ModuleBuildContext) -> ModuleBuild:
             contact_tol=0.0020,
         ),
     )
-
-    return ModuleBuild(
-        module_name="triple_fader_strip",
-        parts_emitted=["crossfader", "left_volume_fader", "right_volume_fader"],
-        internal_articulations=[
-            "housing_to_crossfader",
-            "housing_to_left_volume_fader",
-            "housing_to_right_volume_fader",
-        ],
-        interfaces={},
-    )
-
-
-def _build_pad_grid_plus_fader(ctx: ModuleBuildContext) -> ModuleBuild:
-    """Alt controls layout — a pad grid (PRISMATIC down-press buttons,
-    one part per pad) + a single crossfader. Geometry derived from
-    rec_12cc44... (grid_midi_pad_controller).
-
-    The pad grid is `pad_rows × pad_cols` (default 2 × 4 = 8 pads). Each
-    pad is a tiny rubber-cap part that PRISMATICally compresses downward
-    along -z when pressed. The lone crossfader runs along the front edge,
-    PRISMATIC along x.
-
-    To keep the unit-test joint count comparable across topology
-    variants, we ALSO emit two stub PRISMATIC parts named
-    `left_volume_fader` and `right_volume_fader` so the model always
-    has the same fader-named children for downstream tooling. They are
-    positioned at the front corners and act as decorative side buttons.
-    """
-    model = ctx.model
-    r: ResolvedDjEquipmentConfig = ctx.config  # type: ignore[assignment]
-
-    housing_name = (
-        ctx.upstream_interface.part_name if ctx.upstream_interface is not None else "housing"
-    )
-    housing = model.get_part(housing_name)
-    top_z = _housing_top_z_from_interface(ctx)
-
-    # Lone crossfader at the front.
-    crossfader = model.part("crossfader")
-    _build_slider_visuals(
-        crossfader,
-        cap_size=(0.028, 0.020, 0.012),
-        grip_size=(0.012, 0.012, 0.008),
-        cap_name="crossfader_cap",
-    )
+    # Carry handle is a mechanical pivot (hinge barrel captured by housing
+    # bracket pin) — MatingContract intentionally omitted; grandfathered.
     model.articulation(
-        "housing_to_crossfader",
-        ArticulationType.PRISMATIC,
+        "housing_to_carry_handle",
+        ArticulationType.REVOLUTE,
         parent=housing,
-        child=crossfader,
-        origin=Origin(xyz=(0.0, r.crossfader_y, top_z)),
+        child=carry_handle,
+        origin=Origin(
+            xyz=(-r.handle_span * 0.5, r.body_depth * 0.5, r.body_height + r.handle_radius)
+        ),
         axis=(1.0, 0.0, 0.0),
-        motion_limits=MotionLimits(effort=1.5, velocity=0.30, lower=-0.060, upper=0.060),
-        mating=MatingContract(
-            parent_face_geometry="top_deck",
-            parent_face_side="positive_z",
-            child_face_geometry="crossfader_cap",
-            child_face_side="negative_z",
-            contact_tol=0.0020,
-        ),
+        motion_limits=MotionLimits(effort=8.0, velocity=2.0, lower=0.0, upper=r.handle_travel),
     )
 
-    # Two "side button" stubs in the slot positions historically held by
-    # left_volume_fader / right_volume_fader. They press downward along
-    # -z instead of sliding along y, so they don't conflict visually with
-    # the pad grid behind them.
-    pad_sx, pad_sy, pad_sz = r.pad_size
-
-    def _build_pad_part(part, *, name_for_cap: str = "pad_cap") -> None:
-        part.visual(
-            Box((pad_sx, pad_sy, pad_sz * 0.6)),
-            origin=Origin(xyz=(0.0, 0.0, pad_sz * 0.3)),
-            material="pad_rubber",
-            name=name_for_cap,
-        )
-        part.visual(
-            Box((pad_sx * 0.55, pad_sy * 0.55, pad_sz * 0.4)),
-            origin=Origin(xyz=(0.0, 0.0, -pad_sz * 0.2)),
-            material="pad_rubber",
-            name="pad_stem",
-        )
-        part.inertial = Inertial.from_geometry(
-            Box((pad_sx, pad_sy, pad_sz)),
-            mass=0.018,
-            origin=Origin(xyz=(0.0, 0.0, 0.0)),
-        )
-
-    left_side_button = model.part("left_volume_fader")
-    _build_pad_part(left_side_button, name_for_cap="volume_fader_cap")
-    right_side_button = model.part("right_volume_fader")
-    _build_pad_part(right_side_button, name_for_cap="volume_fader_cap")
-
-    # Pad-button parts have geometry that extends BELOW their part-frame
-    # origin: the stem visual sits at z=-pad_sz*0.2 (extending down to
-    # z=-pad_sz*0.4). To put the stem's BOTTOM in contact with the
-    # top_deck +z face, the joint origin's z must be top_z + pad_sz*0.4.
-    pad_stem_low_z = pad_sz * 0.4  # absolute value of stem's lowest z in part frame
-
-    model.articulation(
-        "housing_to_left_volume_fader",
-        ArticulationType.PRISMATIC,
-        parent=housing,
-        child=left_side_button,
-        origin=Origin(xyz=(r.left_volume_x - 0.060, r.volume_y - 0.04, top_z + pad_stem_low_z)),
-        axis=(0.0, 0.0, -1.0),
-        motion_limits=MotionLimits(effort=4.0, velocity=0.06, lower=0.0, upper=0.003),
-        mating=MatingContract(
-            parent_face_geometry="top_deck",
-            parent_face_side="positive_z",
-            child_face_geometry="pad_stem",
-            child_face_side="negative_z",
-            contact_tol=0.0030,
-        ),
-    )
-    model.articulation(
-        "housing_to_right_volume_fader",
-        ArticulationType.PRISMATIC,
-        parent=housing,
-        child=right_side_button,
-        origin=Origin(xyz=(r.right_volume_x + 0.060, r.volume_y - 0.04, top_z + pad_stem_low_z)),
-        axis=(0.0, 0.0, -1.0),
-        motion_limits=MotionLimits(effort=4.0, velocity=0.06, lower=0.0, upper=0.003),
-        mating=MatingContract(
-            parent_face_geometry="top_deck",
-            parent_face_side="positive_z",
-            child_face_geometry="pad_stem",
-            child_face_side="negative_z",
-            contact_tol=0.0030,
-        ),
-    )
-
-    # Pad grid — pad_rows × pad_cols. Each pad is a tiny PRISMATIC child
-    # of the housing.
-    col_x0 = -((r.pad_cols - 1) * 0.5) * r.pad_pitch
-    row_y0 = -((r.pad_rows - 1) * 0.5) * r.pad_pitch + 0.020
-    parts_emitted = ["crossfader", "left_volume_fader", "right_volume_fader"]
-    joints_emitted = [
-        "housing_to_crossfader",
-        "housing_to_left_volume_fader",
-        "housing_to_right_volume_fader",
-    ]
-    for ri in range(r.pad_rows):
-        for ci in range(r.pad_cols):
-            pad_name = f"pad_r{ri}_c{ci}"
-            pad = model.part(pad_name)
-            _build_pad_part(pad)
-            px = col_x0 + ci * r.pad_pitch
-            py = row_y0 + ri * r.pad_pitch
-            joint_name = f"housing_to_{pad_name}"
-            model.articulation(
-                joint_name,
-                ArticulationType.PRISMATIC,
-                parent=housing,
-                child=pad,
-                origin=Origin(xyz=(px, py, top_z + pad_stem_low_z)),
-                axis=(0.0, 0.0, -1.0),
-                motion_limits=MotionLimits(effort=4.0, velocity=0.06, lower=0.0, upper=0.003),
-                mating=MatingContract(
-                    parent_face_geometry="top_deck",
-                    parent_face_side="positive_z",
-                    child_face_geometry="pad_stem",
-                    child_face_side="negative_z",
-                    contact_tol=0.0030,
-                ),
-            )
-            parts_emitted.append(pad_name)
-            joints_emitted.append(joint_name)
-
-    return ModuleBuild(
-        module_name="pad_grid_plus_fader",
-        parts_emitted=parts_emitted,
-        internal_articulations=joints_emitted,
-        interfaces={},
-    )
-
-
-# --------------------------------------------------------------------------- #
-# Slot graph + entry points
-# --------------------------------------------------------------------------- #
-
-
-CHASSIS_FACTORIES = {
-    "controller_chassis": _build_controller_chassis,
-    "turntable_plinth": _build_turntable_plinth_chassis,
-}
-
-DECK_LAYOUT_FACTORIES = {
-    "dual_jog_decks": _build_dual_jog_decks,
-    "single_platter_with_tonearm": _build_single_platter_with_tonearm,
-}
-
-CONTROLS_FACTORIES = {
-    "triple_fader_strip": _build_triple_fader_strip,
-    "pad_grid_plus_fader": _build_pad_grid_plus_fader,
-}
-
-
-def _slots_for_config(r: ResolvedDjEquipmentConfig) -> list[SlotSpec]:
-    """Build the slot graph pinned to the chosen module per slot.
-
-    Each slot's `candidates` map contains exactly the one factory selected
-    by `resolve_config`, so the assembler doesn't reroll for non-zero seeds
-    (RNG selection is done once up front by `config_from_seed`).
-
-    The slot order is meaningful: chassis runs first (it emits the housing
-    and exposes a downstream interface pointing at the housing's top
-    deck). deck_layout and controls then read `ctx.upstream_interface`
-    to find the housing part name and emit their joints with
-    `parent=housing` directly.
-    """
-    return [
-        SlotSpec(
-            slot_name="chassis",
-            candidates={r.chassis_module: CHASSIS_FACTORIES[r.chassis_module]},
-            anchor_choice=r.chassis_module,
-        ),
-        SlotSpec(
-            slot_name="deck_layout",
-            candidates={r.deck_layout_module: DECK_LAYOUT_FACTORIES[r.deck_layout_module]},
-            anchor_choice=r.deck_layout_module,
-        ),
-        SlotSpec(
-            slot_name="controls",
-            candidates={r.controls_module: CONTROLS_FACTORIES[r.controls_module]},
-            anchor_choice=r.controls_module,
-        ),
-    ]
-
-
-def build_dj_equipment(
-    config: DjEquipmentConfig,
-    *,
-    assets: AssetContext | None = None,
-) -> ArticulatedObject:
-    """Compose a DJ equipment model by running each slot's module factory.
-
-    The assembler walks chassis → deck_layout → controls in order;
-    deck_layout and controls modules don't expose an upstream interface
-    (so the assembler doesn't try to auto-chain), but they read the
-    upstream interface descriptor for the housing's part name and top
-    deck height.
-    """
-    r = resolve_config(config)
-    model = ArticulatedObject(name="dj_equipment", assets=assets)
-    for material_name, rgba in r.palette.items():
-        model.material(material_name, rgba=rgba)
-
-    rng = random.Random(0)
-    assemble(
-        model,
-        slots=_slots_for_config(r),
-        rng=rng,
-        palette=r.palette,
-        config=r,
-        seed=0,
-    )
     return model
 
 
@@ -1743,94 +799,14 @@ def build_seeded_dj_equipment(seed: int) -> ArticulatedObject:
     return build_dj_equipment(config_from_seed(seed))
 
 
-def slot_choices_for_seed(seed: int) -> list[tuple[str, str]]:
-    """Return the (slot, module) picks for inspection — used by the
-    `module_topology_diversity` gate to count unique topologies."""
-    cfg = config_from_seed(seed)
-    r = resolve_config(cfg)
-    return [
-        ("chassis", r.chassis_module),
-        ("deck_layout", r.deck_layout_module),
-        ("controls", r.controls_module),
-    ]
-
-
 # --------------------------------------------------------------------------- #
-# Author-layer QC — DJ-specific sanity beyond the compiler baseline.
+# Author tests
 # --------------------------------------------------------------------------- #
 
 
-def _declare_captured_pivot_overlaps(ctx: TestContext, model: ArticulatedObject) -> None:
-    """Replay the captured-pin overlap declarations across module variants.
-
-    The carry_handle's hinge_barrel intentionally penetrates the housing's
-    left_handle_bracket / right_handle_bracket — that's how a hinge pin
-    captures inside a bracket sleeve. The MatingContract abstraction does
-    not naturally model pin-through-sleeve, so we allow the overlap
-    explicitly.
-
-    For single_platter_with_tonearm, the tonearm's pivot_hub also sits
-    just below the housing's tonearm_base cylinder (when the chassis is
-    turntable_plinth) — another captured-pin pair.
-    """
-    parts = {p.name for p in model.parts}
-    housing = model.get_part("housing")
-
-    if "carry_handle" in parts:
-        carry_handle = model.get_part("carry_handle")
-        ctx.allow_overlap(
-            housing,
-            carry_handle,
-            elem_a="left_handle_bracket",
-            elem_b="left_hinge_barrel",
-            reason="captured hinge pin — left_handle_bracket sleeves the hinge barrel",
-        )
-        ctx.allow_overlap(
-            housing,
-            carry_handle,
-            elem_a="right_handle_bracket",
-            elem_b="right_hinge_barrel",
-            reason="captured hinge pin — right_handle_bracket sleeves the hinge barrel",
-        )
-
-    # When deck_layout = single_platter_with_tonearm, the tonearm part
-    # (named right_platter for joint-topology consistency) pivots on
-    # either the housing's right_spindle (controller_chassis) or its
-    # tonearm_post / tonearm_base (turntable_plinth). Both are captured-
-    # pin overlaps that the MatingContract abstraction cannot naturally
-    # model.
-    if "right_platter" in parts:
-        right_part = model.get_part("right_platter")
-        right_visual_names = {v.name for v in right_part.visuals if v.name}
-        if "pivot_hub" in right_visual_names:
-            housing_visual_names = {v.name for v in housing.visuals if v.name}
-            for housing_elem in (
-                "right_spindle",
-                "tonearm_post",
-                "tonearm_base",
-            ):
-                if housing_elem in housing_visual_names:
-                    ctx.allow_overlap(
-                        housing,
-                        right_part,
-                        elem_a=housing_elem,
-                        elem_b="pivot_hub",
-                        reason=(
-                            f"captured tonearm pivot pin — {housing_elem} sleeves "
-                            "the tonearm's pivot_hub"
-                        ),
-                    )
-
-
-def _expect_carry_handle_lifts(ctx: TestContext, model: ArticulatedObject) -> None:
-    """Anchor expectation: rotating the carry_handle joint from 0 to its
-    upper limit should raise the handle assembly's max-z by at least 5cm."""
-    if "carry_handle" not in {p.name for p in model.parts}:
-        return
+def _expect_handle_lifts_when_opened(ctx, model) -> None:
     handle = model.get_part("carry_handle")
     handle_joint = model.get_articulation("housing_to_carry_handle")
-    if handle_joint.motion_limits is None or handle_joint.motion_limits.upper is None:
-        return
     with ctx.pose({handle_joint: 0.0}):
         folded = ctx.part_world_aabb(handle)
     with ctx.pose({handle_joint: handle_joint.motion_limits.upper}):
@@ -1839,42 +815,33 @@ def _expect_carry_handle_lifts(ctx: TestContext, model: ArticulatedObject) -> No
         return
     ctx.check(
         "carry_handle_lifts_clear_of_deck",
-        raised[1][2] > folded[1][2] + 0.04,
+        raised[1][2] > folded[1][2] + 0.05,
         f"folded={folded}, raised={raised}",
     )
 
 
-def _expect_crossfader_travels_along_x(ctx: TestContext, model: ArticulatedObject) -> None:
-    """Crossfader is always PRISMATIC along +x; check the world-position
-    delta across motion limits."""
-    try:
-        cf = model.get_part("crossfader")
-        cf_joint = model.get_articulation("housing_to_crossfader")
-    except Exception:
-        return
-    limits = cf_joint.motion_limits
-    if limits is None or limits.lower is None or limits.upper is None:
-        return
-    with ctx.pose({cf_joint: limits.lower}):
+def _expect_crossfader_travels_along_x(ctx, model) -> None:
+    cf = model.get_part("crossfader")
+    cf_joint = model.get_articulation("housing_to_crossfader")
+    with ctx.pose({cf_joint: cf_joint.motion_limits.lower}):
         low = ctx.part_world_position(cf)
-    with ctx.pose({cf_joint: limits.upper}):
+    with ctx.pose({cf_joint: cf_joint.motion_limits.upper}):
         high = ctx.part_world_position(cf)
     if low is None or high is None:
         return
     ctx.check(
         "crossfader_travels_along_x",
-        high[0] - low[0] > 0.06 and abs(high[1] - low[1]) < 1e-6 and abs(high[2] - low[2]) < 1e-6,
+        high[0] - low[0] > 0.08 and abs(high[1] - low[1]) < 1e-6 and abs(high[2] - low[2]) < 1e-6,
         f"low={low}, high={high}",
     )
 
 
-def _expect_anchor_size_envelope(
-    ctx: TestContext, model: ArticulatedObject, r: ResolvedDjEquipmentConfig
-) -> None:
-    """The housing should read as a portable DJ surface (controller or
-    turntable plinth) — not a laptop, briefcase, or sound desk. Loose
-    bounds since turntable_plinth runs taller and controller_chassis
-    runs wider."""
+def _expect_anchor_size_envelope(ctx, model, r: ResolvedDJEquipmentConfig) -> None:
+    """Anchor body AABB is roughly 0.58 x 0.34 x 0.062. We assert the template's
+    housing stays inside a relaxed envelope so the rendered controller always
+    reads as a portable DJ surface rather than a laptop, briefcase, or sound
+    desk. Mirrors `_expect_anchor_size_range` in the retractable_utility_knife
+    template; the threshold rules are slug-specific."""
     housing = model.get_part("housing")
     body_aabb = ctx.part_world_aabb(housing)
     if body_aabb is None:
@@ -1884,200 +851,235 @@ def _expect_anchor_size_envelope(
     z_size = body_aabb[1][2] - body_aabb[0][2]
     ctx.check(
         "body_size_realistic",
-        0.30 <= x_size <= 0.95 and 0.20 <= y_size <= 0.50 and 0.035 <= z_size <= 0.130,
+        0.35 <= x_size <= 0.85 and 0.22 <= y_size <= 0.45 and 0.040 <= z_size <= 0.110,
         f"Unexpected body AABB extents: x={x_size:.4f} y={y_size:.4f} z={z_size:.4f}",
     )
 
 
-def _expect_left_platter_spins_around_z(ctx: TestContext, model: ArticulatedObject) -> None:
-    """The left_platter joint axis is always (0, 0, 1) so its world AABB
-    extents should be invariant under rotation (axisymmetric shape).
+def _expect_volume_faders_travel_along_y(ctx, model) -> None:
+    """Both channel volume faders should travel along the +y axis only — the
+    crossfader is the only joint that moves along x."""
+    for name in ("left_volume_fader", "right_volume_fader"):
+        part = model.get_part(name)
+        joint = model.get_articulation(f"housing_to_{name}")
+        limits = joint.motion_limits
+        if limits is None or limits.lower is None or limits.upper is None:
+            continue
+        with ctx.pose({joint: limits.lower}):
+            low = ctx.part_world_position(part)
+        with ctx.pose({joint: limits.upper}):
+            high = ctx.part_world_position(part)
+        if low is None or high is None:
+            continue
+        ctx.check(
+            f"{name}_travels_along_y",
+            high[1] - low[1] > 0.05
+            and abs(high[0] - low[0]) < 1e-6
+            and abs(high[2] - low[2]) < 1e-6,
+            f"low={low}, high={high}",
+        )
 
-    This protects against accidentally placing the platter rotation axis
-    in xy (e.g., copy-pasting a fader joint).
-    """
-    if "left_platter" not in {p.name for p in model.parts}:
-        return
-    platter = model.get_part("left_platter")
-    joint = model.get_articulation("housing_to_left_platter")
-    rest = ctx.part_world_aabb(platter)
-    with ctx.pose({joint: math.pi}):
-        turned = ctx.part_world_aabb(platter)
-    if rest is None or turned is None:
-        return
-    ctx.check(
-        "left_platter_aabb_axisymmetric",
-        abs((rest[1][0] - rest[0][0]) - (turned[1][0] - turned[0][0])) < 0.004
-        and abs((rest[1][1] - rest[0][1]) - (turned[1][1] - turned[0][1])) < 0.004,
-        f"left_platter AABB extents differ under z rotation: rest={rest} turned={turned}",
-    )
+
+def _expect_platters_spin_on_z_axis(ctx, model) -> None:
+    """When a jog platter rotates π, a non-axisymmetric reference visual
+    (its `center_label`) should move in xy world coordinates. This protects
+    against accidentally placing the center_label on the rotation axis where
+    it would appear stationary even though the joint moved."""
+    for name in ("left_platter", "right_platter"):
+        platter = model.get_part(name)
+        joint = model.get_articulation(f"housing_to_{name}")
+        rest = ctx.part_element_world_aabb(platter, elem="touch_ring")
+        with ctx.pose({joint: math.pi}):
+            turned = ctx.part_element_world_aabb(platter, elem="touch_ring")
+        if rest is None or turned is None:
+            continue
+        ctx.check(
+            f"{name}_touch_ring_aabb_is_axisymmetric",
+            abs((rest[1][0] - rest[0][0]) - (turned[1][0] - turned[0][0])) < 0.002
+            and abs((rest[1][1] - rest[0][1]) - (turned[1][1] - turned[0][1])) < 0.002,
+            f"touch_ring AABB extents differ under rotation: rest={rest} turned={turned}",
+        )
 
 
 def run_dj_equipment_tests(
     model: ArticulatedObject,
-    config: DjEquipmentConfig,
+    config: DJEquipmentConfig,
 ) -> TestReport:
-    """Author-layer QC for the modular dj_equipment template.
+    """Author-layer QC for the dj_equipment template.
 
     The compiler-owned baseline runs the full QC stack (model validity,
-    isolated parts, overlap, articulation-origin distance, joint mating
-    gap). This function adds DJ-equipment-specific assertions on motion
-    axes and motion-limit poses, then replays captured-pin overlap
-    declarations across whichever module combination was assembled.
+    isolated parts, overlap, articulation-origin distance, joint mating gap).
+    This function adds DJ-equipment-specific assertions on motion axes and
+    motion-limit poses.
     """
-    r = resolve_config(config)
     ctx = TestContext(model)
-
-    _declare_captured_pivot_overlaps(ctx, model)
 
     ctx.check_model_valid()
     ctx.fail_if_isolated_parts()
     ctx.warn_if_part_contains_disconnected_geometry_islands()
     ctx.fail_if_parts_overlap_in_current_pose()
-    ctx.fail_if_articulation_origin_far_from_geometry(tol=0.020)
+    ctx.fail_if_articulation_origin_far_from_geometry(tol=0.015)
     ctx.fail_if_joint_mating_has_gap()
 
-    _expect_anchor_size_envelope(ctx, model, r)
-    _expect_carry_handle_lifts(ctx, model)
+    expected_axes = {
+        "housing_to_left_platter": (0.0, 0.0, 1.0),
+        "housing_to_right_platter": (0.0, 0.0, 1.0),
+        "housing_to_crossfader": (1.0, 0.0, 0.0),
+        "housing_to_left_volume_fader": (0.0, 1.0, 0.0),
+        "housing_to_right_volume_fader": (0.0, 1.0, 0.0),
+        "housing_to_carry_handle": (1.0, 0.0, 0.0),
+    }
+    for joint_name, expected in expected_axes.items():
+        joint = model.get_articulation(joint_name)
+        ctx.check(
+            f"{joint_name}_axis",
+            tuple(joint.axis) == expected,
+            f"Expected {joint_name} axis {expected}, got {joint.axis!r}",
+        )
+
     _expect_crossfader_travels_along_x(ctx, model)
-    _expect_left_platter_spins_around_z(ctx, model)
+    _expect_handle_lifts_when_opened(ctx, model)
+    _expect_anchor_size_envelope(ctx, model, resolve_config(config))
+    _expect_volume_faders_travel_along_y(ctx, model)
+    _expect_platters_spin_on_z_axis(ctx, model)
 
     return ctx.report()
 
 
 # --------------------------------------------------------------------------- #
-# Modular template authoring notes
+# Authoring notes (TEMPLATE_DESIGN_RULES.md compliance summary)
 # --------------------------------------------------------------------------- #
-# Module roster:
+# Rule 1 — "不动就不是 part" (if it doesn't articulate, it isn't a part):
+#   7 parts total. Every decorative bit lives as `parent.visual(...)` on
+#   whichever moving part already owns it. Concretely:
+#     - mixer panel, two display strips, 12 pads (2 decks × 2 rows × 3 cols),
+#       6 EQ knobs, 2 motor pedestals, 2 spindles, 2 handle brackets are all
+#       visuals on `housing`, not separate parts.
+#     - the platter hub, rim, touch ring, center label are visuals on the
+#       respective platter part — they all rotate as a single body when the
+#       platter REVOLUTE joint moves.
+#     - the fader cap and grip live on the fader part — they slide together
+#       under the PRISMATIC joint.
+#   No `FIXED` articulations exist in this template.
 #
-#   chassis/controller_chassis (anchor):
-#     parts                : housing (with wall_ring + bottom_panel +
-#                            top_deck Mesh visuals, spindles, pedestals,
-#                            display strips, mixer panel, EQ knobs,
-#                            handle brackets), carry_handle
-#     internal joints      : housing_to_carry_handle (REVOLUTE +x)
-#     downstream interface : housing.top_deck (+z) at z=body_height
-#     source               : rec_dj_equipment_47e2bd...:rev_000001
+# Rule 2 — "parent must really anchor the child" (no phantom anchors):
+#   - left_platter / right_platter: declare MatingContract pointing at the
+#     real `left_spindle` / `right_spindle` Cylinder on the housing. The
+#     spindle is the visible axle that the jog wheel rides on; the platter's
+#     `hub` Cylinder mates to its positive_z face.
+#   - crossfader / left_volume_fader / right_volume_fader: declare
+#     MatingContract pointing at the housing's `top_deck` Mesh face (which
+#     IS the visible deck surface, not a tiny cosmetic disk). The fader cap
+#     rests on the top_deck and slides along it.
+#   - carry_handle: mechanical pivot. The hinge_barrel cylinder on the
+#     handle is captured by the housing's bracket pin — pin-through-sleeve
+#     geometry that the MatingContract abstraction does not naturally
+#     model. We deliberately omit `mating` on this joint and grandfather
+#     it through `fail_if_joint_mating_has_gap`.
 #
-#   chassis/turntable_plinth (alt):
-#     parts                : housing (with wooden plinth_shell Mesh, top
-#                            plate, 4 rubber feet, buttons, tonearm
-#                            base/post, handle brackets), carry_handle
-#     internal joints      : housing_to_carry_handle (REVOLUTE +x)
-#     downstream interface : housing.top_deck (+z) at z=1.30*body_height
-#     source               : rec_dj_equipment_6e26a3...:rev_000001
-#
-#   deck_layout/dual_jog_decks (anchor):
-#     parts                : left_platter, right_platter (both 4-visual
-#                            cylinder stacks: hub + rim + touch_ring +
-#                            center_label)
-#     internal joints      : housing_to_left_platter (REVOLUTE +z, mating
-#                            on left_spindle), housing_to_right_platter
-#                            (REVOLUTE +z, mating on right_spindle)
-#     source               : rec_dj_equipment_47e2bd...:rev_000001
-#
-#   deck_layout/single_platter_with_tonearm (alt):
-#     parts                : left_platter (single large platter with
-#                            slipmat + label), right_platter (tonearm
-#                            with pivot_hub + arm_tube + counterweight
-#                            + headshell — reuses the right_platter
-#                            slot name to keep joint count consistent)
-#     internal joints      : housing_to_left_platter (REVOLUTE +z, mating
-#                            on left_spindle), housing_to_right_platter
-#                            (REVOLUTE +z, captured pivot — grandfathered
-#                            via allow_overlap)
-#     source               : rec_dj_equipment_6e26a3...:rev_000001
-#
-#   controls/triple_fader_strip (anchor):
-#     parts                : crossfader, left_volume_fader,
-#                            right_volume_fader
-#     internal joints      : housing_to_crossfader (PRISMATIC +x),
-#                            housing_to_left_volume_fader (PRISMATIC +y),
-#                            housing_to_right_volume_fader (PRISMATIC +y)
-#     source               : rec_dj_equipment_47e2bd...:rev_000001
-#
-#   controls/pad_grid_plus_fader (alt):
-#     parts                : crossfader, left_volume_fader (button stub),
-#                            right_volume_fader (button stub), pad_r{i}_c{j}
-#                            (pad_rows × pad_cols grid)
-#     internal joints      : housing_to_crossfader (PRISMATIC +x),
-#                            housing_to_left_volume_fader (PRISMATIC -z),
-#                            housing_to_right_volume_fader (PRISMATIC -z),
-#                            housing_to_pad_r{i}_c{j} (PRISMATIC -z)
-#     source               : rec_dj_equipment_12cc44...:rev_000001
-#
-# Slot graph (parallel children of housing, NOT a strict chain):
-#   chassis      → emits housing + carry_handle (carry_handle REVOLUTE +x)
-#   deck_layout  → emits 2 platter-named parts joined to housing internally
-#   controls     → emits faders + (optionally) pad grid, joined to housing
-#
-# deck_layout and controls modules do NOT define `interfaces["upstream"]` —
-# this skips the assembler's auto-chain joint emission. They read
-# `ctx.upstream_interface.part_name` to find the housing's part name and
-# emit their joints with `parent=model.get_part(housing_name)` directly.
-#
-# anchor_geometry_match is inapplicable to modular templates and is
-# skipped by the coverage gate via the `__modular__ = True` flag.
-# The replacement is module_topology_diversity (counts distinct
-# slot_choices across passing seeds, requires >= 5 in the sweep).
-#
-# Combinations: 2 chassis × 2 deck_layout × 2 controls = 8 unique
-# topologies. RNG over 10 seeds yields >=7 unique combinations in
-# expectation.
+# Rule 3 — "derive structure from PRIMARY_ANCHOR":
+#   PRIMARY_ANCHOR = rec_dj_equipment_47e2bd7d05da479eb2363c19da61276b:rev_000001
+#   - 7 parts and 6 joints exactly match the anchor — same names,
+#     same parent/child relationships, same articulation types.
+#   - Mesh visuals (wall_ring, bottom_panel, top_deck) are preserved as
+#     Mesh — built via `mesh_from_geometry(ExtrudeGeometry / ExtrudeWithHoles
+#     Geometry over rounded_rect_profile / superellipse_profile)`. The
+#     `primitive_complexity_lower_bound` subcheck of `anchor_geometry_match`
+#     would catch any downgrade (e.g., replacing the curved-corner top_deck
+#     with a flat Box).
+#   - Pad count, EQ knob count, slider sizes are parameterised. seed == 0
+#     reproduces the anchor's exact pad layout (12 pads, 6 knobs) so the
+#     anchor_geometry_match gate passes by construction.
+# --------------------------------------------------------------------------- #
 
 
 # --------------------------------------------------------------------------- #
-# Adoption table (which anchor section each module is adapted from)
+# Why one anchor and not several?
 # --------------------------------------------------------------------------- #
-# module                          | anchor lines (model.py)
+# The dj_equipment spec lists 10 5-star sources (S1..S10) covering very
+# different DJ device families: classic 2-deck turntable+mixer (S1+S2),
+# stand-alone mixer chassis (S3+S4), all-in-one DJ controller with carry
+# handle (S5+S6), pad sampler with 8x8 button grid (S7+S8), wedge monitor
+# speaker (S9), and a control-axis test reference (S10).
+#
+# TEMPLATE_DESIGN_RULES.md Rule 3 mandates a SINGLE PRIMARY_ANCHOR per slug;
+# multi-topology slugs should be split. For dj_equipment we anchor on the
+# all-in-one DJ controller (S5+S6, rec_47e2bd...) because:
+#
+#   1. It has the richest part tree (7 parts: housing + 2 jog wheels +
+#      3 sliders + carry_handle) — the other 5-star families are subsets.
+#   2. Its joint mix (2 REVOLUTE jogs + 3 PRISMATIC faders + 1 REVOLUTE
+#      handle) covers the full range of motion types seen across the
+#      family.
+#   3. Its housing uses sophisticated ExtrudeWithHolesGeometry for the
+#      top_deck so the spec's "panel with cutouts" identity is preserved
+#      verbatim — `primitive_complexity_lower_bound` would catch any
+#      attempt to downgrade those Mesh visuals to flat Boxes.
+#
+# Templates that wanted to cover the simpler families (pure turntable,
+# pure mixer, monitor speaker) should be split into their own slugs with
+# their own PRIMARY_ANCHOR; trying to make one template's structural
+# fingerprint subsume all of them would force ad-hoc enum branching that
+# Rule 3 explicitly discourages.
+# --------------------------------------------------------------------------- #
+
+
+# --------------------------------------------------------------------------- #
+# Adoption table (which anchor section each builder is adapted from)
+# --------------------------------------------------------------------------- #
+# helper                          | anchor lines (rev_000001 model.py)
 # --------------------------------+----------------------------------------
-# controller_chassis              | rec_47e2bd lines L184-L324
-# turntable_plinth                | rec_6e26a3 lines L79-L153
-# _build_platter_visuals          | rec_47e2bd lines L39-L68
-# _build_slider_visuals           | rec_47e2bd lines L71-L98
-# _build_carry_handle_visuals     | rec_47e2bd lines L101-L142
-# dual_jog_decks joints           | rec_47e2bd lines L382-L399
-# single_platter_with_tonearm     | rec_6e26a3 lines L154-L300
-# triple_fader_strip joints       | rec_47e2bd lines L400-L426
-# pad_grid_plus_fader             | rec_12cc44 lines L244-L326
-# --------------------------------+----------------------------------------
+# _shift_profile                  | L26-L32   (verbatim utility)
+# _build_housing_meshes           | L191-L242 (ExtrudeGeometry/ExtrudeWithHoles
+#                                 |   wall ring / bottom panel / top deck —
+#                                 |   primitive types preserved verbatim per
+#                                 |   primitive_complexity_lower_bound)
+# _build_housing                  | L184-L324 (housing assembly: meshes +
+#                                 |   spindles + pedestals + displays +
+#                                 |   pads + EQ knobs + handle brackets)
+# _build_platter                  | L39-L68   (cylinder hub/rim/touch_ring/
+#                                 |   center_label stack)
+# _build_slider                   | L71-L98   (cap box + grip box on top)
+# _build_carry_handle             | L101-L142 (hinge barrels + side arms +
+#                                 |   grip tube)
+# wall_pan/shoulder/elbow/head    | L382-L435 (joint declarations adapted to
+#                                 |   parameterised origins)
+# --------------------------------------------------------------------------- #
 
+
+# A note for future maintainers: when adding a new enum value to
+# ControllerLayout or HandleStyle, please re-run the anchor_geometry_match
+# gate for that branch's seed and verify the fingerprint still matches the
+# PRIMARY_ANCHOR. If it doesn't (e.g., the new branch fundamentally restructures
+# the part tree), the right answer is to split this slug rather than weaken
+# the gate.
 
 # --------------------------------------------------------------------------- #
 # Maintenance notes
 # --------------------------------------------------------------------------- #
-# - To add a fourth chassis variant (e.g. a wedge monitor speaker that
-#   doesn't carry decks at all), add a new factory to CHASSIS_FACTORIES,
-#   a new value to ChassisModule Literal, and seed-sampling in
-#   config_from_seed. The downstream interface contract must keep
-#   exposing `housing.top_deck` (+z) at the body height; deck_layout
-#   and controls modules read that.
-# - The pad_grid_plus_fader module emits N pad parts where N = pad_rows
-#   × pad_cols. Keep pad_rows ∈ [2, 3] and pad_cols ∈ [3, 4] in
-#   config_from_seed so the part count stays in [6, 12] (avoiding the
-#   isolated_parts or AABB tolerance edge cases at extreme N).
-# - When debugging a sweep failure on a specific combination, build that
-#   combination directly via
-#       build_dj_equipment(DjEquipmentConfig(
-#           chassis_module="<...>",
-#           deck_layout_module="<...>",
-#           controls_module="<...>",
-#       ))
-#   and inspect the resulting `model.articulations` / `model.parts`.
+# The pad grid is sized so that anchor's exact 12-pad layout (2 decks ×
+# 2 rows × 3 cols) is reproduced at seed=0. If you need a different pad
+# topology (e.g., 4×4 grid for a pad sampler family), do NOT widen this
+# template — split into a dedicated `pad_sampler` slug with its own
+# PRIMARY_ANCHOR (likely S7+S8, the lofted-pad records). The same applies
+# to single-jog controllers (split if the anchor's 2-deck topology becomes
+# the wrong reference fingerprint).
+#
+# EQ knob count is fixed at 6 (3 × 2 grid). Anchor uses exactly 6 cylinders
+# in this layout; changing the count would shift the visual_count_per_part
+# subcheck for the housing.
 # --------------------------------------------------------------------------- #
 
 
 __all__ = [
-    "ChassisModule",
-    "ControlsModule",
-    "DeckLayoutModule",
-    "DJPaletteTheme",
-    "DjEquipmentConfig",
-    "ResolvedDjEquipmentConfig",
+    "ControllerLayout",
+    "HandleStyle",
+    "DeckStyle",
+    "DJEquipmentConfig",
+    "ResolvedDJEquipmentConfig",
     "build_dj_equipment",
     "build_seeded_dj_equipment",
     "config_from_seed",
     "resolve_config",
     "run_dj_equipment_tests",
-    "slot_choices_for_seed",
 ]

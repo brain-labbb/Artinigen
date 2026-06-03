@@ -14,13 +14,7 @@ Use `uv run articraft ...` for product workflows. `just` is intentionally limite
 
 If the user asks Claude Code to generate Articraft data, follow [`EXTERNAL_AGENT_DATA.md`](EXTERNAL_AGENT_DATA.md). Use `uv run articraft external ...`; do not manually create records or use an alternate workflow.
 
-If the user asks Claude Code to author or improve a procedural template under `agent/templates/`, follow the modular template flow:
-
-- Read [`articraft_template_authoring/AGENT_ENTRYPOINT.md`](articraft_template_authoring/AGENT_ENTRYPOINT.md) first.
-- Architecture and implementation patterns are documented in [`MODULAR_TEMPLATE_AUTHORING.md`](MODULAR_TEMPLATE_AUTHORING.md).
-- All templates must obey the hard rules in [`articraft_template_authoring/DESIGN_RULES.md`](articraft_template_authoring/DESIGN_RULES.md).
-
-The authoritative per-iteration signal is `uv run articraft template compile-sweep <slug> --seeds 0-49 --json`; do not declare a template done based on pytest, QC scripts, or visual inspection alone.
+If the user asks Claude Code to author or improve a procedural template under `agent/templates/`, follow [`TEMPLATE_AUTHORING_AGENT.md`](TEMPLATE_AUTHORING_AGENT.md). The authoritative per-iteration signal is `uv run articraft template compile-sweep <slug> --seeds 0-49 --json`; do not declare a template done based on pytest, QC scripts, or visual inspection alone. The spec-stage workflow in `articraft_template_authoring/agent_workflow.md` §1–3 is unchanged; only the post-review iteration loop (§4.6) is superseded.
 
 ```bash
 uv sync --group dev
