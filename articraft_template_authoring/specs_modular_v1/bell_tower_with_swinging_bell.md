@@ -130,6 +130,18 @@ pattern = `mixed`
 | `striker_swing` | REVOLUTE | A.frame | C.striker | horizontal, often opposite sign | about `[-0.55, 0.55]` | 外部 striker 朝 bell 摆动 | S6 |
 | `guide_wheel_spin` | CONTINUOUS | A.tower | C.guide_wheel | horizontal | unlimited | rope guide pulley 自旋 | S5 |
 
+## 每槽位 Module Emits / Interfaces
+
+本 spec 是 modular v1 早期写法；每个 slot/module 的 emitted parts、internal joints、upstream/downstream interface 已在「槽位 + 候选模块表」「槽位图」「部件（Parts）」「关节（Joints）」和 adopted source index 中给出。模板实现阶段必须把这些信息逐 module 显式落成 `ModuleBuild`、`InterfaceSpec` 和 `MatingContract`，不能只按全局部件清单拼装。
+
+| emits | 描述 | 来源 |
+|---|---|---|
+| parts / visuals | 以各 slot candidate 的结构特征和「部件（Parts）」表为准；不动装饰优先作为 parent visual | adopted source index + slot table |
+| internal joints | 以「关节（Joints）」表和 slot graph 中的 joint type / axis / range 为准 | adopted source index + joints table |
+| upstream interface | 来自 slot graph 中的 parent face、hinge line、socket、rail、axis、contact plane 或 support policy | slot graph + source snippets |
+| downstream interface | 消费相邻 slot 的 mating point / axis / face；必须在实现中转成真实 `InterfaceSpec` | slot graph + source snippets |
+| mating contracts | 每个 separate moving child 和跨 slot 连接必须有可见支撑路径；captured pin / shaft / bearing overlap 需要局部 allow-overlap 理由 | validator + reject cases |
+
 ## 参数范围汇总
 | 参数 | 类型 | 取值范围 / 候选值 | 默认值 | 派生关系 | 来源 |
 |---|---|---|---|---|---|
@@ -189,6 +201,20 @@ pattern = `mixed`
 - bell_count 多于 1 时，所有 bell 共享同一 pivot beam 坐标系，间距必须留 clearance。
 - fixed-only bell installation 不能作为默认 seed。
 - guide wheel 和 striker 是可选辅助运动，不得替代主 bell swing。
+
+### Stage 1 / Stage 2 seed-domain plan
+
+seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+
+Stage 1 high-risk coverage seed plan：
+
+| seed/range | covered combo | risk type | viewer / validator focus |
+|---|---|---|---|
+| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
+| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
+| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+
+Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
 
 ## Validator
 | 检查项 | 标准 |

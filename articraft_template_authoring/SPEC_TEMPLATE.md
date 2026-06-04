@@ -1,6 +1,6 @@
 # Modular Spec Template
 
-`articraft_template_authoring/specs/<category_slug>.md` 的唯一字段规范。SPEC_ONLY 阶段必须按本格式产出 spec。
+`articraft_template_authoring/specs_modular_v1/<category_slug>.md` 的唯一字段规范。SPEC_ONLY 阶段必须按本格式产出 spec。
 
 Modular spec 不使用单一 `primary_anchor` 作为主来源。它使用 per-module source table、每 slot 的 `seed=0 anchor` module，以及 slot graph 来描述模板结构。
 
@@ -158,10 +158,29 @@ pattern: <linear_chain / parallel_children / multiplicity / mixed>
 预计 `module_topology_diversity` 门控（≥5 distinct）能否过：yes / no
 理由：...
 
+seed_domain_stage：stage1_coverage / stage2_procedural / final
+Stage 1 high-risk coverage seed plan：列出 seed 范围、覆盖的 slot/module/multiplicity 组合、风险类型、viewer 目检重点和预计 distinct 数。
+Stage 2 procedural target：所有 Stage-1 模板完成后升级；目标为 unbounded deterministic sampling，1000-seed topology distinct 建议 >=100，低于 100 需说明类别/兼容约束原因。
+若使用 curated / modulo coverage seeds：说明这是 Stage 1 临时稳定域，不是最终 dataset-scale seed domain。
+
+| seed/range | covered combo | risk type | viewer / validator focus |
+|---|---|---|---|
+| 0 | anchor module combination | regression anchor | source identity / baseline joint |
+| 1-N | <high-risk combo> | floating / collision / axis / max multiplicity / bulky module / optional child | <checks> |
+
 | slot | candidate_count | 是否 ≥2 | 是否 ≥3 | 备注 |
 |---|---:|---|---|---|
 | A | 4 | yes | yes | |
 ```
+
+要求：
+
+- `module_topology_diversity` 的 `>=5 distinct` 只是最低机械门槛，不是最终 seed domain 的目标。
+- Stage 1 允许 finite coverage seed domain：可以用 curated / gated / modulo coverage table 先覆盖关键合法组合，目标是模板质量、稳定装配和 viewer 可审查。
+- Stage 1 spec 必须明确 coverage domain 覆盖哪些 module、哪些 multiplicity、哪些稀有组合，以及哪些组合暂不采样。
+- Coverage seed plan 必须优先覆盖最容易坏的组合：悬空/漂浮风险、穿模/clearance 风险、joint 轴或 range 风险、closed pose 风险、max multiplicity、bulky module、可选 moving child、长链/多子件装配、互斥 gate 或 fallback 降级路径。
+- Stage 1 的目的之一是先收敛这些高风险几何/接口/约束组合；Stage 2 再放开 seed domain 时应复用这些已验证的 InterfaceSpec、尺寸派生和 compatibility gates。
+- Stage 2 / final 要求迁移为 unbounded deterministic procedural sampling；除 anchor / regression / coverage overrides 外，主体 `seed>0` 不得无限轮换小型固定表。
 
 ### 10. Validator 和 Reject cases
 
@@ -171,6 +190,9 @@ pattern: <linear_chain / parallel_children / multiplicity / mixed>
 - seed=0 equals anchor module combination
 - slot_choices_for_seed returns implemented module names
 - module_topology_diversity expected to pass
+- Stage 1 high-risk coverage seed domain is documented and covers representative modules plus failure-prone combos
+- Stage 2 procedural seed migration target is documented
+- final templates do not endlessly cycle a small curated table as the main seed domain
 - critical InterfaceSpec / MatingContract points exist
 - key joints have expected type / axis / range
 - copied objects follow naming and placement policy

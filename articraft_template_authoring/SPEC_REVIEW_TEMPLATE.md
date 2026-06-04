@@ -1,13 +1,13 @@
 # Modular Spec Review Template
 
-用于人工审核 `articraft_template_authoring/specs/<category_slug>.md`。
+用于人工审核 `articraft_template_authoring/specs_modular_v1/<category_slug>.md`。
 
 ## Review Target
 
 | 项 | 值 |
 |---|---|
 | category_slug | <category_slug> |
-| spec path | articraft_template_authoring/specs/<category_slug>.md |
+| spec path | articraft_template_authoring/specs_modular_v1/<category_slug>.md |
 | reviewer status | pending / approved / rejected |
 
 ## 必查项
@@ -26,6 +26,10 @@
 - [ ] Multiplicity / Copy Logic 说明 N_range、sampling domain、copied object、naming、placement、joint policy 和 source/gating。
 - [ ] 参数表只暴露语义参数、slot/module 选择、必要尺寸和 multiplicity 数量；没有把未实现拓扑塞进 enum。
 - [ ] 拓扑多样性审计说明组合数，以及 `module_topology_diversity` 是否预计可过。
+- [ ] 拓扑多样性审计声明 seed domain stage：Stage 1 coverage / Stage 2 procedural / final。
+- [ ] Stage 1 coverage seed plan 清楚说明有限 seed 表覆盖哪些 module、multiplicity、稀有组合和 viewer 目检重点。
+- [ ] Stage 1 coverage seed plan 优先覆盖高风险组合：悬空/漂浮、穿模/clearance、joint 轴/range、closed pose、max multiplicity、bulky module、可选 moving child、互斥 gate / fallback 降级路径。
+- [ ] Stage 2 procedural seed migration target 已写明；最终模板不得把小型 curated / modulo 表作为主 seed domain。
 - [ ] Validator 能转成模板内 `run_<slug>_tests` 或 sweep 可检查项。
 - [ ] Reject cases 覆盖漂浮、穿模、接口错位、joint 方向错误、类别身份丢失、module 组合非法等失败模式。
 - [ ] spec 没有使用单一 `primary_anchor` 替代 per-module source table。

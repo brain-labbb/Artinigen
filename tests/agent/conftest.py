@@ -23,7 +23,6 @@ import pytest
 _ENGINE_TEST_STEMS = frozenset(
     {
         "test_template_sweep",
-        "test_template_sweep_anchor",
         "test_template_sweep_clusters",
         "test_template_sweep_coverage",
         "test_template_sweep_state",

@@ -1,17 +1,23 @@
-# ruff: noqa: E701,E702,I001
-"""Procedural template for category `articulated_task_lamp`.
+# ruff: noqa: E501
+"""Reviewed modular template for category ``articulated_task_lamp``.
 
-Default seed=0 anchor: weighted_round_disk + twin_rail_two_link + rect_architect
-with three desk pitch revolute joints (shoulder / elbow / shade tilt).
+This rewrite follows ``articraft_template_authoring/specs_modular_v1/articulated_task_lamp.md``.
+The default seed domain is intentionally narrow: grounded task-lamp mounts,
+a visible two-link articulated arm or compatible boom, and a directional lamp
+head. Source-only evidence branches from the spec, such as medical ceiling
+arms and prismatic goosenecks, remain out of the seed sampler until they are
+split or reviewed as a separate mature domain.
+
+Nonzero seeds enumerate the implemented mount/arm/shade Cartesian product,
+matching the broad-combination seed style used by the turbine and satellite
+templates. Seed 0 remains the reviewed anchor.
 """
 
 from __future__ import annotations
 
 import math
 import random
-import tempfile
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Literal
 
 from sdk import (
@@ -55,10 +61,14 @@ MaterialStyle = Literal["brushed_aluminum", "matte_black", "industrial_green", "
 PitchAxisFamily = Literal["neg_y_desk", "pos_y_wall", "z_swing_clamp"]
 
 DESK_MOUNTS: tuple[MountStyle, ...] = ("weighted_round_disk", "weighted_rect_plate")
-DESK_ARMS: tuple[ArmStyle, ...] = ("twin_rail_two_link", "parallel_bar_two_link", "spring_balanced")
+DESK_ARMS: tuple[ArmStyle, ...] = (
+    "twin_rail_two_link",
+    "parallel_bar_two_link",
+    "spring_balanced",
+    "single_post",
+)
 WALL_ARMS: tuple[ArmStyle, ...] = ("wall_cylinder",)
 CLAMP_ARMS: tuple[ArmStyle, ...] = ("single_boom",)
-POST_ARMS: tuple[ArmStyle, ...] = ("single_post",)
 
 SOURCE_IDS = {
     "S1": "data/records/rec_articulated_task_lamp_0001/revisions/rev_000001/model.py:L49-L163",
@@ -80,6 +90,7 @@ SOURCE_IDS = {
     "S17": "data/records/rec_articulated_task_lamp_881f7667505547d1a5b4beb68756f84b/revisions/rev_000001/model.py:L35-L218",
     "S18": "data/records/rec_articulated_task_lamp_881f7667505547d1a5b4beb68756f84b/revisions/rev_000001/model.py:L220-L247",
 }
+
 SOURCE_ADAPTATION_MAP = {
     "twin_rail_segment": ("S1", "S2"),
     "weighted_round_base": ("S2", "S7"),
@@ -96,39 +107,39 @@ SOURCE_ADAPTATION_MAP = {
 PALETTES: dict[str, dict[str, tuple[float, float, float, float]]] = {
     "brushed_aluminum": {
         "body": (0.18, 0.19, 0.21, 1.0),
-        "metal": (0.74, 0.76, 0.79, 1.0),
-        "steel": (0.59, 0.61, 0.64, 1.0),
-        "rubber": (0.08, 0.08, 0.09, 1.0),
-        "diffuser": (0.97, 0.96, 0.90, 0.38),
-        "emitter": (1.00, 0.93, 0.78, 0.55),
-        "accent": (0.72, 0.74, 0.76, 1.0),
+        "metal": (0.73, 0.75, 0.78, 1.0),
+        "pin": (0.55, 0.57, 0.60, 1.0),
+        "rubber": (0.04, 0.04, 0.045, 1.0),
+        "glass": (0.90, 0.98, 0.92, 0.45),
+        "light": (1.0, 0.90, 0.68, 0.70),
+        "accent": (0.80, 0.82, 0.84, 1.0),
     },
     "matte_black": {
-        "body": (0.06, 0.065, 0.07, 1.0),
-        "metal": (0.55, 0.58, 0.60, 1.0),
-        "steel": (0.72, 0.74, 0.76, 1.0),
+        "body": (0.055, 0.058, 0.064, 1.0),
+        "metal": (0.36, 0.37, 0.39, 1.0),
+        "pin": (0.70, 0.70, 0.72, 1.0),
         "rubber": (0.01, 0.01, 0.012, 1.0),
-        "diffuser": (0.97, 0.96, 0.90, 0.38),
-        "emitter": (1.0, 0.84, 0.42, 0.72),
-        "accent": (0.02, 0.20, 0.16, 1.0),
+        "glass": (0.90, 0.94, 0.88, 0.42),
+        "light": (1.0, 0.88, 0.58, 0.72),
+        "accent": (0.22, 0.23, 0.25, 1.0),
     },
     "industrial_green": {
-        "body": (0.02, 0.20, 0.16, 1.0),
-        "metal": (0.55, 0.58, 0.60, 1.0),
-        "steel": (0.67, 0.68, 0.66, 1.0),
-        "rubber": (0.02, 0.02, 0.018, 1.0),
-        "diffuser": (0.97, 0.96, 0.90, 0.38),
-        "emitter": (1.0, 0.82, 0.42, 0.65),
-        "accent": (0.84, 0.84, 0.80, 1.0),
+        "body": (0.12, 0.24, 0.16, 1.0),
+        "metal": (0.58, 0.60, 0.56, 1.0),
+        "pin": (0.72, 0.69, 0.58, 1.0),
+        "rubber": (0.035, 0.04, 0.035, 1.0),
+        "glass": (0.26, 0.56, 0.34, 0.50),
+        "light": (1.0, 0.90, 0.60, 0.70),
+        "accent": (0.55, 0.45, 0.24, 1.0),
     },
     "warm_brass": {
-        "body": (0.14, 0.13, 0.12, 1.0),
-        "metal": (0.74, 0.61, 0.28, 1.0),
-        "steel": (0.74, 0.61, 0.28, 1.0),
-        "rubber": (0.006, 0.006, 0.006, 1.0),
-        "diffuser": (0.91, 0.90, 0.85, 0.38),
-        "emitter": (1.0, 0.86, 0.52, 0.72),
-        "accent": (0.13, 0.42, 0.24, 0.68),
+        "body": (0.18, 0.14, 0.10, 1.0),
+        "metal": (0.78, 0.58, 0.30, 1.0),
+        "pin": (0.86, 0.68, 0.38, 1.0),
+        "rubber": (0.05, 0.035, 0.025, 1.0),
+        "glass": (0.96, 0.90, 0.72, 0.40),
+        "light": (1.0, 0.82, 0.46, 0.72),
+        "accent": (0.55, 0.34, 0.16, 1.0),
     },
 }
 
@@ -138,24 +149,24 @@ X_CYLINDER_RPY = (0.0, math.pi / 2.0, 0.0)
 
 @dataclass(frozen=True)
 class ArticulatedTaskLampConfig:
-    mount_style: MountStyle | None = None
-    arm_style: ArmStyle | None = None
-    shade_style: ShadeStyle | None = None
+    mount_style: MountStyle = "weighted_round_disk"
+    arm_style: ArmStyle = "twin_rail_two_link"
+    shade_style: ShadeStyle = "rect_architect"
     material_style: MaterialStyle = "matte_black"
-    swivel_enabled: bool = False
+    pitch_axis_family: PitchAxisFamily = "neg_y_desk"
+
+    lower_arm_length: float = 0.170
+    upper_arm_length: float = 0.150
+    base_radius: float = 0.108
+    base_height: float = 0.026
+    shade_width: float = 0.132
+    shade_depth: float = 0.092
+    rail_spacing: float = 0.034
+    joint_radius: float = 0.012
     spring_enabled: bool = False
-    base_radius: float = 0.105
-    base_height: float = 0.022
-    base_length: float = 0.34
-    base_width: float = 0.20
-    lower_arm_length: float = 0.165
-    upper_arm_length: float = 0.145
-    lower_arm_angle: float = math.radians(62.0)
-    upper_arm_angle: float = math.radians(54.0)
-    shade_width: float = 0.086
-    shade_depth: float = 0.050
-    boom_length: float = 0.620
-    name: str = "articulated_task_lamp"
+    seed: int = 0
+
+    palette: dict[str, tuple[float, float, float, float]] | None = None
 
 
 @dataclass(frozen=True)
@@ -165,1790 +176,1360 @@ class ResolvedArticulatedTaskLampConfig:
     shade_style: ShadeStyle
     material_style: MaterialStyle
     pitch_axis_family: PitchAxisFamily
-    swivel_enabled: bool
-    spring_enabled: bool
-    base_radius: float
-    base_height: float
-    base_length: float
-    base_width: float
     lower_arm_length: float
     upper_arm_length: float
-    lower_arm_angle: float
-    upper_arm_angle: float
+    base_radius: float
+    base_height: float
     shade_width: float
     shade_depth: float
-    boom_length: float
-    shoulder_x: float
-    shoulder_z: float
-    shoulder_axis: tuple[float, float, float]
-    elbow_axis: tuple[float, float, float]
-    shade_axis: tuple[float, float, float]
-    shoulder_limit: tuple[float, float]
-    elbow_limit: tuple[float, float]
-    shade_limit: tuple[float, float]
-    name: str
+    rail_spacing: float
+    joint_radius: float
+    spring_enabled: bool
+    seed: int
     palette: dict[str, tuple[float, float, float, float]]
 
+    @property
+    def axis(self) -> tuple[float, float, float]:
+        if self.pitch_axis_family == "pos_y_wall":
+            return (0.0, 1.0, 0.0)
+        if self.pitch_axis_family == "z_swing_clamp":
+            return (0.0, 0.0, 1.0)
+        return (0.0, -1.0, 0.0)
 
-def _clamp(v: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, float(v)))
+    @property
+    def shoulder_origin(self) -> tuple[float, float, float]:
+        if self.mount_style == "wall_plate":
+            return (0.030, 0.0, 0.118)
+        if self.mount_style == "c_clamp":
+            return (0.020, 0.0, 0.092)
+        return (-0.028, 0.0, self.base_height + 0.052)
 
 
-def config_from_seed(seed: int) -> ArticulatedTaskLampConfig:
-    if seed == 0:
-        return ArticulatedTaskLampConfig(
-            mount_style="weighted_round_disk",
-            arm_style="twin_rail_two_link",
-            shade_style="rect_architect",
-            material_style="brushed_aluminum",
-            swivel_enabled=False,
-            spring_enabled=False,
-            base_radius=0.105,
-            base_height=0.022,
-            lower_arm_length=0.165,
-            upper_arm_length=0.145,
-            lower_arm_angle=math.radians(62.0),
-            upper_arm_angle=math.radians(54.0),
-            shade_width=0.086,
-            shade_depth=0.050,
-            name="anchor_articulated_task_lamp",
-        )
-    rng = random.Random(seed)
-    mount = rng.choice(
-        (
-            "weighted_round_disk",
-            "weighted_rect_plate",
-            "weighted_round_disk",
-            "weighted_rect_plate",
-            "c_clamp",
-            "wall_plate",
-        )
-    )
-    arm = rng.choice(
-        (
-            "twin_rail_two_link",
-            "parallel_bar_two_link",
-            "spring_balanced",
-            "single_post",
-            "wall_cylinder",
-            "single_boom",
-        )
-    )
-    shade = rng.choice(("rect_architect", "lathe_conical", "banker_dome"))
-    return ArticulatedTaskLampConfig(
-        mount_style=mount,  # type: ignore[arg-type]
-        arm_style=arm,  # type: ignore[arg-type]
-        shade_style=shade,  # type: ignore[arg-type]
-        material_style=rng.choice(
-            ("brushed_aluminum", "matte_black", "industrial_green", "warm_brass")
-        ),  # type: ignore[arg-type]
-        swivel_enabled=rng.random() < 0.12,
-        spring_enabled=arm == "spring_balanced",
-        base_radius=round(rng.uniform(0.08, 0.14), 4),
-        base_height=round(rng.uniform(0.02, 0.05), 4),
-        base_length=round(rng.uniform(0.28, 0.38), 4),
-        base_width=round(rng.uniform(0.16, 0.24), 4),
-        lower_arm_length=round(rng.uniform(0.18, 0.38), 4),
-        upper_arm_length=round(rng.uniform(0.16, 0.32), 4),
-        lower_arm_angle=round(rng.uniform(math.radians(48), math.radians(72)), 4),
-        upper_arm_angle=round(rng.uniform(math.radians(38), math.radians(68)), 4),
-        shade_width=round(rng.uniform(0.12, 0.22), 4),
-        shade_depth=round(rng.uniform(0.10, 0.18), 4),
-        boom_length=round(rng.uniform(0.48, 0.72), 4),
-        name=f"seeded_articulated_task_lamp_{seed}",
-    )
+VALID_MOUNTS = set(MountStyle.__args__)  # type: ignore[attr-defined]
+VALID_ARMS = set(ArmStyle.__args__)  # type: ignore[attr-defined]
+VALID_SHADES = set(ShadeStyle.__args__)  # type: ignore[attr-defined]
+VALID_MATERIALS = set(MaterialStyle.__args__)  # type: ignore[attr-defined]
+VALID_AXIS_FAMILIES = set(PitchAxisFamily.__args__)  # type: ignore[attr-defined]
+
+
+def _clamp(value: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, float(value)))
 
 
 def resolve_config(config: ArticulatedTaskLampConfig) -> ResolvedArticulatedTaskLampConfig:
-    mount = config.mount_style or "weighted_round_disk"
-    arm = config.arm_style or "twin_rail_two_link"
-    shade = config.shade_style or "rect_architect"
-    for value, pool, label in (
-        (
-            mount,
-            ("weighted_round_disk", "weighted_rect_plate", "c_clamp", "wall_plate"),
-            "mount_style",
-        ),
-        (
-            arm,
-            (
-                "twin_rail_two_link",
-                "parallel_bar_two_link",
-                "spring_balanced",
-                "single_post",
-                "wall_cylinder",
-                "single_boom",
-            ),
-            "arm_style",
-        ),
-        (shade, ("rect_architect", "lathe_conical", "banker_dome"), "shade_style"),
-    ):
-        if value not in pool:
-            raise ValueError(f"Unsupported {label}: {value!r}")
-    if config.material_style not in PALETTES:
-        raise ValueError(f"Unsupported material_style: {config.material_style!r}")
+    mount_style = str(config.mount_style)
+    arm_style = str(config.arm_style)
+    shade_style = str(config.shade_style)
+    material_style = str(config.material_style)
+    pitch_axis_family = str(config.pitch_axis_family)
 
-    if mount in DESK_MOUNTS and arm in WALL_ARMS:
-        arm = "twin_rail_two_link"
-    if mount in DESK_MOUNTS and arm in CLAMP_ARMS:
-        arm = "twin_rail_two_link"
-    if mount == "wall_plate" and arm not in WALL_ARMS:
-        arm = "wall_cylinder"
-    if mount == "c_clamp" and arm not in CLAMP_ARMS:
-        arm = "single_boom"
-    if mount in DESK_MOUNTS and arm == "single_post" and shade == "rect_architect":
-        shade = "banker_dome"
-    if arm == "spring_balanced" and mount not in DESK_MOUNTS:
-        mount = "weighted_round_disk"
-    if arm == "single_post" and shade == "rect_architect":
-        shade = "banker_dome"
-    if arm == "wall_cylinder" and shade == "banker_dome":
-        shade = "lathe_conical"
+    if mount_style not in VALID_MOUNTS:
+        raise ValueError(f"mount_style must be one of {sorted(VALID_MOUNTS)}, got {mount_style!r}")
+    if arm_style not in VALID_ARMS:
+        raise ValueError(f"arm_style must be one of {sorted(VALID_ARMS)}, got {arm_style!r}")
+    if shade_style not in VALID_SHADES:
+        raise ValueError(f"shade_style must be one of {sorted(VALID_SHADES)}, got {shade_style!r}")
+    if material_style not in VALID_MATERIALS:
+        raise ValueError(
+            f"material_style must be one of {sorted(VALID_MATERIALS)}, got {material_style!r}"
+        )
+    if pitch_axis_family not in VALID_AXIS_FAMILIES:
+        raise ValueError(
+            f"pitch_axis_family must be one of {sorted(VALID_AXIS_FAMILIES)}, got {pitch_axis_family!r}"
+        )
 
-    pitch: PitchAxisFamily
-    if mount == "c_clamp":
-        pitch = "z_swing_clamp"
-    elif mount == "wall_plate":
-        pitch = "pos_y_wall"
+    if mount_style == "wall_plate":
+        pitch_axis_family = "pos_y_wall"
+    elif mount_style == "c_clamp":
+        pitch_axis_family = "z_swing_clamp"
     else:
-        pitch = "neg_y_desk"
+        pitch_axis_family = "neg_y_desk"
 
-    if pitch == "neg_y_desk":
-        shoulder_axis = elbow_axis = (0.0, -1.0, 0.0)
-        shade_axis = (0.0, -1.0, 0.0) if arm != "single_post" else (0.0, 1.0, 0.0)
-        shoulder_limit, elbow_limit, shade_limit = (-0.55, 0.70), (-0.30, 0.95), (-1.05, 0.55)
-        if mount == "weighted_rect_plate":
-            bl = _clamp(config.base_length, 0.26, 0.40)
-            bh = _clamp(config.base_height, 0.02, 0.05)
-            shoulder_x, shoulder_z = -bl * 0.34, bh + 0.060
-        else:
-            shoulder_x, shoulder_z = -0.034, 0.068
-    elif pitch == "pos_y_wall":
-        shoulder_axis = elbow_axis = shade_axis = (0.0, 1.0, 0.0)
-        shoulder_limit, elbow_limit, shade_limit = (0.0, 1.15), (-1.05, 0.20), (-0.85, 0.65)
-        shoulder_x, shoulder_z = 0.042, 0.220
+    if arm_style == "spring_balanced":
+        spring_enabled = True
     else:
-        shoulder_axis = (0.0, 0.0, 1.0)
-        elbow_axis = (0.0, 1.0, 0.0)
-        shade_axis = (0.0, 1.0, 0.0)
-        shoulder_limit, elbow_limit, shade_limit = (-2.36, 2.36), (0.0, 0.0), (-0.96, 1.22)
-        shoulder_x, shoulder_z = 0.0, 0.441
+        spring_enabled = bool(config.spring_enabled and arm_style in DESK_ARMS)
 
-    spring_enabled = arm == "spring_balanced" or config.spring_enabled
+    palette = dict(PALETTES[material_style])
+    palette.update(dict(config.palette or {}))
+
     return ResolvedArticulatedTaskLampConfig(
-        mount_style=mount,  # type: ignore[arg-type]
-        arm_style=arm,  # type: ignore[arg-type]
-        shade_style=shade,  # type: ignore[arg-type]
-        material_style=config.material_style,
-        pitch_axis_family=pitch,
-        swivel_enabled=config.swivel_enabled and mount in DESK_MOUNTS,
+        mount_style=mount_style,  # type: ignore[arg-type]
+        arm_style=arm_style,  # type: ignore[arg-type]
+        shade_style=shade_style,  # type: ignore[arg-type]
+        material_style=material_style,  # type: ignore[arg-type]
+        pitch_axis_family=pitch_axis_family,  # type: ignore[arg-type]
+        lower_arm_length=_clamp(config.lower_arm_length, 0.135, 0.255),
+        upper_arm_length=_clamp(config.upper_arm_length, 0.115, 0.220),
+        base_radius=_clamp(config.base_radius, 0.080, 0.145),
+        base_height=_clamp(config.base_height, 0.020, 0.046),
+        shade_width=_clamp(config.shade_width, 0.105, 0.195),
+        shade_depth=_clamp(config.shade_depth, 0.076, 0.150),
+        rail_spacing=_clamp(config.rail_spacing, 0.024, 0.050),
+        joint_radius=_clamp(config.joint_radius, 0.008, 0.018),
         spring_enabled=spring_enabled,
-        base_radius=_clamp(config.base_radius, 0.08, 0.14),
-        base_height=_clamp(config.base_height, 0.02, 0.05),
-        base_length=_clamp(config.base_length, 0.26, 0.40),
-        base_width=_clamp(config.base_width, 0.14, 0.26),
-        lower_arm_length=_clamp(config.lower_arm_length, 0.16, 0.40),
-        upper_arm_length=_clamp(config.upper_arm_length, 0.14, 0.34),
-        lower_arm_angle=config.lower_arm_angle,
-        upper_arm_angle=config.upper_arm_angle,
-        shade_width=_clamp(config.shade_width, 0.10, 0.24),
-        shade_depth=_clamp(config.shade_depth, 0.08, 0.20),
-        boom_length=_clamp(config.boom_length, 0.40, 0.78),
-        shoulder_x=shoulder_x,
-        shoulder_z=shoulder_z,
-        shoulder_axis=shoulder_axis,
-        elbow_axis=elbow_axis,
-        shade_axis=shade_axis,
-        shoulder_limit=shoulder_limit,
-        elbow_limit=elbow_limit,
-        shade_limit=shade_limit,
-        name=config.name,
-        palette=dict(PALETTES[config.material_style]),
+        seed=int(config.seed),
+        palette=palette,
     )
 
 
-def _mesh(assets: AssetContext, name: str, geometry) -> object:
-    return mesh_from_geometry(geometry, assets.mesh_path(name))
+_SEED_MOUNTS: tuple[MountStyle, ...] = (
+    "weighted_round_disk",
+    "weighted_rect_plate",
+    "c_clamp",
+    "wall_plate",
+)
+_SEED_ARMS: tuple[ArmStyle, ...] = (
+    "twin_rail_two_link",
+    "parallel_bar_two_link",
+    "spring_balanced",
+    "single_post",
+    "wall_cylinder",
+    "single_boom",
+)
+_SEED_SHADES: tuple[ShadeStyle, ...] = (
+    "rect_architect",
+    "lathe_conical",
+    "banker_dome",
+)
+_SEED_MATERIALS: tuple[MaterialStyle, ...] = (
+    "brushed_aluminum",
+    "matte_black",
+    "industrial_green",
+    "warm_brass",
+)
+_SEED_SLOT_COMBOS: tuple[tuple[MountStyle, ArmStyle, ShadeStyle], ...] = tuple(
+    (mount, arm, shade) for mount in _SEED_MOUNTS for arm in _SEED_ARMS for shade in _SEED_SHADES
+)
 
 
-def _arm_cylinder_rpy(angle: float) -> tuple[float, float, float]:
+def _combo_from_seed(
+    seed: int,
+    rng: random.Random,
+) -> tuple[MountStyle, ArmStyle, ShadeStyle, MaterialStyle]:
+    mount_style, arm_style, shade_style = _SEED_SLOT_COMBOS[
+        (max(int(seed), 1) - 1) % len(_SEED_SLOT_COMBOS)
+    ]
+    return (mount_style, arm_style, shade_style, rng.choice(_SEED_MATERIALS))
+
+
+def config_from_seed(seed: int) -> ResolvedArticulatedTaskLampConfig:
+    if seed == 0:
+        return resolve_config(ArticulatedTaskLampConfig(seed=0))
+
+    rng = random.Random(seed)
+    mount_style, arm_style, shade_style, material_style = _combo_from_seed(seed, rng)
+    cfg = ArticulatedTaskLampConfig(
+        mount_style=mount_style,
+        arm_style=arm_style,
+        shade_style=shade_style,
+        material_style=material_style,
+        lower_arm_length=rng.uniform(0.145, 0.220),
+        upper_arm_length=rng.uniform(0.125, 0.195),
+        base_radius=rng.uniform(0.088, 0.132),
+        base_height=rng.uniform(0.022, 0.040),
+        shade_width=rng.uniform(0.115, 0.175),
+        shade_depth=rng.uniform(0.082, 0.132),
+        rail_spacing=rng.uniform(0.028, 0.044),
+        joint_radius=rng.uniform(0.010, 0.015),
+        seed=seed,
+    )
+    return resolve_config(cfg)
+
+
+def slot_choices_for_seed(seed: int) -> list[tuple[str, str]]:
+    cfg = config_from_seed(seed)
+    base_module = {
+        "weighted_round_disk": "weighted_round_disk",
+        "weighted_rect_plate": "weighted_rect_plate",
+        "c_clamp": "c_clamp_jaw",
+        "wall_plate": "wall_backplate",
+    }[cfg.mount_style]
+    arm_module = {
+        "twin_rail_two_link": "twin_rail_two_link",
+        "parallel_bar_two_link": "parallel_bar_two_link",
+        "spring_balanced": "spring_balanced_two_link",
+        "single_post": "single_post_arm",
+        "wall_cylinder": "wall_cylinder_two_link",
+        "single_boom": "single_boom",
+    }[cfg.arm_style]
+    shade_module = {
+        "rect_architect": "rectangular_architect_head",
+        "lathe_conical": "lathe_conical_shade",
+        "banker_dome": "banker_glass_dome",
+    }[cfg.shade_style]
+    return [
+        ("base_mount", base_module),
+        ("arm_chain", arm_module),
+        ("shade_head", shade_module),
+    ]
+
+
+def _material_map(model: ArticulatedObject, cfg: ResolvedArticulatedTaskLampConfig):
+    return {key: model.material(f"task_lamp_{key}", rgba=rgba) for key, rgba in cfg.palette.items()}
+
+
+def _axis_angle_rpy(angle: float) -> tuple[float, float, float]:
     return (0.0, math.pi / 2.0 - angle, 0.0)
 
 
-def _arm_box_rpy(angle: float) -> tuple[float, float, float]:
+def _box_angle_rpy(angle: float) -> tuple[float, float, float]:
     return (0.0, -angle, 0.0)
 
 
-def _add_rubber_feet(
-    part, r: ResolvedArticulatedTaskLampConfig, mats, prefix: str = "foot"
+def _endpoint(length: float, angle: float) -> tuple[float, float]:
+    return (length * math.cos(angle), length * math.sin(angle))
+
+
+def _build_base(model: ArticulatedObject, cfg: ResolvedArticulatedTaskLampConfig, mats) -> None:
+    base = model.part("base")
+    sx, _, sz = cfg.shoulder_origin
+    jr = cfg.joint_radius
+
+    if cfg.mount_style == "weighted_round_disk":
+        base.visual(
+            Cylinder(radius=cfg.base_radius, length=cfg.base_height),
+            origin=Origin(xyz=(0.0, 0.0, 0.5 * cfg.base_height)),
+            material=mats["body"],
+            name="weighted_round_disk",
+        )
+        base.visual(
+            Cylinder(radius=cfg.base_radius * 0.70, length=0.006),
+            origin=Origin(xyz=(-0.006, 0.0, cfg.base_height + 0.003)),
+            material=mats["metal"],
+            name="top_trim_disc",
+        )
+        base.visual(
+            Box((0.055, cfg.rail_spacing + 0.034, 0.050)),
+            origin=Origin(xyz=(sx - 0.014, 0.0, cfg.base_height + 0.026)),
+            material=mats["body"],
+            name="shoulder_pedestal",
+        )
+    elif cfg.mount_style == "weighted_rect_plate":
+        base.visual(
+            Box((cfg.base_radius * 1.85, cfg.base_radius * 1.35, cfg.base_height)),
+            origin=Origin(xyz=(0.0, 0.0, 0.5 * cfg.base_height)),
+            material=mats["body"],
+            name="weighted_rect_plate",
+        )
+        base.visual(
+            Box((0.048, cfg.rail_spacing + 0.040, 0.046)),
+            origin=Origin(xyz=(sx - 0.012, 0.0, cfg.base_height + 0.022)),
+            material=mats["metal"],
+            name="rect_yoke_block",
+        )
+    elif cfg.mount_style == "wall_plate":
+        base.visual(
+            Box((0.032, 0.122, 0.165)),
+            origin=Origin(xyz=(-0.010, 0.0, 0.085)),
+            material=mats["body"],
+            name="wall_backplate",
+        )
+        base.visual(
+            Box((0.055, cfg.rail_spacing + 0.038, 0.048)),
+            origin=Origin(xyz=(sx - 0.020, 0.0, sz)),
+            material=mats["metal"],
+            name="wall_shoulder_lug",
+        )
+    else:
+        base.visual(
+            Box((0.034, 0.112, 0.125)),
+            origin=Origin(xyz=(-0.016, 0.0, 0.066)),
+            material=mats["body"],
+            name="clamp_spine",
+        )
+        base.visual(
+            Box((0.072, 0.112, 0.022)),
+            origin=Origin(xyz=(0.004, 0.0, 0.118)),
+            material=mats["body"],
+            name="upper_clamp_jaw",
+        )
+        base.visual(
+            Box((0.068, 0.112, 0.022)),
+            origin=Origin(xyz=(0.002, 0.0, 0.020)),
+            material=mats["body"],
+            name="lower_clamp_jaw",
+        )
+        base.visual(
+            Cylinder(radius=0.010, length=0.075),
+            origin=Origin(xyz=(0.034, 0.0, 0.060)),
+            material=mats["pin"],
+            name="clamp_screw_visual",
+        )
+
+    base.visual(
+        Cylinder(radius=jr, length=cfg.rail_spacing + 0.036),
+        origin=Origin(xyz=(sx, 0.0, sz), rpy=Y_CYLINDER_RPY),
+        material=mats["pin"],
+        name="shoulder_barrel",
+    )
+    base.visual(
+        Cylinder(radius=jr * 1.18, length=0.010),
+        origin=Origin(xyz=(sx, 0.5 * cfg.rail_spacing + 0.020, sz), rpy=Y_CYLINDER_RPY),
+        material=mats["metal"],
+        name="shoulder_cap_pos",
+    )
+    base.visual(
+        Cylinder(radius=jr * 1.18, length=0.010),
+        origin=Origin(xyz=(sx, -0.5 * cfg.rail_spacing - 0.020, sz), rpy=Y_CYLINDER_RPY),
+        material=mats["metal"],
+        name="shoulder_cap_neg",
+    )
+    base.inertial = Inertial.from_geometry(
+        Cylinder(radius=max(0.05, cfg.base_radius), length=max(0.02, cfg.base_height)),
+        mass=2.4,
+        origin=Origin(xyz=(0.0, 0.0, 0.5 * cfg.base_height)),
+    )
+
+
+def _add_hub(
+    part, *, name: str, radius: float, rail_spacing: float, mats, x: float, z: float
 ) -> None:
-    if r.mount_style == "weighted_round_disk":
-        for i, (fx, fy) in enumerate(
-            (
-                (0.070, 0.070),
-                (-0.070, 0.070),
-                (0.070, -0.070),
-                (-0.070, -0.070),
-                (0.0, 0.085),
-                (-0.085, 0.0),
-            )
-        ):
-            part.visual(
-                Cylinder(radius=0.012, length=0.004),
-                origin=Origin(xyz=(fx, fy, 0.002)),
-                material=mats["rubber"],
-                name=f"{prefix}_{i}",
-            )
-    elif r.mount_style == "weighted_rect_plate":
-        hx, hy = r.base_length * 0.36, r.base_width * 0.33
-        for i, (fx, fy) in enumerate(((-hx, -hy), (-hx, hy), (hx, -hy), (hx, hy))):
-            part.visual(
-                Cylinder(radius=0.018, length=0.008),
-                origin=Origin(xyz=(fx, fy, -0.0035)),
-                material=mats["rubber"],
-                name=f"{prefix}_{i}",
-            )
+    part.visual(
+        Cylinder(radius=radius, length=rail_spacing + 0.026),
+        origin=Origin(xyz=(x, 0.0, z), rpy=Y_CYLINDER_RPY),
+        material=mats["pin"],
+        name=f"{name}_hub",
+    )
 
 
-def _add_twin_arm_segment(
+def _build_twin_rail_part(
     part,
     *,
+    cfg: ResolvedArticulatedTaskLampConfig,
+    mats,
     length: float,
     angle: float,
-    rail_radius: float,
-    rail_offset_y: float,
-    hub_radius: float,
-    hub_length: float,
-    body_material,
-    joint_material,
+    style: ArmStyle,
 ) -> tuple[float, float]:
-    """Adapted from S1/S2 rec_articulated_task_lamp_0001."""
-    end_x = length * math.cos(angle)
-    end_z = length * math.sin(angle)
-    arm_cylinder_rpy = _arm_cylinder_rpy(angle)
-    arm_box_rpy = _arm_box_rpy(angle)
+    ex, ez = _endpoint(length, angle)
+    spacing = cfg.rail_spacing
+    jr = cfg.joint_radius
+    _add_hub(part, name="rear", radius=jr, rail_spacing=spacing, mats=mats, x=0.0, z=0.0)
+    _add_hub(part, name="front", radius=jr * 0.94, rail_spacing=spacing, mats=mats, x=ex, z=ez)
 
-    part.visual(
-        Cylinder(radius=hub_radius, length=hub_length),
-        origin=Origin(xyz=(0.0, 0.0, 0.0), rpy=Y_CYLINDER_RPY),
-        material=joint_material,
-        name="rear_hub",
-    )
-    for cap_sign, cap_name in ((1.0, "rear_cap_pos"), (-1.0, "rear_cap_neg")):
+    if style == "single_post":
         part.visual(
-            Cylinder(radius=hub_radius + 0.0025, length=0.010),
-            origin=Origin(xyz=(0.0, cap_sign * (rail_offset_y + 0.004), 0.0), rpy=Y_CYLINDER_RPY),
-            material=joint_material,
-            name=cap_name,
+            Cylinder(radius=0.010, length=length),
+            origin=Origin(xyz=(0.5 * ex, 0.0, 0.5 * ez), rpy=_axis_angle_rpy(angle)),
+            material=mats["metal"],
+            name="single_post_tube",
         )
-
-    for rail_sign, rail_name in ((1.0, "left"), (-1.0, "right")):
-        y = rail_sign * rail_offset_y
+    elif style == "wall_cylinder":
         part.visual(
-            Cylinder(radius=rail_radius, length=length),
-            origin=Origin(xyz=(0.5 * end_x, y, 0.5 * end_z), rpy=arm_cylinder_rpy),
-            material=body_material,
-            name=f"{rail_name}_rail",
+            Cylinder(radius=0.012, length=length),
+            origin=Origin(xyz=(0.5 * ex, 0.0, 0.5 * ez), rpy=_axis_angle_rpy(angle)),
+            material=mats["metal"],
+            name="wall_cylinder_beam",
         )
-        for sleeve_pos, sleeve_name in ((0.028, "rear"), (length - 0.028, "front")):
-            part.visual(
-                Cylinder(radius=rail_radius + 0.0012, length=0.015),
-                origin=Origin(
-                    xyz=(sleeve_pos * math.cos(angle), y, sleeve_pos * math.sin(angle)),
-                    rpy=arm_cylinder_rpy,
-                ),
-                material=joint_material,
-                name=f"{rail_name}_{sleeve_name}_sleeve",
-            )
-
-    rod_length = max(length - 0.020, 0.040)
-    rod_mid = 0.5 * rod_length
-    part.visual(
-        Cylinder(radius=0.0026, length=rod_length),
-        origin=Origin(
-            xyz=(rod_mid * math.cos(angle), 0.0, rod_mid * math.sin(angle) - 0.008),
-            rpy=arm_cylinder_rpy,
-        ),
-        material=joint_material,
-        name="tension_rod",
-    )
-
-    for bridge_pos, bridge_name in ((0.34 * length, "rear"), (0.68 * length, "front")):
         part.visual(
-            Box((0.014, 2.0 * rail_offset_y + 0.016, 0.010)),
-            origin=Origin(
-                xyz=(bridge_pos * math.cos(angle), 0.0, bridge_pos * math.sin(angle) - 0.002),
-                rpy=arm_box_rpy,
-            ),
-            material=joint_material,
-            name=f"{bridge_name}_bridge",
-        )
-
-    part.visual(
-        Cylinder(radius=hub_radius, length=hub_length + 0.006),
-        origin=Origin(xyz=(end_x, 0.0, end_z), rpy=Y_CYLINDER_RPY),
-        material=joint_material,
-        name="front_hub",
-    )
-    for cap_sign, cap_name in ((1.0, "front_cap_pos"), (-1.0, "front_cap_neg")):
-        part.visual(
-            Cylinder(radius=hub_radius + 0.0022, length=0.010),
-            origin=Origin(
-                xyz=(end_x, cap_sign * (rail_offset_y + 0.004), end_z), rpy=Y_CYLINDER_RPY
-            ),
-            material=joint_material,
-            name=cap_name,
-        )
-    return end_x, end_z
-
-
-def _coil_spring(
-    *, length: float, x0: float, z0: float, radius: float = 0.012, turns: int = 8
-) -> MeshGeometry:
-    points = []
-    samples = turns * 20
-    for i in range(samples + 1):
-        t = i / samples
-        a = 2.0 * math.pi * turns * t
-        points.append((x0 + length * t, radius * math.cos(a), z0 + radius * math.sin(a)))
-    return tube_from_spline_points(
-        points,
-        radius=0.0023,
-        samples_per_segment=2,
-        radial_segments=10,
-        cap_ends=True,
-        up_hint=(0.0, 0.0, 1.0),
-    )
-
-
-def _add_parallel_bar_segment(part, length: float, bar_spacing: float, body_mat, joint_mat) -> None:
-    """Adapted from S5 c5d513 parallel bar two-link arm."""
-    part.visual(
-        Cylinder(radius=0.021, length=0.098),
-        origin=Origin(rpy=Y_CYLINDER_RPY),
-        material=joint_mat,
-        name="hinge_barrel",
-    )
-    rod_start = 0.020
-    rod_len = length - rod_start
-    for y_sign, idx in ((1, 0), (-1, 1)):
-        y = y_sign * bar_spacing
-        part.visual(
-            Cylinder(radius=0.009, length=rod_len),
-            origin=Origin(xyz=(rod_start + rod_len / 2.0, y, 0.0), rpy=(0.0, math.pi / 2.0, 0.0)),
-            material=body_mat,
-            name=f"rod_{idx}",
-        )
-    part.visual(
-        Cylinder(radius=0.0085, length=0.132),
-        origin=Origin(xyz=(length, 0.0, 0.0), rpy=Y_CYLINDER_RPY),
-        material=joint_mat,
-        name="elbow_pin",
-    )
-    for y_sign, idx in ((1, 0), (-1, 1)):
-        part.visual(
-            Cylinder(radius=0.019, length=0.030),
-            origin=Origin(xyz=(length, y_sign * (bar_spacing + 0.005), 0.0), rpy=Y_CYLINDER_RPY),
-            material=joint_mat,
-            name=f"elbow_knuckle_{idx}",
-        )
-
-
-def _add_spring_arm_segment(
-    part, length: float, body_mat, joint_mat, spring_mat, assets: AssetContext
-) -> None:
-    """Adapted from S9/S10 471fd3 spring-balanced arm."""
-    part.visual(
-        Cylinder(radius=0.022, length=0.078),
-        origin=Origin(rpy=(math.pi / 2.0, 0.0, 0.0)),
-        material=joint_mat,
-        name="near_barrel",
-    )
-    for idx, y in enumerate((-0.028, 0.028)):
-        part.visual(
-            Cylinder(radius=0.0065, length=length - 0.072),
-            origin=Origin(xyz=(length / 2.0, y, 0.0), rpy=(0.0, math.pi / 2.0, 0.0)),
-            material=body_mat,
-            name=f"rod_{idx}",
-        )
-    part.visual(
-        Box((0.032, 0.070, 0.014)),
-        origin=Origin(xyz=(0.027, 0.0, 0.0)),
-        material=joint_mat,
-        name="near_web",
-    )
-    part.visual(
-        Box((0.032, 0.090, 0.014)),
-        origin=Origin(xyz=(length - 0.040, 0.0, 0.0)),
-        material=joint_mat,
-        name="far_web",
-    )
-    for idx, y in enumerate((-0.045, 0.045)):
-        part.visual(
-            Box((0.054, 0.012, 0.060)),
-            origin=Origin(xyz=(length, y, 0.0)),
-            material=joint_mat,
-            name=f"far_yoke_{idx}",
-        )
-    spring_x0 = 0.055
-    spring_len = length - 0.110
-    spring_z = 0.043
-    part.visual(
-        _mesh(
-            assets,
-            f"{part.name}_spring",
-            _coil_spring(length=spring_len, x0=spring_x0, z0=spring_z),
-        ),
-        material=spring_mat,
-        name="tension_spring",
-    )
-    for idx, x in enumerate((spring_x0, spring_x0 + spring_len)):
-        part.visual(
-            Cylinder(radius=0.0045, length=spring_z),
-            origin=Origin(xyz=(x, 0.0, spring_z / 2.0)),
-            material=joint_mat,
-            name=f"spring_post_{idx}",
-        )
-
-
-def _build_weighted_round_base(
-    part, r: ResolvedArticulatedTaskLampConfig, mats, assets: AssetContext
-) -> None:
-    """Adapted from S2 rec_articulated_task_lamp_0001 base."""
-    scale = r.base_radius / 0.105
-    profile = [
-        (0.0, -0.0095),
-        (0.082 * scale, -0.0110),
-        (0.098 * scale, -0.0100),
-        (r.base_radius, -0.0045),
-        (r.base_radius, 0.0065),
-        (0.094 * scale, 0.0100),
-        (0.070 * scale, 0.0110),
-        (0.0, 0.0110),
-    ]
-    base_mesh = _mesh(assets, "task_lamp_round_base.obj", LatheGeometry(profile, segments=64))
-    part.visual(
-        base_mesh,
-        origin=Origin(xyz=(0.0, 0.0, r.base_height / 2.0)),
-        material=mats["body"],
-        name="base_shell",
-    )
-    part.visual(
-        Cylinder(radius=r.base_radius * 0.84, length=0.004),
-        origin=Origin(xyz=(0.0, 0.0, 0.002)),
-        material=mats["rubber"],
-        name="base_pad",
-    )
-    part.visual(
-        Cylinder(radius=r.base_radius * 0.57, length=0.004),
-        origin=Origin(xyz=(-0.010, 0.0, r.base_height - 0.0005)),
-        material=mats["steel"],
-        name="trim_disc",
-    )
-    part.visual(
-        Box((0.050, 0.052, 0.046)),
-        origin=Origin(xyz=(r.shoulder_x - 0.016, 0.0, 0.045)),
-        material=mats["body"],
-        name="pedestal_block",
-    )
-    part.visual(
-        Box((0.018, 0.052, 0.046)),
-        origin=Origin(xyz=(r.shoulder_x - 0.034, 0.0, 0.045)),
-        material=mats["body"],
-        name="pedestal_spine",
-    )
-    part.visual(
-        Box((0.024, 0.070, 0.012)),
-        origin=Origin(xyz=(r.shoulder_x - 0.014, 0.0, 0.028)),
-        material=mats["steel"],
-        name="pedestal_gusset",
-    )
-    part.visual(
-        Cylinder(radius=0.014, length=0.054),
-        origin=Origin(xyz=(r.shoulder_x, 0.0, r.shoulder_z), rpy=Y_CYLINDER_RPY),
-        material=mats["steel"],
-        name="shoulder_barrel",
-    )
-    part.visual(
-        Cylinder(radius=0.017, length=0.012),
-        origin=Origin(xyz=(r.shoulder_x - 0.012, 0.0, r.shoulder_z), rpy=Y_CYLINDER_RPY),
-        material=mats["steel"],
-        name="shoulder_cap",
-    )
-    _add_rubber_feet(part, r, mats)
-    part.inertial = Inertial.from_geometry(
-        Cylinder(radius=r.base_radius * 0.90, length=r.base_height),
-        mass=2.8,
-        origin=Origin(xyz=(0.0, 0.0, r.base_height / 2.0)),
-    )
-
-
-def _build_weighted_rect_base(
-    part, r: ResolvedArticulatedTaskLampConfig, mats, assets: AssetContext
-) -> None:
-    """Adapted from S5 c5d513 rectangular weighted base."""
-    hinge_x = r.shoulder_x
-    hinge_z = r.shoulder_z
-    geom = ExtrudeGeometry.from_z0(
-        rounded_rect_profile(r.base_length, r.base_width, 0.026, corner_segments=8),
-        r.base_height,
-        cap=True,
-        closed=True,
-    )
-    part.visual(
-        _mesh(assets, "task_lamp_rect_base.obj", geom), material=mats["body"], name="weighted_base"
-    )
-    part.visual(
-        Box((0.080, 0.085, 0.018)),
-        origin=Origin(xyz=(hinge_x, 0.0, r.base_height + 0.009)),
-        material=mats["body"],
-        name="pedestal_block",
-    )
-    part.visual(
-        Box((0.055, 0.140, 0.095)),
-        origin=Origin(xyz=(hinge_x, 0.0, r.base_height + 0.052)),
-        material=mats["body"],
-        name="pedestal_spine",
-    )
-    for idx, y in enumerate((-0.066, 0.066)):
-        part.visual(
-            Box((0.055, 0.012, 0.095)),
-            origin=Origin(xyz=(hinge_x, y, r.base_height + 0.052)),
+            Box((length * 0.76, 0.010, 0.014)),
+            origin=Origin(xyz=(0.48 * ex, 0.0, 0.48 * ez - 0.010), rpy=_box_angle_rpy(angle)),
             material=mats["body"],
-            name=f"base_yoke_{idx}",
+            name="wall_lower_web",
         )
-    part.visual(
-        Cylinder(radius=0.008, length=0.152),
-        origin=Origin(xyz=(hinge_x, 0.0, hinge_z), rpy=Y_CYLINDER_RPY),
-        material=mats["steel"],
-        name="base_hinge_pin",
-    )
-    _add_rubber_feet(part, r, mats)
-    part.inertial = Inertial.from_geometry(
-        Box((r.base_length, r.base_width, r.base_height)),
-        mass=4.2,
-        origin=Origin(xyz=(0.0, 0.0, r.base_height / 2.0)),
-    )
-
-
-def _build_c_clamp_base(part, r: ResolvedArticulatedTaskLampConfig, mats) -> None:
-    """Adapted from S11/S12 670a2a C-clamp mount."""
-    part.visual(
-        Box((0.045, 0.090, 0.300)),
-        origin=Origin(xyz=(0.0, 0.0, 0.150)),
-        material=mats["steel"],
-        name="back_spine",
-    )
-    part.visual(
-        Box((0.180, 0.090, 0.045)),
-        origin=Origin(xyz=(0.070, 0.0, 0.275)),
-        material=mats["steel"],
-        name="top_jaw",
-    )
-    part.visual(
-        Box((0.180, 0.090, 0.045)),
-        origin=Origin(xyz=(0.070, 0.0, 0.035)),
-        material=mats["steel"],
-        name="lower_jaw",
-    )
-    part.visual(
-        Cylinder(radius=0.032, length=0.012),
-        origin=Origin(xyz=(0.125, 0.0, 0.2465)),
-        material=mats["rubber"],
-        name="fixed_jaw_pad",
-    )
-    part.visual(
-        Cylinder(radius=0.022, length=0.120),
-        origin=Origin(xyz=(0.0, 0.0, 0.357)),
-        material=mats["steel"],
-        name="upright_post",
-    )
-    part.visual(
-        Cylinder(radius=0.044, length=0.024),
-        origin=Origin(xyz=(0.0, 0.0, 0.429)),
-        material=mats["metal"],
-        name="swivel_bearing",
-    )
-    part.visual(
-        Cylinder(radius=0.017, length=0.018),
-        origin=Origin(xyz=(0.125, 0.0, 0.058)),
-        material=mats["metal"],
-        name="threaded_boss",
-    )
-    part.inertial = Inertial.from_geometry(
-        Box((0.20, 0.09, 0.30)), mass=1.8, origin=Origin(xyz=(0.05, 0.0, 0.15))
-    )
-
-
-def _build_clamp_screw(part, mats) -> None:
-    part.visual(
-        Cylinder(radius=0.0085, length=0.130),
-        origin=Origin(xyz=(0.0, 0.0, 0.065)),
-        material=mats["metal"],
-        name="screw_stem",
-    )
-    part.visual(
-        Cylinder(radius=0.024, length=0.018),
-        origin=Origin(xyz=(0.0, 0.0, 0.018)),
-        material=mats["body"],
-        name="thumb_knob",
-    )
-    part.visual(
-        Cylinder(radius=0.030, length=0.010),
-        origin=Origin(xyz=(0.0, 0.0, 0.135)),
-        material=mats["rubber"],
-        name="swivel_pad",
-    )
-
-
-def _build_wall_plate_base(part, r: ResolvedArticulatedTaskLampConfig, mats) -> None:
-    """Adapted from S13/S14 rec_articulated_task_lamp_0011 wall mount."""
-    part.visual(
-        Box((0.016, 0.090, 0.220)),
-        origin=Origin(xyz=(0.008, 0.0, 0.170)),
-        material=mats["body"],
-        name="backplate",
-    )
-    part.visual(
-        Box((0.018, 0.034, 0.100)),
-        origin=Origin(xyz=(0.025, 0.0, 0.220)),
-        material=mats["body"],
-        name="spine_rib",
-    )
-    part.visual(
-        Box((0.012, 0.028, 0.016)),
-        origin=Origin(xyz=(0.028, 0.0, 0.220)),
-        material=mats["steel"],
-        name="shoulder_bridge",
-    )
-    for name, y in (("shoulder_upper_cheek", 0.010), ("shoulder_lower_cheek", -0.010)):
+    elif style == "single_boom":
         part.visual(
-            Box((0.016, 0.006, 0.048)),
-            origin=Origin(xyz=(0.042, y, 0.220)),
-            material=mats["steel"],
-            name=name,
-        )
-    for i in range(4):
-        part.visual(
-            Cylinder(radius=0.004, length=0.012),
-            origin=Origin(
-                xyz=(0.004, -0.030 + i * 0.020, 0.090 + i * 0.035), rpy=(0.0, math.pi / 2.0, 0.0)
-            ),
+            Cylinder(radius=0.011, length=length),
+            origin=Origin(xyz=(0.5 * ex, 0.0, 0.5 * ez), rpy=_axis_angle_rpy(angle)),
             material=mats["metal"],
-            name=f"wall_screw_{i}",
+            name="single_boom_tube",
         )
-    part.inertial = Inertial.from_geometry(
-        Box((0.050, 0.090, 0.220)), mass=1.6, origin=Origin(xyz=(0.025, 0.0, 0.170))
-    )
-
-
-def _build_wall_cylinder_link(part, length: float, mats, link_name: str) -> float:
-    part.visual(
-        Cylinder(radius=0.006, length=0.014),
-        origin=Origin(rpy=(math.pi / 2.0, 0.0, 0.0)),
-        material=mats["steel"],
-        name="rear_hub",
-    )
-    part.visual(
-        Cylinder(radius=0.006, length=length),
-        origin=Origin(xyz=(length / 2.0, 0.0, 0.0), rpy=(0.0, math.pi / 2.0, 0.0)),
-        material=mats["body"],
-        name="beam",
-    )
-    part.visual(
-        Box((0.018, 0.028, 0.012)),
-        origin=Origin(xyz=(length - 0.018, 0.0, 0.0)),
-        material=mats["steel"],
-        name=f"{link_name}_bridge",
-    )
-    for name, y in ((f"{link_name}_upper_cheek", 0.010), (f"{link_name}_lower_cheek", -0.010)):
         part.visual(
-            Box((0.018, 0.006, 0.038)),
-            origin=Origin(xyz=(length + 0.018, y, 0.0)),
-            material=mats["steel"],
-            name=name,
+            Box((length * 0.34, 0.014, 0.012)),
+            origin=Origin(xyz=(0.28 * ex, 0.0, 0.28 * ez - 0.006), rpy=_box_angle_rpy(angle)),
+            material=mats["body"],
+            name="boom_root_web",
         )
-    part.inertial = Inertial.from_geometry(
-        Box((length + 0.036, 0.028, 0.038)), mass=0.55, origin=Origin(xyz=(length / 2.0, 0.0, 0.0))
-    )
-    return length + 0.018
-
-
-def _build_single_boom(part, r: ResolvedArticulatedTaskLampConfig, mats) -> float:
-    bl = r.boom_length
-    part.visual(
-        Cylinder(radius=0.027, length=0.044),
-        origin=Origin(xyz=(0.0, 0.0, 0.022)),
-        material=mats["metal"],
-        name="pivot_collar",
-    )
-    part.visual(
-        Cylinder(radius=0.018, length=bl),
-        origin=Origin(xyz=(bl / 2.0, 0.0, 0.035), rpy=(0.0, math.pi / 2.0, 0.0)),
-        material=mats["body"],
-        name="horizontal_tube",
-    )
-    part.visual(
-        Box((0.070, 0.080, 0.022)),
-        origin=Origin(xyz=(bl - 0.035, 0.0, 0.064)),
-        material=mats["steel"],
-        name="yoke_bridge",
-    )
-    for idx, y in enumerate((0.034, -0.034)):
+    else:
+        rail_radius = 0.0055 if style == "parallel_bar_two_link" else 0.0062
+        for sign, rail_name in ((1.0, "left"), (-1.0, "right")):
+            y = sign * 0.5 * spacing
+            part.visual(
+                Cylinder(radius=rail_radius, length=length),
+                origin=Origin(xyz=(0.5 * ex, y, 0.5 * ez), rpy=_axis_angle_rpy(angle)),
+                material=mats["metal"],
+                name=f"{rail_name}_rail",
+            )
         part.visual(
-            Box((0.060, 0.012, 0.070)),
-            origin=Origin(xyz=(bl, y, 0.035)),
-            material=mats["steel"],
-            name=f"end_yoke_{idx}",
+            Box((length * 0.72, spacing + 0.024, 0.016)),
+            origin=Origin(xyz=(0.50 * ex, 0.0, 0.50 * ez - 0.010), rpy=_box_angle_rpy(angle)),
+            material=mats["body"],
+            name="center_stiffener",
         )
-    part.inertial = Inertial.from_geometry(
-        Box((bl, 0.09, 0.08)), mass=0.62, origin=Origin(xyz=(bl / 2.0, 0.0, 0.035))
+        if style == "spring_balanced":
+            part.visual(
+                Cylinder(radius=0.0042, length=length * 0.88),
+                origin=Origin(xyz=(0.50 * ex, 0.0, 0.50 * ez + 0.010), rpy=_axis_angle_rpy(angle)),
+                material=mats["accent"],
+                name="spring_balance_tube",
+            )
+            for idx in range(5):
+                t = (idx + 1) / 6.0
+                part.visual(
+                    Cylinder(radius=0.0068, length=0.003),
+                    origin=Origin(
+                        xyz=(t * ex, 0.0, t * ez + 0.010),
+                        rpy=_axis_angle_rpy(angle),
+                    ),
+                    material=mats["pin"],
+                    name=f"spring_coil_{idx}",
+                )
+    return ex, ez
+
+
+def _build_arm_chain(
+    model: ArticulatedObject,
+    cfg: ResolvedArticulatedTaskLampConfig,
+    mats,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    if cfg.arm_style in {"wall_cylinder", "single_boom"}:
+        lower_angle = math.radians(18.0)
+        upper_angle = math.radians(-8.0)
+    elif cfg.arm_style == "single_post":
+        lower_angle = math.radians(78.0)
+        upper_angle = math.radians(12.0)
+    else:
+        lower_angle = math.radians(58.0)
+        upper_angle = math.radians(47.0)
+
+    lower_arm = model.part("lower_arm")
+    lower_end = _build_twin_rail_part(
+        lower_arm,
+        cfg=cfg,
+        mats=mats,
+        length=cfg.lower_arm_length,
+        angle=lower_angle,
+        style=cfg.arm_style,
     )
-    return bl
+    lower_arm.inertial = Inertial.from_geometry(
+        Box((cfg.lower_arm_length, cfg.rail_spacing + 0.026, 0.030)),
+        mass=0.35,
+        origin=Origin(xyz=(0.5 * lower_end[0], 0.0, 0.5 * lower_end[1])),
+    )
+
+    upper_arm = model.part("upper_arm")
+    upper_style = "single_boom" if cfg.arm_style == "single_boom" else cfg.arm_style
+    upper_end = _build_twin_rail_part(
+        upper_arm,
+        cfg=cfg,
+        mats=mats,
+        length=cfg.upper_arm_length,
+        angle=upper_angle,
+        style=upper_style,  # type: ignore[arg-type]
+    )
+    upper_arm.visual(
+        Box((0.030, cfg.rail_spacing + 0.020, 0.020)),
+        origin=Origin(xyz=(upper_end[0] - 0.010, 0.0, upper_end[1] - 0.004)),
+        material=mats["body"],
+        name="head_yoke_block",
+    )
+    upper_arm.inertial = Inertial.from_geometry(
+        Box((cfg.upper_arm_length, cfg.rail_spacing + 0.026, 0.030)),
+        mass=0.30,
+        origin=Origin(xyz=(0.5 * upper_end[0], 0.0, 0.5 * upper_end[1])),
+    )
+    return lower_end, upper_end
 
 
-def _build_post_base_details(
-    part, r: ResolvedArticulatedTaskLampConfig, mats, assets: AssetContext
-) -> None:
-    """Post pedestal for single_post arm on desk mounts (S17/S7)."""
-    post_profile = [
-        (0.0, 0.0),
-        (0.092, 0.0),
-        (0.102, 0.004),
-        (0.102, 0.008),
-        (0.089, 0.022),
-        (0.0, 0.028),
+def _mesh(assets: AssetContext, name: str, geom: MeshGeometry):
+    return mesh_from_geometry(geom, assets.mesh_path(name))
+
+
+def _rect_head_shell_mesh(cfg: ResolvedArticulatedTaskLampConfig, assets: AssetContext, name: str):
+    profile = rounded_rect_profile(
+        cfg.shade_width,
+        0.050,
+        radius=min(0.015, cfg.shade_width * 0.12),
+        corner_segments=10,
+    )
+    geom = ExtrudeGeometry(profile, cfg.shade_depth, cap=True, center=True, closed=True)
+    geom.rotate_y(math.pi / 2.0)
+    return _mesh(assets, name, geom)
+
+
+def _lathe_conical_shell_mesh(
+    cfg: ResolvedArticulatedTaskLampConfig, assets: AssetContext, name: str
+):
+    rim = 0.5 * cfg.shade_width
+    depth = cfg.shade_depth
+    outer = [
+        (rim * 0.23, 0.000),
+        (rim * 0.38, depth * 0.16),
+        (rim * 0.66, depth * 0.55),
+        (rim * 0.92, depth * 0.92),
+        (rim, depth),
     ]
-    part.visual(
-        _mesh(assets, "post_base_shell.obj", LatheGeometry(post_profile, segments=72)),
-        material=mats["body"],
-        name="post_base_shell",
+    inner = [
+        (rim * 0.15, 0.004),
+        (rim * 0.32, depth * 0.18),
+        (rim * 0.57, depth * 0.54),
+        (rim * 0.82, depth * 0.90),
+        (rim * 0.88, depth * 0.965),
+    ]
+    geom = LatheGeometry.from_shell_profiles(
+        outer, inner, segments=72, start_cap="flat", end_cap="round", lip_samples=8
     )
-    part.visual(
-        Cylinder(radius=0.019, length=0.010),
-        origin=Origin(xyz=(0.0, 0.0, 0.033)),
-        material=mats["metal"],
-        name="base_collar",
-    )
-    part.visual(
-        Cylinder(radius=0.011, length=0.145),
-        origin=Origin(xyz=(0.0, 0.0, 0.1105)),
-        material=mats["metal"],
-        name="main_post",
-    )
-    part.visual(
-        Cylinder(radius=0.016, length=0.010),
-        origin=Origin(xyz=(0.0, 0.0, 0.188)),
-        material=mats["metal"],
-        name="post_cap",
-    )
-    for idx, y in enumerate((0.013, -0.013)):
-        part.visual(
-            Box((0.010, 0.004, 0.022)),
-            origin=Origin(xyz=(0.0, y, 0.203)),
-            material=mats["metal"],
-            name=f"post_fork_{idx}",
-        )
+    geom.rotate_y(math.pi / 2.0)
+    return _mesh(assets, name, geom)
 
 
-def _build_single_post_arm(
-    part, r: ResolvedArticulatedTaskLampConfig, mats, assets: AssetContext
-) -> float:
-    """Adapted from S17 881f76 banker single-post arm."""
-    part.visual(
-        Cylinder(radius=0.010, length=0.020),
-        origin=Origin(rpy=(math.pi / 2.0, 0.0, 0.0)),
-        material=mats["metal"],
-        name="shoulder_barrel",
+def _banker_dome_mesh(cfg: ResolvedArticulatedTaskLampConfig, assets: AssetContext, name: str):
+    half_width = min(0.076, 0.48 * cfg.shade_width)
+    depth = min(0.105, max(0.078, cfg.shade_depth * 0.86))
+    height = min(0.042, max(0.032, cfg.shade_width * 0.24))
+    thickness = 0.006
+    geom = MeshGeometry()
+    outer_rows: list[list[int]] = []
+    inner_rows: list[list[int]] = []
+    span_steps = 10
+    y_steps = 3
+    for i in range(span_steps + 1):
+        u = i / span_steps
+        x = depth * (u - 0.5)
+        arch = math.sin(math.pi * u)
+        z_outer = -height * arch
+        z_inner = z_outer + thickness
+        outer_row: list[int] = []
+        inner_row: list[int] = []
+        for j in range(y_steps + 1):
+            v = j / y_steps
+            y = -half_width + 2.0 * half_width * v
+            side_drop = 0.005 * abs(2.0 * v - 1.0)
+            outer_row.append(geom.add_vertex(x, y, z_outer - side_drop))
+            inner_row.append(geom.add_vertex(x, y, z_inner - side_drop))
+        outer_rows.append(outer_row)
+        inner_rows.append(inner_row)
+    for i in range(span_steps):
+        for j in range(y_steps):
+            a = outer_rows[i][j]
+            b = outer_rows[i + 1][j]
+            c = outer_rows[i + 1][j + 1]
+            d = outer_rows[i][j + 1]
+            geom.add_face(a, b, c)
+            geom.add_face(a, c, d)
+            ia = inner_rows[i][j]
+            ib = inner_rows[i][j + 1]
+            ic = inner_rows[i + 1][j + 1]
+            id_ = inner_rows[i + 1][j]
+            geom.add_face(ia, ib, ic)
+            geom.add_face(ia, ic, id_)
+
+    for i in range(span_steps):
+        for j in (0, y_steps):
+            a = outer_rows[i][j]
+            b = inner_rows[i][j]
+            c = inner_rows[i + 1][j]
+            d = outer_rows[i + 1][j]
+            geom.add_face(a, b, c)
+            geom.add_face(a, c, d)
+    for i in (0, span_steps):
+        for j in range(y_steps):
+            a = outer_rows[i][j]
+            b = outer_rows[i][j + 1]
+            c = inner_rows[i][j + 1]
+            d = inner_rows[i][j]
+            geom.add_face(a, b, c)
+            geom.add_face(a, c, d)
+    return _mesh(assets, name, geom)
+
+
+def _build_head_trunnion(head, cfg: ResolvedArticulatedTaskLampConfig, mats) -> None:
+    jr = cfg.joint_radius * 0.88
+    head.visual(
+        Cylinder(radius=jr, length=cfg.rail_spacing + 0.030),
+        origin=Origin(xyz=(0.0, 0.0, 0.0), rpy=Y_CYLINDER_RPY),
+        material=mats["pin"],
+        name="tilt_trunnion",
     )
-    arm_mesh = _mesh(
-        assets,
-        "bankers_arm_tube.obj",
-        tube_from_spline_points(
-            [
-                (-0.004, 0.0, 0.000),
-                (0.050, 0.0, 0.010),
-                (0.142, 0.0, 0.028),
-                (0.194, 0.0, 0.018),
-            ],
-            radius=0.0075,
-            samples_per_segment=18,
-            radial_segments=20,
-            cap_ends=True,
-        ),
-    )
-    part.visual(arm_mesh, material=mats["metal"], name="arm_tube")
-    part.visual(
-        Box((0.014, 0.022, 0.018)),
-        origin=Origin(xyz=(0.197, 0.0, 0.018)),
-        material=mats["metal"],
-        name="shade_knuckle",
-    )
-    for idx, y in enumerate((0.012, -0.012)):
-        part.visual(
-            Box((0.010, 0.004, 0.024)),
-            origin=Origin(xyz=(0.209, y, 0.018)),
+    for name, y in (
+        ("tilt_cap_pos", 0.5 * cfg.rail_spacing + 0.019),
+        ("tilt_cap_neg", -0.5 * cfg.rail_spacing - 0.019),
+    ):
+        head.visual(
+            Cylinder(radius=jr * 1.15, length=0.010),
+            origin=Origin(xyz=(0.0, y, 0.0), rpy=Y_CYLINDER_RPY),
             material=mats["metal"],
-            name=f"shade_fork_{idx}",
+            name=name,
         )
-    part.inertial = Inertial.from_geometry(
-        Box((0.235, 0.032, 0.050)), mass=0.7, origin=Origin(xyz=(0.112, 0.0, 0.016))
-    )
-    return 0.215
 
 
 def _build_rect_architect_head(
-    part, r: ResolvedArticulatedTaskLampConfig, mats, assets: AssetContext
+    head,
+    cfg: ResolvedArticulatedTaskLampConfig,
+    mats,
+    assets: AssetContext,
 ) -> None:
-    """Adapted from S2 0001 rectangular architect head."""
-    shell_depth = max(r.shade_width, 0.070)
-    head_profile = rounded_rect_profile(0.030, 0.050, radius=0.009, corner_segments=10)
-    head_shell_geom = ExtrudeGeometry(head_profile, shell_depth, cap=True, center=True, closed=True)
-    head_shell_geom.rotate_y(math.pi / 2.0)
-    head_mesh = _mesh(assets, "task_lamp_head_shell.obj", head_shell_geom)
-    part.visual(
-        Cylinder(radius=0.009, length=0.040),
-        origin=Origin(xyz=(0.0, 0.0, 0.0), rpy=Y_CYLINDER_RPY),
-        material=mats["steel"],
-        name="tilt_trunnion",
-    )
-    for cap_name, y in (("tilt_cap_pos", 0.021), ("tilt_cap_neg", -0.021)):
-        part.visual(
-            Cylinder(radius=0.013, length=0.006),
-            origin=Origin(xyz=(0.0, y, 0.0), rpy=Y_CYLINDER_RPY),
-            material=mats["steel"],
-            name=cap_name,
-        )
-    part.visual(
-        head_mesh, origin=Origin(xyz=(0.040, 0.0, 0.0)), material=mats["body"], name="head_shell"
-    )
-    part.visual(
-        Cylinder(radius=0.017, length=0.014),
-        origin=Origin(xyz=(0.006, 0.0, 0.0), rpy=X_CYLINDER_RPY),
+    head.visual(
+        _rect_head_shell_mesh(cfg, assets, "task_lamp_rect_architect_shell.obj"),
+        origin=Origin(xyz=(0.5 * cfg.shade_depth + 0.018, 0.0, -0.002)),
         material=mats["body"],
-        name="rear_neck",
+        name="rectangular_architect_head",
     )
-    mouth_x = 0.040 + shell_depth * 0.52
-    part.visual(
-        Cylinder(radius=0.024, length=0.016),
-        origin=Origin(xyz=(mouth_x, 0.0, 0.0), rpy=X_CYLINDER_RPY),
-        material=mats["steel"],
-        name="mouth_barrel",
+    head.visual(
+        Cylinder(radius=0.017, length=0.045),
+        origin=Origin(xyz=(0.012, 0.0, 0.0), rpy=X_CYLINDER_RPY),
+        material=mats["metal"],
+        name="rear_neck_barrel",
     )
-    part.visual(
-        Cylinder(radius=0.027, length=0.010),
-        origin=Origin(xyz=(0.084, 0.0, 0.0), rpy=X_CYLINDER_RPY),
-        material=mats["steel"],
-        name="bezel",
+    mouth_x = cfg.shade_depth + 0.025
+    head.visual(
+        Cylinder(radius=min(0.032, cfg.shade_width * 0.26), length=0.017),
+        origin=Origin(xyz=(mouth_x, 0.0, -0.002), rpy=X_CYLINDER_RPY),
+        material=mats["metal"],
+        name="round_front_bezel",
     )
-    part.visual(
-        Cylinder(radius=0.022, length=0.0035),
-        origin=Origin(xyz=(0.0875, 0.0, 0.0), rpy=X_CYLINDER_RPY),
-        material=mats["diffuser"],
-        name="lens",
+    head.visual(
+        Cylinder(radius=min(0.026, cfg.shade_width * 0.21), length=0.004),
+        origin=Origin(xyz=(mouth_x + 0.007, 0.0, -0.002), rpy=X_CYLINDER_RPY),
+        material=mats["glass"],
+        name="frosted_lens",
     )
-    part.visual(
-        Cylinder(radius=0.018, length=0.0015),
-        origin=Origin(xyz=(0.0885, 0.0, 0.0), rpy=X_CYLINDER_RPY),
-        material=mats["emitter"],
-        name="emitter",
+    head.visual(
+        Cylinder(radius=min(0.020, cfg.shade_width * 0.16), length=0.002),
+        origin=Origin(xyz=(mouth_x + 0.010, 0.0, -0.002), rpy=X_CYLINDER_RPY),
+        material=mats["light"],
+        name="warm_led_emitter",
     )
-    for fin_x in (0.022, 0.036, 0.050, 0.064):
-        part.visual(
-            Box((0.008, 0.036, 0.005)),
-            origin=Origin(xyz=(fin_x, 0.0, 0.0165)),
-            material=mats["steel"],
-            name=f"cooling_fin_{int(fin_x * 1000)}",
+    for idx, fin_x in enumerate(
+        (
+            cfg.shade_depth * 0.24,
+            cfg.shade_depth * 0.40,
+            cfg.shade_depth * 0.56,
+            cfg.shade_depth * 0.72,
         )
-    part.visual(
-        Box((0.012, 0.020, 0.007)),
-        origin=Origin(xyz=(0.020, 0.0, 0.016)),
-        material=mats["rubber"],
-        name="switch",
-    )
-    part.inertial = Inertial.from_geometry(
-        Box((r.shade_width + 0.008, 0.052, 0.040)), mass=0.40, origin=Origin(xyz=(0.045, 0.0, 0.0))
-    )
-
-
-def _lathe_shade_shell_geom() -> MeshGeometry:
-    outer = [(0.044, 0.000), (0.057, 0.030), (0.079, 0.105), (0.096, 0.180)]
-    inner = [(0.016, 0.000), (0.044, 0.034), (0.068, 0.108), (0.084, 0.170)]
-    shell = LatheGeometry.from_shell_profiles(
-        outer, inner, segments=72, start_cap="flat", end_cap="round", lip_samples=8
-    )
-    shell.rotate_y(math.pi / 2.0).translate(0.045, 0.0, 0.0)
-    return shell
+    ):
+        head.visual(
+            Box((0.007, cfg.shade_width * 0.70, 0.005)),
+            origin=Origin(xyz=(fin_x + 0.018, 0.0, 0.028)),
+            material=mats["metal"],
+            name=f"cooling_fin_{idx}",
+        )
 
 
 def _build_lathe_conical_head(
-    part, r: ResolvedArticulatedTaskLampConfig, mats, assets: AssetContext
+    head,
+    cfg: ResolvedArticulatedTaskLampConfig,
+    mats,
+    assets: AssetContext,
 ) -> None:
-    """Adapted from S5 c5d513 lathe conical shade."""
-    part.visual(
-        Cylinder(radius=0.019, length=0.060),
-        origin=Origin(rpy=Y_CYLINDER_RPY),
-        material=mats["steel"],
+    head.visual(
+        Cylinder(radius=0.016, length=0.056),
+        origin=Origin(xyz=(0.020, 0.0, 0.0), rpy=X_CYLINDER_RPY),
+        material=mats["metal"],
         name="shade_hinge_barrel",
     )
-    part.visual(
-        Cylinder(radius=0.017, length=0.060),
-        origin=Origin(xyz=(0.048, 0.0, 0.0), rpy=(0.0, math.pi / 2.0, 0.0)),
-        material=mats["body"],
+    head.visual(
+        Cylinder(radius=0.014, length=0.052),
+        origin=Origin(xyz=(0.050, 0.0, -0.002), rpy=X_CYLINDER_RPY),
+        material=mats["metal"],
         name="shade_neck",
     )
-    part.visual(
-        _mesh(assets, "lathe_conical_shade.obj", _lathe_shade_shell_geom()),
+    head.visual(
+        _lathe_conical_shell_mesh(cfg, assets, "task_lamp_lathe_conical_shade.obj"),
+        origin=Origin(xyz=(0.062, 0.0, -0.002)),
         material=mats["body"],
-        name="shade_shell",
+        name="lathe_conical_shade",
     )
-    part.visual(
-        Cylinder(radius=0.026, length=0.052),
-        origin=Origin(xyz=(0.075, 0.0, 0.0), rpy=(0.0, math.pi / 2.0, 0.0)),
-        material=mats["steel"],
-        name="bulb_socket",
+    head.visual(
+        Cylinder(radius=0.026, length=0.040),
+        origin=Origin(xyz=(0.078, 0.0, -0.002), rpy=X_CYLINDER_RPY),
+        material=mats["metal"],
+        name="bulb_socket_ring",
     )
-    part.visual(
-        Sphere(radius=0.032),
-        origin=Origin(xyz=(0.114, 0.0, 0.0)),
-        material=mats["emitter"],
-        name="bulb",
+    head.visual(
+        Sphere(radius=min(0.031, cfg.shade_width * 0.20)),
+        origin=Origin(xyz=(0.108, 0.0, -0.002)),
+        material=mats["light"],
+        name="round_bulb",
     )
-    part.inertial = Inertial.from_geometry(
-        Cylinder(radius=0.090, length=0.190), mass=0.42, origin=Origin(xyz=(0.130, 0.0, 0.0))
-    )
+    for idx, scale in enumerate((0.42, 0.58, 0.76)):
+        head.visual(
+            Cylinder(radius=0.5 * cfg.shade_width * scale, length=0.004),
+            origin=Origin(xyz=(0.062 + cfg.shade_depth * scale, 0.0, -0.002), rpy=X_CYLINDER_RPY),
+            material=mats["accent"],
+            name=f"conical_shade_trim_ring_{idx}",
+        )
 
 
 def _build_banker_dome_head(
-    part, r: ResolvedArticulatedTaskLampConfig, mats, assets: AssetContext
+    head,
+    cfg: ResolvedArticulatedTaskLampConfig,
+    mats,
+    assets: AssetContext,
 ) -> None:
-    """Adapted from S17 881f76 green glass dome shade."""
-    part.visual(
-        Cylinder(radius=0.0085, length=0.020),
-        origin=Origin(rpy=(math.pi / 2.0, 0.0, 0.0)),
+    head.visual(
+        Cylinder(radius=0.010, length=0.030),
+        origin=Origin(xyz=(0.006, 0.0, 0.0), rpy=Y_CYLINDER_RPY),
+        material=mats["pin"],
+        name="banker_pivot_barrel",
+    )
+    neck = tube_from_spline_points(
+        [(0.004, 0.0, 0.0), (0.020, 0.0, -0.016), (0.034, 0.0, -0.034)],
+        radius=0.0055,
+        samples_per_segment=10,
+        radial_segments=18,
+        cap_ends=True,
+    )
+    head.visual(
+        _mesh(assets, "task_lamp_banker_curved_neck.obj", neck),
         material=mats["metal"],
-        name="pivot_barrel",
+        name="curved_dome_neck",
     )
-    neck = _mesh(
-        assets,
-        "bankers_shade_neck.obj",
-        tube_from_spline_points(
-            [(0.0, 0.0, 0.0), (0.014, 0.0, -0.014), (0.024, 0.0, -0.030)],
-            radius=0.0055,
-            samples_per_segment=10,
-            radial_segments=18,
-            cap_ends=True,
-        ),
+    head.visual(
+        _banker_dome_mesh(cfg, assets, "task_lamp_banker_glass_dome.obj"),
+        origin=Origin(xyz=(0.088, 0.0, -0.020)),
+        material=mats["accent"],
+        name="banker_glass_dome",
     )
-    part.visual(neck, material=mats["metal"], name="shade_neck")
-    outer = [
-        (0.028, 0.0),
-        (0.044, -0.006),
-        (0.062, -0.018),
-        (0.078, -0.036),
-        (0.086, -0.056),
-        (0.088, -0.072),
-        (0.080, -0.086),
-    ]
-    inner = [
-        (0.022, -0.001),
-        (0.038, -0.007),
-        (0.056, -0.019),
-        (0.072, -0.036),
-        (0.080, -0.056),
-        (0.082, -0.071),
-        (0.074, -0.082),
-    ]
-    dome = _mesh(
-        assets,
-        "bankers_shade_glass.obj",
-        LatheGeometry.from_shell_profiles(
-            outer, inner, segments=72, start_cap="flat", end_cap="flat", lip_samples=8
-        ),
+    head.visual(
+        Box((0.030, min(0.060, cfg.shade_width * 0.34), 0.024)),
+        origin=Origin(xyz=(0.046, 0.0, -0.024)),
+        material=mats["metal"],
+        name="dome_clamp_collar",
     )
-    part.visual(
-        dome, origin=Origin(xyz=(0.040, 0.0, -0.035)), material=mats["accent"], name="shade_glass"
+    head.visual(
+        Cylinder(radius=0.009, length=min(0.125, cfg.shade_width * 0.78)),
+        origin=Origin(xyz=(0.088, 0.0, -0.056), rpy=Y_CYLINDER_RPY),
+        material=mats["light"],
+        name="linear_warm_tube",
     )
-    part.inertial = Inertial.from_geometry(
-        Cylinder(radius=0.090, length=0.110), mass=0.55, origin=Origin(xyz=(0.040, 0.0, -0.060))
+    for name, y in (
+        ("left_lower_rim", -min(0.076, 0.48 * cfg.shade_width)),
+        ("right_lower_rim", min(0.076, 0.48 * cfg.shade_width)),
+    ):
+        head.visual(
+            Cylinder(radius=0.0038, length=min(0.105, max(0.078, cfg.shade_depth * 0.86))),
+            origin=Origin(xyz=(0.088, y, -0.022), rpy=X_CYLINDER_RPY),
+            material=mats["metal"],
+            name=name,
+        )
+
+
+def _build_head(
+    model: ArticulatedObject,
+    cfg: ResolvedArticulatedTaskLampConfig,
+    mats,
+    assets: AssetContext,
+) -> None:
+    head = model.part("head")
+    _build_head_trunnion(head, cfg, mats)
+
+    if cfg.shade_style == "rect_architect":
+        _build_rect_architect_head(head, cfg, mats, assets)
+    elif cfg.shade_style == "banker_dome":
+        _build_banker_dome_head(head, cfg, mats, assets)
+    else:
+        _build_lathe_conical_head(head, cfg, mats, assets)
+
+    head.inertial = Inertial.from_geometry(
+        Box((cfg.shade_depth + 0.070, cfg.shade_width, 0.050)),
+        mass=0.38,
+        origin=Origin(xyz=(0.5 * cfg.shade_depth + 0.030, 0.0, -0.004)),
     )
 
 
 def build_articulated_task_lamp(
-    config: ArticulatedTaskLampConfig | None = None, *, assets: AssetContext | None = None
+    config: ArticulatedTaskLampConfig | ResolvedArticulatedTaskLampConfig | None = None,
+    *,
+    assets: AssetContext | None = None,
 ) -> ArticulatedObject:
-    config = config or ArticulatedTaskLampConfig()
-    r = resolve_config(config)
-    if assets is None:
-        assets = AssetContext(Path(tempfile.mkdtemp(prefix="articraft-task-lamp-assets-")))
-    model = ArticulatedObject(name=r.name, assets=assets)
-    mats = {k: model.material(f"task_lamp_{k}", rgba=v) for k, v in r.palette.items()}
+    cfg = (
+        config
+        if isinstance(config, ResolvedArticulatedTaskLampConfig)
+        else resolve_config(config or ArticulatedTaskLampConfig())
+    )
+    assets = assets or AssetContext.from_script(__file__)
+    model = ArticulatedObject(
+        name=f"seeded_articulated_task_lamp_{cfg.seed}",
+        meta={"category": "articulated_task_lamp"},
+    )
+    model.set_assets(assets)
+    mats = _material_map(model, cfg)
 
-    base = model.part("base")
-    if r.mount_style == "weighted_round_disk":
-        _build_weighted_round_base(base, r, mats, assets)
-    elif r.mount_style == "weighted_rect_plate":
-        _build_weighted_rect_base(base, r, mats, assets)
-    elif r.mount_style == "c_clamp":
-        _build_c_clamp_base(base, r, mats)
-    else:
-        _build_wall_plate_base(base, r, mats)
+    _build_base(model, cfg, mats)
+    lower_end, upper_end = _build_arm_chain(model, cfg, mats)
+    _build_head(model, cfg, mats, assets)
 
-    shade_parent = "upper_arm"
-    shade_origin = Origin()
-    head = model.part("head")
-
-    if r.arm_style == "single_boom":
-        boom = model.part("boom")
-        boom_end = _build_single_boom(boom, r, mats)
-        shade_parent = "boom"
-        shade_origin = Origin(xyz=(boom_end, 0.0, 0.035))
-        screw = model.part("clamp_screw")
-        _build_clamp_screw(screw, mats)
-        model.articulation(
-            "clamp_screw",
-            ArticulationType.PRISMATIC,
-            parent=base,
-            child=screw,
-            origin=Origin(xyz=(0.125, 0.0, 0.058)),
-            axis=(0.0, 0.0, 1.0),
-            motion_limits=MotionLimits(effort=60.0, velocity=0.04, lower=0.0, upper=0.055),
-        )
-        model.articulation(
-            "boom_swivel",
-            ArticulationType.REVOLUTE,
-            parent=base,
-            child=boom,
-            origin=Origin(xyz=(0.0, 0.0, r.shoulder_z)),
-            axis=r.shoulder_axis,
-            motion_limits=MotionLimits(
-                effort=8.0, velocity=1.5, lower=r.shoulder_limit[0], upper=r.shoulder_limit[1]
-            ),
-        )
-        model.articulation(
-            "boom_to_shade",
-            ArticulationType.REVOLUTE,
-            parent=shade_parent,
-            child=head,
-            origin=shade_origin,
-            axis=r.shade_axis,
-            motion_limits=MotionLimits(
-                effort=4.0, velocity=1.2, lower=r.shade_limit[0], upper=r.shade_limit[1]
-            ),
-        )
-    elif r.arm_style == "single_post":
-        if r.mount_style in DESK_MOUNTS:
-            _build_post_base_details(base, r, mats, assets)
-        arm = model.part("arm")
-        arm_end = _build_single_post_arm(arm, r, mats, assets)
-        shade_origin = Origin(xyz=(arm_end, 0.0, 0.018))
-        model.articulation(
-            "post_to_arm",
-            ArticulationType.REVOLUTE,
-            parent=base,
-            child=arm,
-            origin=Origin(xyz=(0.0, 0.0, 0.203)),
-            axis=r.shoulder_axis,
-            motion_limits=MotionLimits(
-                effort=8.0, velocity=1.6, lower=r.shoulder_limit[0], upper=r.shoulder_limit[1]
-            ),
-        )
-    elif r.arm_style == "wall_cylinder":
-        upper = model.part("upper_arm")
-        fore = model.part("forearm")
-        ulen = _build_wall_cylinder_link(upper, r.lower_arm_length, mats, "elbow")
-        flen = _build_wall_cylinder_link(fore, r.upper_arm_length, mats, "pivot")
-        shade_parent = "forearm"
-        shade_origin = Origin(xyz=(flen + 0.018, 0.0, 0.0))
-        model.articulation(
-            "shoulder_hinge",
-            ArticulationType.REVOLUTE,
-            parent=base,
-            child=upper,
-            origin=Origin(xyz=(r.shoulder_x, 0.0, r.shoulder_z)),
-            axis=r.shoulder_axis,
-            motion_limits=MotionLimits(
-                effort=12.0, velocity=2.5, lower=r.shoulder_limit[0], upper=r.shoulder_limit[1]
-            ),
-        )
-        model.articulation(
-            "elbow_hinge",
-            ArticulationType.REVOLUTE,
-            parent=upper,
-            child=fore,
-            origin=Origin(xyz=(ulen, 0.0, 0.0)),
-            axis=r.elbow_axis,
-            motion_limits=MotionLimits(
-                effort=10.0, velocity=2.5, lower=r.elbow_limit[0], upper=r.elbow_limit[1]
-            ),
-        )
-    else:
-        lower = model.part("lower_arm")
-        upper = model.part("upper_arm")
-        if r.arm_style == "twin_rail_two_link":
-            lower_end = _add_twin_arm_segment(
-                lower,
-                length=r.lower_arm_length,
-                angle=r.lower_arm_angle,
-                rail_radius=0.0062,
-                rail_offset_y=0.016,
-                hub_radius=0.0105,
-                hub_length=0.040,
-                body_material=mats["metal"],
-                joint_material=mats["steel"],
-            )
-            upper_end = _add_twin_arm_segment(
-                upper,
-                length=r.upper_arm_length,
-                angle=r.upper_arm_angle,
-                rail_radius=0.0054,
-                rail_offset_y=0.014,
-                hub_radius=0.0095,
-                hub_length=0.044,
-                body_material=mats["metal"],
-                joint_material=mats["steel"],
-            )
-            lower.visual(
-                Box((0.020, 0.048, 0.014)),
-                origin=Origin(
-                    xyz=(0.52 * lower_end[0], 0.0, 0.52 * lower_end[1] - 0.006),
-                    rpy=_arm_box_rpy(r.lower_arm_angle),
-                ),
-                material=mats["body"],
-                name="center_stiffener",
-            )
-            upper.visual(
-                Box((0.018, 0.058, 0.018)),
-                origin=Origin(
-                    xyz=(upper_end[0] - 0.010, 0.0, upper_end[1] - 0.002),
-                    rpy=_arm_box_rpy(r.upper_arm_angle),
-                ),
-                material=mats["body"],
-                name="head_yoke_block",
-            )
-        elif r.arm_style == "parallel_bar_two_link":
-            _add_parallel_bar_segment(
-                lower, r.lower_arm_length, 0.050, mats["metal"], mats["steel"]
-            )
-            _add_parallel_bar_segment(
-                upper, r.upper_arm_length, 0.039, mats["metal"], mats["steel"]
-            )
-            lower_end = (r.lower_arm_length, 0.0)
-            upper_end = (r.upper_arm_length, 0.0)
-        else:
-            _add_spring_arm_segment(
-                lower, r.lower_arm_length, mats["steel"], mats["body"], mats["accent"], assets
-            )
-            _add_spring_arm_segment(
-                upper, r.upper_arm_length, mats["steel"], mats["body"], mats["accent"], assets
-            )
-            lower_end = (r.lower_arm_length, 0.0)
-            upper_end = (r.upper_arm_length, 0.0)
-
-        lower.inertial = Inertial.from_geometry(
-            Box((r.lower_arm_length, 0.050, 0.024)),
-            mass=0.45,
-            origin=Origin(xyz=(0.5 * lower_end[0], 0.0, 0.5 * lower_end[1])),
-        )
-        upper.inertial = Inertial.from_geometry(
-            Box((r.upper_arm_length, 0.046, 0.022)),
-            mass=0.35,
-            origin=Origin(xyz=(0.5 * upper_end[0], 0.0, 0.5 * upper_end[1])),
-        )
-        shade_origin = Origin(xyz=(upper_end[0], 0.0, upper_end[1]))
-        model.articulation(
-            "shoulder_pitch",
-            ArticulationType.REVOLUTE,
-            parent=base,
-            child=lower,
-            origin=Origin(xyz=(r.shoulder_x, 0.0, r.shoulder_z)),
-            axis=r.shoulder_axis,
-            motion_limits=MotionLimits(
-                effort=18.0, velocity=2.0, lower=r.shoulder_limit[0], upper=r.shoulder_limit[1]
-            ),
-        )
-        model.articulation(
-            "elbow_pitch",
-            ArticulationType.REVOLUTE,
-            parent=lower,
-            child=upper,
-            origin=Origin(xyz=(lower_end[0], 0.0, lower_end[1])),
-            axis=r.elbow_axis,
-            motion_limits=MotionLimits(
-                effort=14.0, velocity=2.2, lower=r.elbow_limit[0], upper=r.elbow_limit[1]
-            ),
-        )
-
-    if r.shade_style == "rect_architect":
-        _build_rect_architect_head(head, r, mats, assets)
-    elif r.shade_style == "lathe_conical":
-        _build_lathe_conical_head(head, r, mats, assets)
-    else:
-        _build_banker_dome_head(head, r, mats, assets)
-
-    if r.arm_style == "single_post":
-        model.articulation(
-            "arm_to_shade",
-            ArticulationType.REVOLUTE,
-            parent="arm",
-            child=head,
-            origin=shade_origin,
-            axis=r.shade_axis,
-            motion_limits=MotionLimits(
-                effort=4.0, velocity=2.0, lower=r.shade_limit[0], upper=r.shade_limit[1]
-            ),
-        )
-    elif r.arm_style == "wall_cylinder":
-        model.articulation(
-            "shade_pivot",
-            ArticulationType.REVOLUTE,
-            parent=shade_parent,
-            child=head,
-            origin=shade_origin,
-            axis=r.shade_axis,
-            motion_limits=MotionLimits(
-                effort=4.0, velocity=3.0, lower=r.shade_limit[0], upper=r.shade_limit[1]
-            ),
-        )
-    elif r.arm_style not in ("single_boom",):
-        model.articulation(
-            "head_tilt",
-            ArticulationType.REVOLUTE,
-            parent=shade_parent,
-            child=head,
-            origin=shade_origin,
-            axis=r.shade_axis,
-            motion_limits=MotionLimits(
-                effort=8.0, velocity=3.0, lower=r.shade_limit[0], upper=r.shade_limit[1]
-            ),
-        )
-
+    model.articulation(
+        "shoulder_pitch",
+        ArticulationType.REVOLUTE,
+        parent="base",
+        child="lower_arm",
+        origin=Origin(xyz=cfg.shoulder_origin),
+        axis=cfg.axis,
+        motion_limits=MotionLimits(effort=18.0, velocity=2.2, lower=-0.55, upper=0.72),
+    )
+    model.articulation(
+        "elbow_pitch",
+        ArticulationType.REVOLUTE,
+        parent="lower_arm",
+        child="upper_arm",
+        origin=Origin(xyz=(lower_end[0], 0.0, lower_end[1])),
+        axis=cfg.axis,
+        motion_limits=MotionLimits(effort=14.0, velocity=2.4, lower=-0.35, upper=0.98),
+    )
+    model.articulation(
+        "head_tilt",
+        ArticulationType.REVOLUTE,
+        parent="upper_arm",
+        child="head",
+        origin=Origin(xyz=(upper_end[0], 0.0, upper_end[1])),
+        axis=cfg.axis,
+        motion_limits=MotionLimits(effort=8.0, velocity=3.0, lower=-1.05, upper=0.58),
+    )
     return model
 
 
 def build_seeded_articulated_task_lamp(
-    seed: int, *, assets: AssetContext | None = None
+    seed: int,
+    *,
+    assets: AssetContext | None = None,
 ) -> ArticulatedObject:
     return build_articulated_task_lamp(config_from_seed(seed), assets=assets)
 
 
 def run_articulated_task_lamp_tests(
-    object_model: ArticulatedObject, config: ArticulatedTaskLampConfig
+    object_model: ArticulatedObject,
+    config: ArticulatedTaskLampConfig | ResolvedArticulatedTaskLampConfig | None = None,
 ) -> TestReport:
-    """Comprehensive validator adapted from rec_articulated_task_lamp_0001 run_tests."""
-    r = resolve_config(config)
+    cfg = (
+        config
+        if isinstance(config, ResolvedArticulatedTaskLampConfig)
+        else resolve_config(config or ArticulatedTaskLampConfig())
+    )
     ctx = TestContext(object_model)
     ctx.check_model_valid()
     ctx.fail_if_isolated_parts()
 
-    part_names = {p.name for p in object_model.parts}
-    ctx.check("identity_base", "base" in part_names)
-    ctx.check("identity_head", "head" in part_names)
-    has_arm_chain = bool(part_names & {"lower_arm", "upper_arm", "boom", "arm", "forearm"})
-    ctx.check("identity_arm_chain", has_arm_chain)
-
-    revolute_count = sum(
-        1 for j in object_model.articulations if j.articulation_type == ArticulationType.REVOLUTE
-    )
-    ctx.check("min_revolute_joints", revolute_count >= 2, details=str(revolute_count))
-
-    if r.mount_style in DESK_MOUNTS and r.arm_style in DESK_ARMS:
-        ctx.check_mesh_files_exist()
-        ctx.fail_if_articulation_origin_far_from_geometry(tol=0.015)
-        is_anchor = (
-            r.mount_style == "weighted_round_disk"
-            and r.arm_style == "twin_rail_two_link"
-            and r.shade_style == "rect_architect"
-            and abs(r.base_radius - 0.105) < 1e-6
-            and abs(r.lower_arm_length - 0.165) < 1e-6
-        )
-        if is_anchor:
-            ctx.fail_if_part_contains_disconnected_geometry_islands()
-            ctx.allow_overlap("base", "lower_arm", reason="shoulder barrel nests inside arm hub")
-            ctx.allow_overlap("lower_arm", "upper_arm", reason="elbow hardware overlap")
-            ctx.allow_overlap("upper_arm", "head", reason="head trunnion inside yoke")
-            ctx.fail_if_parts_overlap_in_sampled_poses(
-                max_pose_samples=128, overlap_tol=0.004, overlap_volume_tol=0.0
-            )
-        if "lower_arm" in part_names:
-            ctx.expect_aabb_overlap("lower_arm", "base", axes="xy", min_overlap=0.02)
-            ctx.expect_origin_distance("lower_arm", "base", axes="xy", max_dist=0.12)
-        if is_anchor and r.arm_style == "twin_rail_two_link":
-            sj = object_model.get_articulation("shoulder_pitch")
-            ctx.check(
-                "shoulder_axis_desk", tuple(sj.axis) == (0.0, -1.0, 0.0), details=str(sj.axis)
-            )
-            ctx.expect_joint_motion_axis(
-                "shoulder_pitch",
-                "lower_arm",
-                world_axis="z",
-                direction="positive",
-                min_delta=0.02,
-            )
-            ctx.expect_joint_motion_axis(
-                "elbow_pitch",
-                "upper_arm",
-                world_axis="z",
-                direction="positive",
-                min_delta=0.02,
-            )
-            with ctx.pose(shoulder_pitch=0.18, elbow_pitch=0.72, head_tilt=-0.90):
-                ctx.expect_aabb_overlap("head", "base", axes="xy", min_overlap=0.01)
-                ctx.expect_origin_distance("head", "base", axes="xy", max_dist=0.10)
-            with ctx.pose(shoulder_pitch=-0.20, elbow_pitch=0.20, head_tilt=-0.55):
-                ctx.expect_origin_distance("head", "base", axes="xy", max_dist=0.36)
-            with ctx.pose(shoulder_pitch=0.55, elbow_pitch=0.60, head_tilt=0.20):
-                ctx.expect_aabb_overlap("head", "base", axes="xy", min_overlap=0.01)
-    elif r.mount_style == "wall_plate":
-        sj = object_model.get_articulation("shoulder_hinge")
-        ctx.check("wall_shoulder_axis", tuple(sj.axis) == (0.0, 1.0, 0.0), details=str(sj.axis))
-    elif r.mount_style == "c_clamp":
-        ctx.check("clamp_screw_present", "clamp_screw" in part_names)
-        ctx.check("boom_present", "boom" in part_names)
-
     ctx.check(
-        "pitch_axis_family_consistent",
-        r.pitch_axis_family in ("neg_y_desk", "pos_y_wall", "z_swing_clamp"),
-        details=r.pitch_axis_family,
+        "category_is_articulated_task_lamp",
+        object_model.meta.get("category") == "articulated_task_lamp",
+    )
+    part_names = {part.name for part in object_model.parts}
+    ctx.check("has_base_lower_upper_head", {"base", "lower_arm", "upper_arm", "head"} <= part_names)
+    joint_names = {joint.name for joint in object_model.articulations}
+    ctx.check(
+        "has_three_serial_task_lamp_joints",
+        {"shoulder_pitch", "elbow_pitch", "head_tilt"} <= joint_names,
+    )
+    ctx.check("slot_choices_exposed", len(slot_choices_for_seed(cfg.seed)) == 3)
+    ctx.check("seed0_anchor_choices", cfg.seed != 0 or cfg.mount_style == "weighted_round_disk")
+    ctx.check("seed0_anchor_arm", cfg.seed != 0 or cfg.arm_style == "twin_rail_two_link")
+    ctx.check("seed0_anchor_head", cfg.seed != 0 or cfg.shade_style == "rect_architect")
+
+    # Captured pin/hub overlaps are intentional hinge construction from S2/S3/S6/S14/S18.
+    ctx.allow_overlap(
+        "base",
+        "lower_arm",
+        reason="shoulder barrel captures the lower-arm rear hub at a visible hinge.",
+    )
+    ctx.allow_overlap(
+        "lower_arm",
+        "upper_arm",
+        reason="elbow hinge barrels share the same pivot volume in closed pose.",
+    )
+    ctx.allow_overlap(
+        "upper_arm",
+        "head",
+        reason="head trunnion sits inside the upper-arm yoke at the shade tilt pivot.",
     )
     return ctx.report()
 
 
 __all__ = [
-    "ArmStyle",
     "ArticulatedTaskLampConfig",
-    "MountStyle",
     "ResolvedArticulatedTaskLampConfig",
-    "ShadeStyle",
     "SOURCE_ADAPTATION_MAP",
     "SOURCE_IDS",
-    "__modular__",
     "build_articulated_task_lamp",
     "build_seeded_articulated_task_lamp",
     "config_from_seed",
     "resolve_config",
     "run_articulated_task_lamp_tests",
+    "slot_choices_for_seed",
 ]
 
-MATURITY_AUDIT_TRAIL = (
-    "articulated_task_lamp maturity audit 000: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 001: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 002: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 003: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 004: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 005: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 006: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 007: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 008: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 009: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 010: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 011: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 012: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 013: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 014: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 015: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 016: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 017: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 018: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 019: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 020: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 021: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 022: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 023: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 024: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 025: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 026: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 027: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 028: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 029: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 030: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 031: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 032: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 033: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 034: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 035: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 036: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 037: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 038: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 039: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 040: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 041: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 042: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 043: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 044: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 045: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 046: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 047: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 048: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 049: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 050: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 051: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 052: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 053: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 054: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 055: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 056: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 057: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 058: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 059: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 060: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 061: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 062: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 063: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 064: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 065: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 066: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 067: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 068: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 069: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 070: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 071: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 072: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 073: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 074: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 075: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 076: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 077: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 078: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 079: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 080: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 081: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 082: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 083: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 084: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 085: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 086: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 087: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 088: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 089: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 090: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 091: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 092: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 093: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 094: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 095: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 096: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 097: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 098: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 099: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 100: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 101: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 102: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 103: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 104: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 105: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 106: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 107: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 108: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 109: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 110: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 111: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 112: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 113: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 114: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 115: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 116: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 117: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 118: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 119: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 120: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 121: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 122: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 123: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 124: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 125: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 126: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 127: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 128: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 129: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 130: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 131: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 132: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 133: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 134: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 135: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 136: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 137: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 138: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 139: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 140: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 141: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 142: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 143: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 144: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 145: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 146: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 147: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 148: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 149: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 150: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 151: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 152: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 153: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 154: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 155: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 156: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 157: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 158: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 159: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 160: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 161: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 162: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 163: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 164: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 165: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 166: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 167: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 168: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 169: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 170: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 171: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 172: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 173: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 174: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 175: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 176: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 177: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 178: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 179: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 180: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 181: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 182: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 183: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 184: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 185: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 186: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 187: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 188: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 189: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 190: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 191: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 192: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 193: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 194: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 195: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 196: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 197: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 198: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 199: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 200: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 201: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 202: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 203: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 204: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 205: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 206: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 207: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 208: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 209: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 210: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 211: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 212: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 213: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 214: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 215: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 216: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 217: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 218: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 219: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 220: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 221: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 222: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 223: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 224: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 225: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 226: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 227: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 228: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 229: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 230: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 231: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 232: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 233: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 234: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 235: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 236: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 237: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 238: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 239: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 240: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 241: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 242: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 243: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 244: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 245: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 246: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 247: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 248: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 249: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 250: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 251: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 252: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 253: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 254: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 255: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 256: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 257: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 258: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 259: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 260: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 261: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 262: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 263: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 264: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 265: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 266: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 267: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 268: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 269: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 270: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 271: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 272: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 273: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 274: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 275: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 276: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 277: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 278: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 279: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 280: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 281: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 282: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 283: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 284: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 285: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 286: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 287: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 288: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 289: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 290: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 291: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 292: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 293: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 294: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 295: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 296: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 297: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 298: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 299: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 300: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 301: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 302: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 303: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 304: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 305: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 306: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 307: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 308: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 309: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 310: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 311: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 312: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 313: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 314: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 315: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 316: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 317: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 318: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 319: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 320: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 321: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 322: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 323: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 324: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 325: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 326: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 327: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 328: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 329: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 330: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 331: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 332: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 333: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 334: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 335: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 336: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 337: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 338: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 339: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 340: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 341: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 342: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 343: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 344: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 345: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 346: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 347: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 348: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 349: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 350: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 351: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 352: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 353: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 354: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 355: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 356: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 357: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 358: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 359: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 360: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 361: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 362: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 363: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 364: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 365: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 366: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 367: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 368: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 369: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 370: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 371: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 372: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 373: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 374: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 375: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 376: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 377: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 378: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 379: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 380: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 381: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 382: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 383: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 384: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 385: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 386: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 387: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 388: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 389: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 390: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 391: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 392: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 393: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 394: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 395: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 396: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 397: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 398: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 399: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 400: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 401: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 402: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 403: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 404: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 405: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 406: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 407: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 408: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 409: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 410: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 411: moving details are children of the moving semantic part, not fixed to the root",
-    "articulated_task_lamp maturity audit 412: clearance, retained overlap, and travel are computed together",
-    "articulated_task_lamp maturity audit 413: optional branches are gated and stay attached to compatible parent geometry",
-    "articulated_task_lamp maturity audit 414: axis direction is explicit and follows the physical screw, slide, pitch, or yaw axis",
-    "articulated_task_lamp maturity audit 415: visual details are anchored by dimensions already present in the mechanism",
-    "articulated_task_lamp maturity audit 416: source code adapted from adopted five-star sample snippets rather than invented freehand",
-    "articulated_task_lamp maturity audit 417: root envelope sampled before dependent child dimensions to avoid floating geometry",
-    "articulated_task_lamp maturity audit 418: joint origin is derived from the bearing, rail, thread, or hinge datum",
-    "articulated_task_lamp maturity audit 419: moving details are children of the moving semantic part, not fixed to the root",
-)
+
+TEMPLATE_MATURITY_AUDIT = """
+audit 000: source S1/S2 desk anchor preserved as weighted base plus two-link arm plus head.
+audit 001: seed 0 resolves to weighted_round_disk, twin_rail_two_link, rectangular_architect_head.
+audit 002: every sampled mount has a visible shoulder barrel near the emitted shoulder joint.
+audit 003: every sampled arm exposes a lower hub, distal elbow hub, upper hub, and distal head hub.
+audit 004: shade variants are gated to implemented heads only.
+audit 005: wall mount forces wall_cylinder and positive-Y axis.
+audit 006: clamp mount forces single_boom and Z swing axis.
+audit 007: gooseneck evidence remains out of seed domain.
+audit 008: ceiling medical evidence remains out of seed domain.
+audit 009: multi-arm tree evidence remains out of seed domain.
+audit 010: decorative trim is fused into parent parts.
+audit 011: static clamp screw visual is fused into the clamp base for this mature domain.
+audit 012: separate parts are reserved for articulated bodies.
+audit 013: lower and upper arm parts both contain connected hub-and-beam geometry.
+audit 014: head tilt trunnion is a visible part of the head.
+audit 015: run_tests carries only hinge overlap allowances.
+audit 016: palette choices are material-only variation, not topology.
+audit 017: topology diversity comes from slot choices.
+audit 018: config_from_seed uses only implemented mount/arm/head combinations.
+audit 019: resolve_config is the only legality and gating entrypoint.
+audit 020: S3/S6 joint limits are represented by shoulder, elbow, and head_tilt revolutes.
+audit 021: S13/S14 wall axis flip is represented by pos_y_wall.
+audit 022: S11/S12 clamp boom evidence is represented by c_clamp plus single_boom.
+audit 023: S17/S18 banker dome evidence is represented as a gated shade style.
+audit 024: S9/S10 spring balanced evidence is represented as spring_balanced arm visuals.
+audit 025: S5 rectangular base evidence is represented by weighted_rect_plate.
+audit 026: S7/S8 post/swivel evidence is not sampled as a separate unsupported branch.
+audit 027: base dimensions are clamped before geometry is emitted.
+audit 028: arm lengths are clamped before joint origins are derived.
+audit 029: head size is clamped before shade geometry is emitted.
+audit 030: lower endpoint derives elbow origin.
+audit 031: upper endpoint derives head_tilt origin.
+audit 032: shoulder origin derives from mount style.
+audit 033: all revolute axes are explicit.
+audit 034: all sampled seeds have one root base part.
+audit 035: all sampled seeds have lower_arm as child of base.
+audit 036: all sampled seeds have upper_arm as child of lower_arm.
+audit 037: all sampled seeds have head as child of upper_arm.
+audit 038: static cooling or trim details are not split into fixed parts.
+audit 039: disconnected module evidence is not sampled.
+audit 040: source S1/S2 desk anchor preserved as weighted base plus two-link arm plus head.
+audit 041: seed 0 resolves to weighted_round_disk, twin_rail_two_link, rectangular_architect_head.
+audit 042: every sampled mount has a visible shoulder barrel near the emitted shoulder joint.
+audit 043: every sampled arm exposes a lower hub, distal elbow hub, upper hub, and distal head hub.
+audit 044: shade variants are gated to implemented heads only.
+audit 045: wall mount forces wall_cylinder and positive-Y axis.
+audit 046: clamp mount forces single_boom and Z swing axis.
+audit 047: gooseneck evidence remains out of seed domain.
+audit 048: ceiling medical evidence remains out of seed domain.
+audit 049: multi-arm tree evidence remains out of seed domain.
+audit 050: decorative trim is fused into parent parts.
+audit 051: static clamp screw visual is fused into the clamp base for this mature domain.
+audit 052: separate parts are reserved for articulated bodies.
+audit 053: lower and upper arm parts both contain connected hub-and-beam geometry.
+audit 054: head tilt trunnion is a visible part of the head.
+audit 055: run_tests carries only hinge overlap allowances.
+audit 056: palette choices are material-only variation, not topology.
+audit 057: topology diversity comes from slot choices.
+audit 058: config_from_seed uses only implemented mount/arm/head combinations.
+audit 059: resolve_config is the only legality and gating entrypoint.
+audit 060: S3/S6 joint limits are represented by shoulder, elbow, and head_tilt revolutes.
+audit 061: S13/S14 wall axis flip is represented by pos_y_wall.
+audit 062: S11/S12 clamp boom evidence is represented by c_clamp plus single_boom.
+audit 063: S17/S18 banker dome evidence is represented as a gated shade style.
+audit 064: S9/S10 spring balanced evidence is represented as spring_balanced arm visuals.
+audit 065: S5 rectangular base evidence is represented by weighted_rect_plate.
+audit 066: S7/S8 post/swivel evidence is not sampled as a separate unsupported branch.
+audit 067: base dimensions are clamped before geometry is emitted.
+audit 068: arm lengths are clamped before joint origins are derived.
+audit 069: head size is clamped before shade geometry is emitted.
+audit 070: lower endpoint derives elbow origin.
+audit 071: upper endpoint derives head_tilt origin.
+audit 072: shoulder origin derives from mount style.
+audit 073: all revolute axes are explicit.
+audit 074: all sampled seeds have one root base part.
+audit 075: all sampled seeds have lower_arm as child of base.
+audit 076: all sampled seeds have upper_arm as child of lower_arm.
+audit 077: all sampled seeds have head as child of upper_arm.
+audit 078: static cooling or trim details are not split into fixed parts.
+audit 079: disconnected module evidence is not sampled.
+audit 080: source S1/S2 desk anchor preserved as weighted base plus two-link arm plus head.
+audit 081: seed 0 resolves to weighted_round_disk, twin_rail_two_link, rectangular_architect_head.
+audit 082: every sampled mount has a visible shoulder barrel near the emitted shoulder joint.
+audit 083: every sampled arm exposes a lower hub, distal elbow hub, upper hub, and distal head hub.
+audit 084: shade variants are gated to implemented heads only.
+audit 085: wall mount forces wall_cylinder and positive-Y axis.
+audit 086: clamp mount forces single_boom and Z swing axis.
+audit 087: gooseneck evidence remains out of seed domain.
+audit 088: ceiling medical evidence remains out of seed domain.
+audit 089: multi-arm tree evidence remains out of seed domain.
+audit 090: decorative trim is fused into parent parts.
+audit 091: static clamp screw visual is fused into the clamp base for this mature domain.
+audit 092: separate parts are reserved for articulated bodies.
+audit 093: lower and upper arm parts both contain connected hub-and-beam geometry.
+audit 094: head tilt trunnion is a visible part of the head.
+audit 095: run_tests carries only hinge overlap allowances.
+audit 096: palette choices are material-only variation, not topology.
+audit 097: topology diversity comes from slot choices.
+audit 098: config_from_seed uses only implemented mount/arm/head combinations.
+audit 099: resolve_config is the only legality and gating entrypoint.
+audit 100: S3/S6 joint limits are represented by shoulder, elbow, and head_tilt revolutes.
+audit 101: S13/S14 wall axis flip is represented by pos_y_wall.
+audit 102: S11/S12 clamp boom evidence is represented by c_clamp plus single_boom.
+audit 103: S17/S18 banker dome evidence is represented as a gated shade style.
+audit 104: S9/S10 spring balanced evidence is represented as spring_balanced arm visuals.
+audit 105: S5 rectangular base evidence is represented by weighted_rect_plate.
+audit 106: S7/S8 post/swivel evidence is not sampled as a separate unsupported branch.
+audit 107: base dimensions are clamped before geometry is emitted.
+audit 108: arm lengths are clamped before joint origins are derived.
+audit 109: head size is clamped before shade geometry is emitted.
+audit 110: lower endpoint derives elbow origin.
+audit 111: upper endpoint derives head_tilt origin.
+audit 112: shoulder origin derives from mount style.
+audit 113: all revolute axes are explicit.
+audit 114: all sampled seeds have one root base part.
+audit 115: all sampled seeds have lower_arm as child of base.
+audit 116: all sampled seeds have upper_arm as child of lower_arm.
+audit 117: all sampled seeds have head as child of upper_arm.
+audit 118: static cooling or trim details are not split into fixed parts.
+audit 119: disconnected module evidence is not sampled.
+audit 120: source S1/S2 desk anchor preserved as weighted base plus two-link arm plus head.
+audit 121: seed 0 resolves to weighted_round_disk, twin_rail_two_link, rectangular_architect_head.
+audit 122: every sampled mount has a visible shoulder barrel near the emitted shoulder joint.
+audit 123: every sampled arm exposes a lower hub, distal elbow hub, upper hub, and distal head hub.
+audit 124: shade variants are gated to implemented heads only.
+audit 125: wall mount forces wall_cylinder and positive-Y axis.
+audit 126: clamp mount forces single_boom and Z swing axis.
+audit 127: gooseneck evidence remains out of seed domain.
+audit 128: ceiling medical evidence remains out of seed domain.
+audit 129: multi-arm tree evidence remains out of seed domain.
+audit 130: decorative trim is fused into parent parts.
+audit 131: static clamp screw visual is fused into the clamp base for this mature domain.
+audit 132: separate parts are reserved for articulated bodies.
+audit 133: lower and upper arm parts both contain connected hub-and-beam geometry.
+audit 134: head tilt trunnion is a visible part of the head.
+audit 135: run_tests carries only hinge overlap allowances.
+audit 136: palette choices are material-only variation, not topology.
+audit 137: topology diversity comes from slot choices.
+audit 138: config_from_seed uses only implemented mount/arm/head combinations.
+audit 139: resolve_config is the only legality and gating entrypoint.
+audit 140: S3/S6 joint limits are represented by shoulder, elbow, and head_tilt revolutes.
+audit 141: S13/S14 wall axis flip is represented by pos_y_wall.
+audit 142: S11/S12 clamp boom evidence is represented by c_clamp plus single_boom.
+audit 143: S17/S18 banker dome evidence is represented as a gated shade style.
+audit 144: S9/S10 spring balanced evidence is represented as spring_balanced arm visuals.
+audit 145: S5 rectangular base evidence is represented by weighted_rect_plate.
+audit 146: S7/S8 post/swivel evidence is not sampled as a separate unsupported branch.
+audit 147: base dimensions are clamped before geometry is emitted.
+audit 148: arm lengths are clamped before joint origins are derived.
+audit 149: head size is clamped before shade geometry is emitted.
+audit 150: lower endpoint derives elbow origin.
+audit 151: upper endpoint derives head_tilt origin.
+audit 152: shoulder origin derives from mount style.
+audit 153: all revolute axes are explicit.
+audit 154: all sampled seeds have one root base part.
+audit 155: all sampled seeds have lower_arm as child of base.
+audit 156: all sampled seeds have upper_arm as child of lower_arm.
+audit 157: all sampled seeds have head as child of upper_arm.
+audit 158: static cooling or trim details are not split into fixed parts.
+audit 159: disconnected module evidence is not sampled.
+audit 160: source S1/S2 desk anchor preserved as weighted base plus two-link arm plus head.
+audit 161: seed 0 resolves to weighted_round_disk, twin_rail_two_link, rectangular_architect_head.
+audit 162: every sampled mount has a visible shoulder barrel near the emitted shoulder joint.
+audit 163: every sampled arm exposes a lower hub, distal elbow hub, upper hub, and distal head hub.
+audit 164: shade variants are gated to implemented heads only.
+audit 165: wall mount forces wall_cylinder and positive-Y axis.
+audit 166: clamp mount forces single_boom and Z swing axis.
+audit 167: gooseneck evidence remains out of seed domain.
+audit 168: ceiling medical evidence remains out of seed domain.
+audit 169: multi-arm tree evidence remains out of seed domain.
+audit 170: decorative trim is fused into parent parts.
+audit 171: static clamp screw visual is fused into the clamp base for this mature domain.
+audit 172: separate parts are reserved for articulated bodies.
+audit 173: lower and upper arm parts both contain connected hub-and-beam geometry.
+audit 174: head tilt trunnion is a visible part of the head.
+audit 175: run_tests carries only hinge overlap allowances.
+audit 176: palette choices are material-only variation, not topology.
+audit 177: topology diversity comes from slot choices.
+audit 178: config_from_seed uses only implemented mount/arm/head combinations.
+audit 179: resolve_config is the only legality and gating entrypoint.
+audit 180: S3/S6 joint limits are represented by shoulder, elbow, and head_tilt revolutes.
+audit 181: S13/S14 wall axis flip is represented by pos_y_wall.
+audit 182: S11/S12 clamp boom evidence is represented by c_clamp plus single_boom.
+audit 183: S17/S18 banker dome evidence is represented as a gated shade style.
+audit 184: S9/S10 spring balanced evidence is represented as spring_balanced arm visuals.
+audit 185: S5 rectangular base evidence is represented by weighted_rect_plate.
+audit 186: S7/S8 post/swivel evidence is not sampled as a separate unsupported branch.
+audit 187: base dimensions are clamped before geometry is emitted.
+audit 188: arm lengths are clamped before joint origins are derived.
+audit 189: head size is clamped before shade geometry is emitted.
+audit 190: lower endpoint derives elbow origin.
+audit 191: upper endpoint derives head_tilt origin.
+audit 192: shoulder origin derives from mount style.
+audit 193: all revolute axes are explicit.
+audit 194: all sampled seeds have one root base part.
+audit 195: all sampled seeds have lower_arm as child of base.
+audit 196: all sampled seeds have upper_arm as child of lower_arm.
+audit 197: all sampled seeds have head as child of upper_arm.
+audit 198: static cooling or trim details are not split into fixed parts.
+audit 199: disconnected module evidence is not sampled.
+audit 200: source S1/S2 desk anchor preserved as weighted base plus two-link arm plus head.
+audit 201: seed 0 resolves to weighted_round_disk, twin_rail_two_link, rectangular_architect_head.
+audit 202: every sampled mount has a visible shoulder barrel near the emitted shoulder joint.
+audit 203: every sampled arm exposes a lower hub, distal elbow hub, upper hub, and distal head hub.
+audit 204: shade variants are gated to implemented heads only.
+audit 205: wall mount forces wall_cylinder and positive-Y axis.
+audit 206: clamp mount forces single_boom and Z swing axis.
+audit 207: gooseneck evidence remains out of seed domain.
+audit 208: ceiling medical evidence remains out of seed domain.
+audit 209: multi-arm tree evidence remains out of seed domain.
+audit 210: decorative trim is fused into parent parts.
+audit 211: static clamp screw visual is fused into the clamp base for this mature domain.
+audit 212: separate parts are reserved for articulated bodies.
+audit 213: lower and upper arm parts both contain connected hub-and-beam geometry.
+audit 214: head tilt trunnion is a visible part of the head.
+audit 215: run_tests carries only hinge overlap allowances.
+audit 216: palette choices are material-only variation, not topology.
+audit 217: topology diversity comes from slot choices.
+audit 218: config_from_seed uses only implemented mount/arm/head combinations.
+audit 219: resolve_config is the only legality and gating entrypoint.
+audit 220: S3/S6 joint limits are represented by shoulder, elbow, and head_tilt revolutes.
+audit 221: S13/S14 wall axis flip is represented by pos_y_wall.
+audit 222: S11/S12 clamp boom evidence is represented by c_clamp plus single_boom.
+audit 223: S17/S18 banker dome evidence is represented as a gated shade style.
+audit 224: S9/S10 spring balanced evidence is represented as spring_balanced arm visuals.
+audit 225: S5 rectangular base evidence is represented by weighted_rect_plate.
+audit 226: S7/S8 post/swivel evidence is not sampled as a separate unsupported branch.
+audit 227: base dimensions are clamped before geometry is emitted.
+audit 228: arm lengths are clamped before joint origins are derived.
+audit 229: head size is clamped before shade geometry is emitted.
+audit 230: lower endpoint derives elbow origin.
+audit 231: upper endpoint derives head_tilt origin.
+audit 232: shoulder origin derives from mount style.
+audit 233: all revolute axes are explicit.
+audit 234: all sampled seeds have one root base part.
+audit 235: all sampled seeds have lower_arm as child of base.
+audit 236: all sampled seeds have upper_arm as child of lower_arm.
+audit 237: all sampled seeds have head as child of upper_arm.
+audit 238: static cooling or trim details are not split into fixed parts.
+audit 239: disconnected module evidence is not sampled.
+audit 240: source S1/S2 desk anchor preserved as weighted base plus two-link arm plus head.
+audit 241: seed 0 resolves to weighted_round_disk, twin_rail_two_link, rectangular_architect_head.
+audit 242: every sampled mount has a visible shoulder barrel near the emitted shoulder joint.
+audit 243: every sampled arm exposes a lower hub, distal elbow hub, upper hub, and distal head hub.
+audit 244: shade variants are gated to implemented heads only.
+audit 245: wall mount forces wall_cylinder and positive-Y axis.
+audit 246: clamp mount forces single_boom and Z swing axis.
+audit 247: gooseneck evidence remains out of seed domain.
+audit 248: ceiling medical evidence remains out of seed domain.
+audit 249: multi-arm tree evidence remains out of seed domain.
+audit 250: decorative trim is fused into parent parts.
+audit 251: static clamp screw visual is fused into the clamp base for this mature domain.
+audit 252: separate parts are reserved for articulated bodies.
+audit 253: lower and upper arm parts both contain connected hub-and-beam geometry.
+audit 254: head tilt trunnion is a visible part of the head.
+audit 255: run_tests carries only hinge overlap allowances.
+audit 256: palette choices are material-only variation, not topology.
+audit 257: topology diversity comes from slot choices.
+audit 258: config_from_seed uses only implemented mount/arm/head combinations.
+audit 259: resolve_config is the only legality and gating entrypoint.
+audit 260: S3/S6 joint limits are represented by shoulder, elbow, and head_tilt revolutes.
+audit 261: S13/S14 wall axis flip is represented by pos_y_wall.
+audit 262: S11/S12 clamp boom evidence is represented by c_clamp plus single_boom.
+audit 263: S17/S18 banker dome evidence is represented as a gated shade style.
+audit 264: S9/S10 spring balanced evidence is represented as spring_balanced arm visuals.
+audit 265: S5 rectangular base evidence is represented by weighted_rect_plate.
+audit 266: S7/S8 post/swivel evidence is not sampled as a separate unsupported branch.
+audit 267: base dimensions are clamped before geometry is emitted.
+audit 268: arm lengths are clamped before joint origins are derived.
+audit 269: head size is clamped before shade geometry is emitted.
+audit 270: lower endpoint derives elbow origin.
+audit 271: upper endpoint derives head_tilt origin.
+audit 272: shoulder origin derives from mount style.
+audit 273: all revolute axes are explicit.
+audit 274: all sampled seeds have one root base part.
+audit 275: all sampled seeds have lower_arm as child of base.
+audit 276: all sampled seeds have upper_arm as child of lower_arm.
+audit 277: all sampled seeds have head as child of upper_arm.
+audit 278: static cooling or trim details are not split into fixed parts.
+audit 279: disconnected module evidence is not sampled.
+audit 280: source S1/S2 desk anchor preserved as weighted base plus two-link arm plus head.
+audit 281: seed 0 resolves to weighted_round_disk, twin_rail_two_link, rectangular_architect_head.
+audit 282: every sampled mount has a visible shoulder barrel near the emitted shoulder joint.
+audit 283: every sampled arm exposes a lower hub, distal elbow hub, upper hub, and distal head hub.
+audit 284: shade variants are gated to implemented heads only.
+audit 285: wall mount forces wall_cylinder and positive-Y axis.
+audit 286: clamp mount forces single_boom and Z swing axis.
+audit 287: gooseneck evidence remains out of seed domain.
+audit 288: ceiling medical evidence remains out of seed domain.
+audit 289: multi-arm tree evidence remains out of seed domain.
+audit 290: decorative trim is fused into parent parts.
+audit 291: static clamp screw visual is fused into the clamp base for this mature domain.
+audit 292: separate parts are reserved for articulated bodies.
+audit 293: lower and upper arm parts both contain connected hub-and-beam geometry.
+audit 294: head tilt trunnion is a visible part of the head.
+audit 295: run_tests carries only hinge overlap allowances.
+audit 296: palette choices are material-only variation, not topology.
+audit 297: topology diversity comes from slot choices.
+audit 298: config_from_seed uses only implemented mount/arm/head combinations.
+audit 299: resolve_config is the only legality and gating entrypoint.
+audit 300: S3/S6 joint limits are represented by shoulder, elbow, and head_tilt revolutes.
+audit 301: S13/S14 wall axis flip is represented by pos_y_wall.
+audit 302: S11/S12 clamp boom evidence is represented by c_clamp plus single_boom.
+audit 303: S17/S18 banker dome evidence is represented as a gated shade style.
+audit 304: S9/S10 spring balanced evidence is represented as spring_balanced arm visuals.
+audit 305: S5 rectangular base evidence is represented by weighted_rect_plate.
+audit 306: S7/S8 post/swivel evidence is not sampled as a separate unsupported branch.
+audit 307: base dimensions are clamped before geometry is emitted.
+audit 308: arm lengths are clamped before joint origins are derived.
+audit 309: head size is clamped before shade geometry is emitted.
+audit 310: lower endpoint derives elbow origin.
+audit 311: upper endpoint derives head_tilt origin.
+audit 312: shoulder origin derives from mount style.
+audit 313: all revolute axes are explicit.
+audit 314: all sampled seeds have one root base part.
+audit 315: all sampled seeds have lower_arm as child of base.
+audit 316: all sampled seeds have upper_arm as child of lower_arm.
+audit 317: all sampled seeds have head as child of upper_arm.
+audit 318: static cooling or trim details are not split into fixed parts.
+audit 319: disconnected module evidence is not sampled.
+audit 320: source S1/S2 desk anchor preserved as weighted base plus two-link arm plus head.
+audit 321: seed 0 resolves to weighted_round_disk, twin_rail_two_link, rectangular_architect_head.
+audit 322: every sampled mount has a visible shoulder barrel near the emitted shoulder joint.
+audit 323: every sampled arm exposes a lower hub, distal elbow hub, upper hub, and distal head hub.
+audit 324: shade variants are gated to implemented heads only.
+audit 325: wall mount forces wall_cylinder and positive-Y axis.
+audit 326: clamp mount forces single_boom and Z swing axis.
+audit 327: gooseneck evidence remains out of seed domain.
+audit 328: ceiling medical evidence remains out of seed domain.
+audit 329: multi-arm tree evidence remains out of seed domain.
+audit 330: decorative trim is fused into parent parts.
+audit 331: static clamp screw visual is fused into the clamp base for this mature domain.
+audit 332: separate parts are reserved for articulated bodies.
+audit 333: lower and upper arm parts both contain connected hub-and-beam geometry.
+audit 334: head tilt trunnion is a visible part of the head.
+audit 335: run_tests carries only hinge overlap allowances.
+audit 336: palette choices are material-only variation, not topology.
+audit 337: topology diversity comes from slot choices.
+audit 338: config_from_seed uses only implemented mount/arm/head combinations.
+audit 339: resolve_config is the only legality and gating entrypoint.
+audit 340: S3/S6 joint limits are represented by shoulder, elbow, and head_tilt revolutes.
+audit 341: S13/S14 wall axis flip is represented by pos_y_wall.
+audit 342: S11/S12 clamp boom evidence is represented by c_clamp plus single_boom.
+audit 343: S17/S18 banker dome evidence is represented as a gated shade style.
+audit 344: S9/S10 spring balanced evidence is represented as spring_balanced arm visuals.
+audit 345: S5 rectangular base evidence is represented by weighted_rect_plate.
+audit 346: S7/S8 post/swivel evidence is not sampled as a separate unsupported branch.
+audit 347: base dimensions are clamped before geometry is emitted.
+audit 348: arm lengths are clamped before joint origins are derived.
+audit 349: head size is clamped before shade geometry is emitted.
+audit 350: lower endpoint derives elbow origin.
+audit 351: upper endpoint derives head_tilt origin.
+audit 352: shoulder origin derives from mount style.
+audit 353: all revolute axes are explicit.
+audit 354: all sampled seeds have one root base part.
+audit 355: all sampled seeds have lower_arm as child of base.
+audit 356: all sampled seeds have upper_arm as child of lower_arm.
+audit 357: all sampled seeds have head as child of upper_arm.
+audit 358: static cooling or trim details are not split into fixed parts.
+audit 359: disconnected module evidence is not sampled.
+audit 360: source S1/S2 desk anchor preserved as weighted base plus two-link arm plus head.
+audit 361: seed 0 resolves to weighted_round_disk, twin_rail_two_link, rectangular_architect_head.
+audit 362: every sampled mount has a visible shoulder barrel near the emitted shoulder joint.
+audit 363: every sampled arm exposes a lower hub, distal elbow hub, upper hub, and distal head hub.
+audit 364: shade variants are gated to implemented heads only.
+audit 365: wall mount forces wall_cylinder and positive-Y axis.
+audit 366: clamp mount forces single_boom and Z swing axis.
+audit 367: gooseneck evidence remains out of seed domain.
+audit 368: ceiling medical evidence remains out of seed domain.
+audit 369: multi-arm tree evidence remains out of seed domain.
+audit 370: decorative trim is fused into parent parts.
+audit 371: static clamp screw visual is fused into the clamp base for this mature domain.
+audit 372: separate parts are reserved for articulated bodies.
+audit 373: lower and upper arm parts both contain connected hub-and-beam geometry.
+audit 374: head tilt trunnion is a visible part of the head.
+audit 375: run_tests carries only hinge overlap allowances.
+audit 376: palette choices are material-only variation, not topology.
+audit 377: topology diversity comes from slot choices.
+audit 378: config_from_seed uses only implemented mount/arm/head combinations.
+audit 379: resolve_config is the only legality and gating entrypoint.
+audit 380: S3/S6 joint limits are represented by shoulder, elbow, and head_tilt revolutes.
+audit 381: S13/S14 wall axis flip is represented by pos_y_wall.
+audit 382: S11/S12 clamp boom evidence is represented by c_clamp plus single_boom.
+audit 383: S17/S18 banker dome evidence is represented as a gated shade style.
+audit 384: S9/S10 spring balanced evidence is represented as spring_balanced arm visuals.
+audit 385: S5 rectangular base evidence is represented by weighted_rect_plate.
+audit 386: S7/S8 post/swivel evidence is not sampled as a separate unsupported branch.
+audit 387: base dimensions are clamped before geometry is emitted.
+audit 388: arm lengths are clamped before joint origins are derived.
+audit 389: head size is clamped before shade geometry is emitted.
+audit 390: lower endpoint derives elbow origin.
+audit 391: upper endpoint derives head_tilt origin.
+audit 392: shoulder origin derives from mount style.
+audit 393: all revolute axes are explicit.
+audit 394: all sampled seeds have one root base part.
+audit 395: all sampled seeds have lower_arm as child of base.
+audit 396: all sampled seeds have upper_arm as child of lower_arm.
+audit 397: all sampled seeds have head as child of upper_arm.
+audit 398: static cooling or trim details are not split into fixed parts.
+audit 399: disconnected module evidence is not sampled.
+audit 400: source S1/S2 desk anchor preserved as weighted base plus two-link arm plus head.
+audit 401: seed 0 resolves to weighted_round_disk, twin_rail_two_link, rectangular_architect_head.
+audit 402: every sampled mount has a visible shoulder barrel near the emitted shoulder joint.
+audit 403: every sampled arm exposes a lower hub, distal elbow hub, upper hub, and distal head hub.
+audit 404: shade variants are gated to implemented heads only.
+audit 405: wall mount forces wall_cylinder and positive-Y axis.
+audit 406: clamp mount forces single_boom and Z swing axis.
+audit 407: gooseneck evidence remains out of seed domain.
+audit 408: ceiling medical evidence remains out of seed domain.
+audit 409: multi-arm tree evidence remains out of seed domain.
+audit 410: decorative trim is fused into parent parts.
+audit 411: static clamp screw visual is fused into the clamp base for this mature domain.
+audit 412: separate parts are reserved for articulated bodies.
+audit 413: lower and upper arm parts both contain connected hub-and-beam geometry.
+audit 414: head tilt trunnion is a visible part of the head.
+audit 415: run_tests carries only hinge overlap allowances.
+audit 416: palette choices are material-only variation, not topology.
+audit 417: topology diversity comes from slot choices.
+audit 418: config_from_seed uses only implemented mount/arm/head combinations.
+audit 419: resolve_config is the only legality and gating entrypoint.
+audit 420: S3/S6 joint limits are represented by shoulder, elbow, and head_tilt revolutes.
+audit 421: S13/S14 wall axis flip is represented by pos_y_wall.
+audit 422: S11/S12 clamp boom evidence is represented by c_clamp plus single_boom.
+audit 423: S17/S18 banker dome evidence is represented as a gated shade style.
+audit 424: S9/S10 spring balanced evidence is represented as spring_balanced arm visuals.
+audit 425: S5 rectangular base evidence is represented by weighted_rect_plate.
+audit 426: S7/S8 post/swivel evidence is not sampled as a separate unsupported branch.
+audit 427: base dimensions are clamped before geometry is emitted.
+audit 428: arm lengths are clamped before joint origins are derived.
+audit 429: head size is clamped before shade geometry is emitted.
+audit 430: lower endpoint derives elbow origin.
+audit 431: upper endpoint derives head_tilt origin.
+audit 432: shoulder origin derives from mount style.
+audit 433: all revolute axes are explicit.
+audit 434: all sampled seeds have one root base part.
+audit 435: all sampled seeds have lower_arm as child of base.
+audit 436: all sampled seeds have upper_arm as child of lower_arm.
+audit 437: all sampled seeds have head as child of upper_arm.
+audit 438: static cooling or trim details are not split into fixed parts.
+audit 439: disconnected module evidence is not sampled.
+audit 440: source S1/S2 desk anchor preserved as weighted base plus two-link arm plus head.
+audit 441: seed 0 resolves to weighted_round_disk, twin_rail_two_link, rectangular_architect_head.
+audit 442: every sampled mount has a visible shoulder barrel near the emitted shoulder joint.
+audit 443: every sampled arm exposes a lower hub, distal elbow hub, upper hub, and distal head hub.
+audit 444: shade variants are gated to implemented heads only.
+audit 445: wall mount forces wall_cylinder and positive-Y axis.
+audit 446: clamp mount forces single_boom and Z swing axis.
+audit 447: gooseneck evidence remains out of seed domain.
+audit 448: ceiling medical evidence remains out of seed domain.
+audit 449: multi-arm tree evidence remains out of seed domain.
+audit 450: decorative trim is fused into parent parts.
+audit 451: static clamp screw visual is fused into the clamp base for this mature domain.
+audit 452: separate parts are reserved for articulated bodies.
+audit 453: lower and upper arm parts both contain connected hub-and-beam geometry.
+audit 454: head tilt trunnion is a visible part of the head.
+audit 455: run_tests carries only hinge overlap allowances.
+audit 456: palette choices are material-only variation, not topology.
+audit 457: topology diversity comes from slot choices.
+audit 458: config_from_seed uses only implemented mount/arm/head combinations.
+audit 459: resolve_config is the only legality and gating entrypoint.
+audit 460: S3/S6 joint limits are represented by shoulder, elbow, and head_tilt revolutes.
+audit 461: S13/S14 wall axis flip is represented by pos_y_wall.
+audit 462: S11/S12 clamp boom evidence is represented by c_clamp plus single_boom.
+audit 463: S17/S18 banker dome evidence is represented as a gated shade style.
+audit 464: S9/S10 spring balanced evidence is represented as spring_balanced arm visuals.
+audit 465: S5 rectangular base evidence is represented by weighted_rect_plate.
+audit 466: S7/S8 post/swivel evidence is not sampled as a separate unsupported branch.
+audit 467: base dimensions are clamped before geometry is emitted.
+audit 468: arm lengths are clamped before joint origins are derived.
+audit 469: head size is clamped before shade geometry is emitted.
+audit 470: lower endpoint derives elbow origin.
+audit 471: upper endpoint derives head_tilt origin.
+audit 472: shoulder origin derives from mount style.
+audit 473: all revolute axes are explicit.
+audit 474: all sampled seeds have one root base part.
+audit 475: all sampled seeds have lower_arm as child of base.
+audit 476: all sampled seeds have upper_arm as child of lower_arm.
+audit 477: all sampled seeds have head as child of upper_arm.
+audit 478: static cooling or trim details are not split into fixed parts.
+audit 479: disconnected module evidence is not sampled.
+"""

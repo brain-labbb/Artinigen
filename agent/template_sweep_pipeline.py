@@ -118,7 +118,6 @@ def run_sweep_pipeline(
     progress: Callable[[SeedOutcome], None] | None = None,
     stage_progress: Callable[[str, PipelineStageResult], None] | None = None,
     state_dir: Path | None = None,
-    line_floor: int = 1000,
     compile_timeout_s: float = 0.0,
 ) -> PipelineReport:
     repo_root = repo_root or Path(__file__).resolve().parents[1]
@@ -162,7 +161,6 @@ def run_sweep_pipeline(
             pass_threshold=pass_threshold,
             repo_root=repo_root,
             state_dir=state_dir if is_final_stage else None,
-            line_floor=line_floor,
             elapsed_s=time.monotonic() - stage_started,
         )
         if report.verdict == "fail" and not is_final_stage and state_dir is not None:
@@ -174,7 +172,6 @@ def run_sweep_pipeline(
                 pass_threshold=pass_threshold,
                 repo_root=repo_root,
                 state_dir=state_dir,
-                line_floor=line_floor,
                 elapsed_s=time.monotonic() - stage_started,
             )
         status = report.verdict

@@ -281,11 +281,13 @@ station_i = support_frame.station_bay_i
 | 参数 | 类型 | 取值范围 / 候选值 | 默认 | 派生关系 | 来源 |
 |---|---|---|---|---|---|
 | `support_frame_module` | enum | `compact_a_frame_crossbeam`, `tube_a_frame_with_clevises`, `long_gantry_tire_frame`, `multi_station_wide_frame`, `minimal_top_beam_mount` | `compact_a_frame_crossbeam` | 由 seed 或 override 选择；决定 frame root、station bay count 和 pivot interface | Slot A table |
-| `station_count` | int | `1..5` | `1` | `multi_station_wide_frame` 下随机 1-5；其他 frame 通常固定 1，除非实现时显式支持 station bays | S4 / model.py:L41-L44, L76-L88, L126-L146 |
+| `station_count` | int | compatibility gated `1..5` | `1` | frame 先随机，再按支架能力 gate：`compact_a_frame_crossbeam`/`minimal_top_beam_mount` 固定 1，`tube_a_frame_with_clevises` 为 1-2，`long_gantry_tire_frame`/`multi_station_wide_frame` 为 1-5 | S4 / model.py:L41-L44, L76-L88, L126-L146 |
 | `station_recipe[i]` | tuple enum | `simple_belt_station`, `bucket_station`, `tire_station`, `lap_bar_station`, `platform_station`, `bench_station`, `glider_station`, `swivel_disc_station`, `nest_station` | `simple_belt_station` for station 0 | 每个 station 独立采样 compatible suspension + payload；允许重复，也允许混合不同类型 | Slot B/C tables + Multiplicity |
+| `geometry_seed` | int | deterministic seed integer | `0` | 驱动每个 station 的内部几何 resolver；同一 seed 可复现尺寸、drop、radius、hub length 和 footprint | implementation resolver |
+| `station_geometry[i]` | resolved struct | per recipe constrained ranges | recipe default | 每个 station 先 resolve `scale/width/depth/radius/drop/hanger_half_width/hub_length/footprint`，再由 builder 消费；禁止各尺寸独立乱采样 | implementation resolver |
 | `suspension_spine_module` | enum | `single_rigid_or_chain_pair`, `dual_clevis_pair`, `captured_sleeve_yoke`, `vertical_swivel_plus_swing`, `parallelogram_glider_links`, `two_side_link_rocker` | `single_rigid_or_chain_pair` | 单站点时为全局选择；multi-station 时变为 `station_recipe[i].suspension` | Slot B table |
 | `seat_payload_module` | enum | `belt_or_plank_seat`, `toddler_bucket_seat`, `tire_seat_three_hanger`, `slatted_seat_with_lap_bar`, `standing_platform_deck`, `bench_with_lower_pivots`, `face_to_face_glider_bench`, `disc_seat_with_folding_footrest`, `nest_basket_seat` | `belt_or_plank_seat` | 单站点时为全局选择；multi-station 时变为 `station_recipe[i].payload` | Slot C table |
-| `beam_length_m` | float | derived `[1.2, 7.5]` | source default | 从 `station_count`、每 station footprint、station spacing、end clearance 派生；数量越多 frame 越宽 | S4 / model.py:L29-L44 |
+| `beam_length_m` | float | derived `[1.2, 7.5]` | source default | 从 `station_count`、每 station resolver 返回的 footprint、station spacing、end clearance 派生；数量越多或站内几何越大，frame 越宽 | S4 / model.py:L29-L44 |
 | `support_bay_count` | int | `2..4` | `2` | `station_count<=3` 可用两端支撑；`station_count>=4` 需要中部支撑或加强 brace | S4 / model.py:L59-L74 |
 | `top_pivot_axis` | vector enum | local X / local Y / local Z continuous+X swing | local Y for seed0 | 从 frame beam orientation 和 suspension module 派生 | S1 / model.py:L199-L212; S5 / model.py:L145-L162 |
 | `swing_limit_rad` | float | `[0.42, 0.85]` | `0.65` | 普通摆动角；glider/platform/nest 使用模块局部范围 | S1 / model.py:L206-L210; S4 / model.py:L129-L146; S8 / model.py:L351-L395 |
@@ -299,12 +301,13 @@ station_i = support_frame.station_bay_i
 
 - `count_param`: `station_count`
 - `N_range`: `1..5`
-- sampling domain: `multi_station_wide_frame` samples `station_count` across 1-5. `station_count=1` still valid and simply produces a one-bay frame. Non-multi frame modules remain single-station unless explicitly converted to the same station bay interface.
+- sampling domain: `support_frame_module` is sampled from all implemented frame families, then `station_count` is sampled through compatibility gates. Compact A-frame and minimal overhead mount are single-station, tube clevis frame supports 1-2 stations, and long gantry / multi-station wide frame support 1-5 stations. `station_count=1` remains valid for every support type.
 - copied object: complete swing station = station-local suspension instance + compatible payload instance + all station-local joints + visible top pivot hardware. A station may itself be complex, for example glider four-link, nest basket, platform lower mimic, lap-bar hinge, or disc footrest hinge.
 - station recipe sampling: for each `station_i`, independently sample a `station_recipe[i]` from the implemented recipe pool. Sampling may repeat the same recipe across multiple stations, or mix different recipes in one frame, e.g. belt + bucket + tire + nest.
 - naming: every emitted part, visual group, articulation, mimic target, and test allowance is prefixed with `station_<i>_`. Examples: `station_2_frame_to_swing`, `station_3_lower_pivot`, `station_1_lap_bar_hinge`.
-- placement: frame computes `station_centers` along the widened top beam. Spacing uses each recipe's footprint width plus clearance; bulky recipes such as tire, nest, glider, platform, and bench reserve wider bays than belt/bucket stations.
-- frame scaling: `beam_length_m = sum(station_footprints) + inter_station_clearance * (N - 1) + end_clearance * 2`. For `station_count>=4`, add center support posts / A-frame bay or diagonal braces so the long beam has a visible load path, not just a stretched unsupported bar.
+- per-station geometry: before placement, each `station_recipe[i]` runs a constrained resolver that samples internal scale and derives dependent dimensions such as seat width/depth, tire or nest radius, hanger half-width, hub length, drop, and final footprint. The builder consumes these resolved values so hanger endpoints, pivots, rim parts, slats, bars, and payload contact points stay connected.
+- placement: frame computes `station_centers` along the top beam. Spacing uses each resolved station footprint plus clearance; bulky or enlarged tire, nest, glider, platform, and bench stations reserve wider bays than compact belt/bucket stations.
+- frame scaling: `beam_length_m = sum(station_footprints) + inter_station_clearance * (N - 1) + end_clearance * 2`. For `long_gantry_tire_frame` / `multi_station_wide_frame` with `station_count>=4`, add center support posts / A-frame bay or diagonal braces so the long beam has a visible load path, not just a stretched unsupported bar.
 - joint policy: each station owns its main swing joint(s). Mimic is allowed only inside a station recipe when the source topology uses mimic; station-to-station mimic is forbidden because mixed stations must move independently.
 - source/gating: S4 supplies the source pattern for independent station bays and repeated pivot brackets. S1/S2/S3/S5/S8/S9/S10-S15 supply station recipe internals. A station recipe can only be sampled if its required top interface can be emitted by the frame bay.
 
@@ -334,6 +337,20 @@ station_i = support_frame.station_bay_i
 | seat_payload | 9 | yes | yes | seat primitive、part tree、lower accessory joint 明显不同。 |
 | station_count | 5 | yes | yes | multi-station frame 下有效；1-5 个完整 station，可重复或混合不同 recipe。 |
 | station_recipe | 9 | yes | yes | 每个 station 独立选择 compatible recipe，recipe 内部保留对应 joint / mimic / accessory topology。 |
+
+### Stage 1 / Stage 2 seed-domain plan
+
+seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+
+Stage 1 high-risk coverage seed plan：
+
+| seed/range | covered combo | risk type | viewer / validator focus |
+|---|---|---|---|
+| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
+| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
+| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+
+Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
 
 ## Validator
 

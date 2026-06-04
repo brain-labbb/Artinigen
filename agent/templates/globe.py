@@ -1,6 +1,6 @@
 """Globe procedural template.
 
-Implements ``articraft_template_authoring/specs/globe.md``.
+Implements ``articraft_template_authoring/specs_modular_v1/globe.md``.
 
 The template is organized around the reviewed mixed slot graph:
 
@@ -47,6 +47,7 @@ from sdk import (
     Box,
     Cylinder,
     Inertial,
+    MeshGeometry,
     MotionLimits,
     Origin,
     Part,
@@ -148,6 +149,13 @@ PALETTE_THEMES: tuple[PaletteTheme, ...] = (
     "wall_mount_slate",
     "modern_white",
 )
+SUPPORT_SAMPLING_ORDER: tuple[SupportStyle, ...] = (
+    "classic_desktop",
+    "outer_cradle",
+    "rotating_pedestal",
+    "partial_ring",
+    "wall_arm",
+)
 
 
 SOURCE_INDEX = {
@@ -180,7 +188,7 @@ PALETTES: dict[PaletteTheme, dict[str, tuple[float, float, float, float]]] = {
         "ocean": (0.08, 0.38, 0.68, 1.0),
         "ocean_dark": (0.03, 0.16, 0.30, 1.0),
         "land": (0.30, 0.58, 0.27, 1.0),
-        "land_light": (0.58, 0.72, 0.34, 1.0),
+        "land_light": (0.42, 0.70, 0.32, 1.0),
         "land_dark": (0.18, 0.42, 0.20, 1.0),
         "graticule": (0.88, 0.86, 0.70, 1.0),
         "metal": (0.78, 0.64, 0.30, 1.0),
@@ -192,9 +200,9 @@ PALETTES: dict[PaletteTheme, dict[str, tuple[float, float, float, float]]] = {
     "antique_brass": {
         "ocean": (0.12, 0.26, 0.38, 1.0),
         "ocean_dark": (0.04, 0.09, 0.13, 1.0),
-        "land": (0.62, 0.45, 0.22, 1.0),
-        "land_light": (0.78, 0.62, 0.34, 1.0),
-        "land_dark": (0.42, 0.30, 0.16, 1.0),
+        "land": (0.42, 0.56, 0.26, 1.0),
+        "land_light": (0.60, 0.70, 0.34, 1.0),
+        "land_dark": (0.24, 0.38, 0.18, 1.0),
         "graticule": (0.96, 0.82, 0.44, 1.0),
         "metal": (0.82, 0.62, 0.24, 1.0),
         "metal_dark": (0.34, 0.23, 0.09, 1.0),
@@ -407,6 +415,212 @@ def _patch_visual(
     )
 
 
+def _land_patch_geometry(
+    *,
+    radius: float,
+    center_lat: float,
+    center_lon: float,
+    width: float,
+    height: float,
+    outline: tuple[tuple[float, float], ...],
+) -> MeshGeometry:
+    surface_radius = radius * 1.009
+    lon_span = math.degrees(width / radius)
+    lat_span = math.degrees(height / radius)
+    lon_scale = max(0.35, math.cos(math.radians(center_lat)))
+
+    outline_factors: list[tuple[float, float]] = []
+    for lon_factor, lat_factor in outline:
+        outline_radius = math.hypot(lon_factor, lat_factor) or 1.0
+        smooth_radius = max(0.58, outline_radius)
+        outline_factors.append(
+            (
+                lon_factor * smooth_radius / outline_radius,
+                lat_factor * smooth_radius / outline_radius,
+            )
+        )
+
+    def point_at(lon_factor: float, lat_factor: float, scale: float) -> tuple[float, float, float]:
+        lat = _clamp(center_lat + lat_factor * scale * lat_span, -82.0, 82.0)
+        lon = center_lon + (lon_factor * scale * lon_span / lon_scale)
+        x, y, z = _unit_from_lat_lon(lat, lon)
+        return (x * surface_radius, y * surface_radius, z * surface_radius)
+
+    mesh_vertices = [point_at(0.0, 0.0, 0.0)]
+    ring_scales = (0.32, 0.58, 0.82, 1.0)
+    rings: list[list[int]] = []
+    for ring_scale in ring_scales:
+        ring: list[int] = []
+        for lon_factor, lat_factor in outline_factors:
+            ring.append(len(mesh_vertices))
+            mesh_vertices.append(point_at(lon_factor, lat_factor, ring_scale))
+        rings.append(ring)
+
+    faces: list[tuple[int, int, int]] = []
+    first_ring = rings[0]
+    point_count = len(first_ring)
+    for index in range(point_count):
+        faces.append((0, first_ring[index], first_ring[(index + 1) % point_count]))
+
+    for inner, outer in zip(rings, rings[1:]):
+        for index in range(point_count):
+            inner_a = inner[index]
+            inner_b = inner[(index + 1) % point_count]
+            outer_a = outer[index]
+            outer_b = outer[(index + 1) % point_count]
+            faces.append((inner_a, outer_a, outer_b))
+            faces.append((inner_a, outer_b, inner_b))
+
+    outward_faces: list[tuple[int, int, int]] = []
+    for face in faces:
+        a, b, c = face
+        ax, ay, az = mesh_vertices[a]
+        bx, by, bz = mesh_vertices[b]
+        cx, cy, cz = mesh_vertices[c]
+        ux, uy, uz = bx - ax, by - ay, bz - az
+        vx, vy, vz = cx - ax, cy - ay, cz - az
+        nx = uy * vz - uz * vy
+        ny = uz * vx - ux * vz
+        nz = ux * vy - uy * vx
+        mx = (ax + bx + cx) / 3.0
+        my = (ay + by + cy) / 3.0
+        mz = (az + bz + cz) / 3.0
+        outward_faces.append((a, b, c) if nx * mx + ny * my + nz * mz >= 0.0 else (a, c, b))
+    return MeshGeometry(vertices=mesh_vertices, faces=outward_faces)
+
+
+LAND_OUTLINES: dict[str, tuple[tuple[float, float], ...]] = {
+    "north_america": (
+        (-0.95, 0.20),
+        (-0.62, 0.64),
+        (-0.28, 0.82),
+        (0.16, 0.70),
+        (0.55, 0.38),
+        (0.78, 0.04),
+        (0.58, -0.30),
+        (0.78, -0.58),
+        (0.26, -0.46),
+        (-0.04, -0.74),
+        (-0.34, -0.34),
+        (-0.72, -0.26),
+    ),
+    "south_america": (
+        (-0.36, 0.78),
+        (0.26, 0.66),
+        (0.55, 0.26),
+        (0.34, -0.18),
+        (0.20, -0.58),
+        (0.04, -0.98),
+        (-0.28, -0.82),
+        (-0.45, -0.34),
+        (-0.62, 0.12),
+    ),
+    "greenland": (
+        (-0.58, 0.18),
+        (-0.20, 0.62),
+        (0.36, 0.52),
+        (0.62, 0.10),
+        (0.32, -0.42),
+        (-0.34, -0.54),
+        (-0.64, -0.14),
+    ),
+    "africa": (
+        (-0.44, 0.78),
+        (0.16, 0.82),
+        (0.52, 0.44),
+        (0.42, 0.04),
+        (0.64, -0.28),
+        (0.20, -0.82),
+        (-0.20, -0.94),
+        (-0.40, -0.36),
+        (-0.66, 0.10),
+    ),
+    "europe": (
+        (-0.78, 0.10),
+        (-0.40, 0.50),
+        (0.12, 0.42),
+        (0.58, 0.18),
+        (0.70, -0.22),
+        (0.18, -0.44),
+        (-0.28, -0.22),
+        (-0.68, -0.36),
+    ),
+    "asia": (
+        (-0.96, 0.18),
+        (-0.52, 0.56),
+        (0.02, 0.70),
+        (0.60, 0.48),
+        (0.94, 0.12),
+        (0.78, -0.24),
+        (0.42, -0.34),
+        (0.28, -0.66),
+        (-0.10, -0.42),
+        (-0.52, -0.54),
+        (-0.78, -0.20),
+    ),
+    "australia": (
+        (-0.66, 0.10),
+        (-0.24, 0.40),
+        (0.34, 0.32),
+        (0.70, -0.02),
+        (0.38, -0.44),
+        (-0.18, -0.54),
+        (-0.60, -0.22),
+    ),
+    "antarctica": (
+        (-0.92, 0.12),
+        (-0.52, 0.32),
+        (-0.12, 0.14),
+        (0.20, 0.34),
+        (0.64, 0.18),
+        (0.92, -0.04),
+        (0.44, -0.22),
+        (-0.04, -0.32),
+        (-0.58, -0.18),
+    ),
+    "island": (
+        (-0.42, 0.22),
+        (-0.10, 0.48),
+        (0.36, 0.26),
+        (0.46, -0.18),
+        (0.02, -0.42),
+        (-0.46, -0.18),
+    ),
+}
+
+
+def _land_visual(
+    model: ArticulatedObject,
+    globe: Part,
+    *,
+    radius: float,
+    lat: float,
+    lon: float,
+    width: float,
+    height: float,
+    material: object,
+    name: str,
+    outline_key: str,
+) -> None:
+    globe.visual(
+        _mesh_for_model(
+            model,
+            _land_patch_geometry(
+                radius=radius,
+                center_lat=lat,
+                center_lon=lon,
+                width=width,
+                height=height,
+                outline=LAND_OUTLINES[outline_key],
+            ),
+            name,
+        ),
+        origin=Origin(),
+        material=material,
+        name=name,
+    )
+
+
 def _band_visual(
     globe: Part,
     *,
@@ -458,10 +672,10 @@ def config_from_seed(seed: int) -> GlobeConfig:
             name="seeded_globe_0",
         ),
         1: GlobeConfig(
-            support_style="classic_desktop",
-            meridian_style="full_tilting",
+            support_style="outer_cradle",
+            meridian_style="nested_inner",
             surface_style="graticule_patch",
-            auxiliary_rotary="none",
+            auxiliary_rotary="date_ring",
             globe_radius=0.42,
             axial_tilt_degrees=21.0,
             ring_clearance=0.055,
@@ -472,10 +686,10 @@ def config_from_seed(seed: int) -> GlobeConfig:
             name="seeded_globe_1",
         ),
         2: GlobeConfig(
-            support_style="classic_desktop",
-            meridian_style="full_tilting",
+            support_style="rotating_pedestal",
+            meridian_style="none_pedestal",
             surface_style="minimal_ocean",
-            auxiliary_rotary="none",
+            auxiliary_rotary="support_yaw",
             globe_radius=0.46,
             axial_tilt_degrees=18.0,
             ring_clearance=0.04,
@@ -486,7 +700,7 @@ def config_from_seed(seed: int) -> GlobeConfig:
             name="seeded_globe_2",
         ),
         3: GlobeConfig(
-            support_style="classic_desktop",
+            support_style="partial_ring",
             meridian_style="full_tilting",
             surface_style="dense_map",
             auxiliary_rotary="none",
@@ -500,8 +714,8 @@ def config_from_seed(seed: int) -> GlobeConfig:
             name="seeded_globe_3",
         ),
         4: GlobeConfig(
-            support_style="classic_desktop",
-            meridian_style="full_tilting",
+            support_style="wall_arm",
+            meridian_style="partial_wall",
             surface_style="graticule_patch",
             auxiliary_rotary="none",
             globe_radius=0.44,
@@ -513,82 +727,12 @@ def config_from_seed(seed: int) -> GlobeConfig:
             palette_theme="wall_mount_slate",
             name="seeded_globe_4",
         ),
-        5: GlobeConfig(
-            support_style="classic_desktop",
-            meridian_style="full_tilting",
-            surface_style="dense_map",
-            auxiliary_rotary="none",
-            globe_radius=0.58,
-            axial_tilt_degrees=32.0,
-            ring_clearance=0.065,
-            base_height=0.38,
-            graticule_density="medium",
-            land_patch_style="dense_patches",
-            palette_theme="museum_dark",
-            name="seeded_globe_5",
-        ),
-        6: GlobeConfig(
-            support_style="classic_desktop",
-            meridian_style="full_tilting",
-            surface_style="continent_patch",
-            auxiliary_rotary="none",
-            globe_radius=0.56,
-            axial_tilt_degrees=17.0,
-            ring_clearance=0.045,
-            base_height=0.34,
-            graticule_density="medium",
-            land_patch_style="abstract_patches",
-            palette_theme="wall_mount_slate",
-            name="seeded_globe_6",
-        ),
-        7: GlobeConfig(
-            support_style="classic_desktop",
-            meridian_style="full_tilting",
-            surface_style="continent_patch",
-            auxiliary_rotary="none",
-            globe_radius=0.60,
-            axial_tilt_degrees=19.0,
-            ring_clearance=0.06,
-            base_height=0.42,
-            graticule_density="low",
-            land_patch_style="simple_continents",
-            palette_theme="schoolhouse_blue",
-            name="seeded_globe_7",
-        ),
-        8: GlobeConfig(
-            support_style="classic_desktop",
-            meridian_style="full_tilting",
-            surface_style="minimal_ocean",
-            auxiliary_rotary="none",
-            globe_radius=0.40,
-            axial_tilt_degrees=16.8,
-            ring_clearance=0.04,
-            base_height=0.24,
-            graticule_density="low",
-            land_patch_style="abstract_patches",
-            palette_theme="antique_brass",
-            name="seeded_globe_8",
-        ),
-        9: GlobeConfig(
-            support_style="classic_desktop",
-            meridian_style="full_tilting",
-            surface_style="dense_map",
-            auxiliary_rotary="none",
-            globe_radius=0.38,
-            axial_tilt_degrees=31.6,
-            ring_clearance=0.035,
-            base_height=0.25,
-            graticule_density="none",
-            land_patch_style="abstract_patches",
-            palette_theme="modern_white",
-            name="seeded_globe_9",
-        ),
     }
     if seed in curated:
         return curated[seed]
 
     rng = random.Random(seed)
-    support = rng.choice(SUPPORT_STYLES)
+    support = SUPPORT_SAMPLING_ORDER[seed % len(SUPPORT_SAMPLING_ORDER)]
     if support == "rotating_pedestal":
         meridian: MeridianStyle = "none_pedestal"
         auxiliary: AuxiliaryRotary = "support_yaw"
@@ -922,14 +1066,23 @@ def _build_partial_ring_base(
         name="partial_ring_center_post",
     )
     stand.visual(
-        Box((r.ring_radius * 1.52, r.base_depth * 0.22, R * 0.060)),
+        Box((r.ring_radius * 2.18, r.base_depth * 0.24, R * 0.070)),
         origin=Origin(xyz=(0.0, 0.0, r.base_height)),
         material=materials["metal_dark"],
         name="partial_ring_crosshead",
     )
+    stand.visual(
+        Box((r.ring_radius * 2.28, r.base_depth * 0.18, R * 0.050)),
+        origin=Origin(xyz=(0.0, 0.0, r.base_height + R * 0.085)),
+        material=materials["metal"],
+        name="partial_ring_upper_tie_bar",
+    )
     for x in (-r.ring_radius, r.ring_radius):
         stand.visual(
-            Cylinder(radius=r.ring_tube * 0.90, length=r.globe_center_z - r.base_height),
+            Cylinder(
+                radius=r.ring_tube * 0.90,
+                length=r.globe_center_z - (r.base_height + R * 0.085),
+            ),
             origin=Origin(xyz=(x, 0.0, (r.globe_center_z + r.base_height) * 0.5), rpy=_cyl_z()),
             material=materials["metal"],
             name=f"partial_ring_side_post_{'left' if x < 0 else 'right'}",
@@ -1020,39 +1173,50 @@ def _build_wall_arm_base(
 ) -> SupportAnchors:
     wall = model.part("wall_arm")
     R = r.globe_radius
+    wall_x = -r.ring_radius - R * 0.30
+    arm_length = R * 0.36
+    arm_x = -r.ring_radius - R * 0.055
+    arm_y = R * 0.15
+    wall_plate_height = r.globe_center_z + R * 0.22
     wall.visual(
-        Box((R * 0.34, R * 0.070, R * 1.35)),
-        origin=Origin(xyz=(-r.ring_radius - R * 0.30, R * 0.28, r.globe_center_z)),
+        Box((R * 0.34, R * 0.070, wall_plate_height)),
+        origin=Origin(xyz=(wall_x, R * 0.24, wall_plate_height * 0.5)),
         material=materials["wall"],
         name="flat_wall_backing_plate",
     )
     wall.visual(
         Box((R * 0.22, R * 0.12, R * 0.22)),
-        origin=Origin(xyz=(-r.ring_radius - R * 0.30, R * 0.20, r.globe_center_z + R * 0.36)),
+        origin=Origin(xyz=(wall_x, R * 0.18, r.globe_center_z + R * 0.36)),
         material=materials["metal_dark"],
         name="upper_wall_mount_block",
     )
     wall.visual(
         Box((R * 0.22, R * 0.12, R * 0.22)),
-        origin=Origin(xyz=(-r.ring_radius - R * 0.30, R * 0.20, r.globe_center_z - R * 0.36)),
+        origin=Origin(xyz=(wall_x, R * 0.18, r.globe_center_z - R * 0.36)),
         material=materials["metal_dark"],
         name="lower_wall_mount_block",
     )
     wall.visual(
-        Box((r.ring_radius + R * 0.30, R * 0.060, R * 0.075)),
-        origin=Origin(xyz=(-R * 0.18, R * 0.02, r.globe_center_z + R * 0.18)),
+        Box((arm_length, R * 0.075, R * 0.090)),
+        origin=Origin(xyz=(arm_x, arm_y, r.globe_center_z + R * 0.26)),
         material=materials["metal"],
         name="cantilever_upper_arm",
     )
     wall.visual(
-        Box((r.ring_radius + R * 0.30, R * 0.060, R * 0.075)),
-        origin=Origin(xyz=(-R * 0.18, R * 0.02, r.globe_center_z - R * 0.18)),
+        Box((arm_length, R * 0.075, R * 0.090)),
+        origin=Origin(xyz=(arm_x, arm_y, r.globe_center_z - R * 0.26)),
         material=materials["metal"],
         name="cantilever_lower_arm",
     )
     wall.visual(
-        Cylinder(radius=r.ring_tube * 1.3, length=R * 0.20),
-        origin=Origin(xyz=(-r.ring_radius, 0.0, r.globe_center_z), rpy=_cyl_y()),
+        Box((R * 0.080, R * 0.075, R * 0.58)),
+        origin=Origin(xyz=(-r.ring_radius, arm_y, r.globe_center_z)),
+        material=materials["metal_dark"],
+        name="wall_arm_front_yoke_spine",
+    )
+    wall.visual(
+        Cylinder(radius=r.ring_tube * 1.3, length=R * 0.26),
+        origin=Origin(xyz=(-r.ring_radius, arm_y * 0.50, r.globe_center_z), rpy=_cyl_y()),
         material=materials["metal_dark"],
         name="wall_arm_side_pivot_socket",
     )
@@ -1297,7 +1461,7 @@ def _decorate_globe_surface(
         name="south_polar_axis_cap",
     )
     _decorate_graticule(model, globe, r, materials)
-    _decorate_land_patches(globe, r, materials)
+    _decorate_land_patches(model, globe, r, materials)
     if r.surface_style in ("dense_map", "graticule_patch"):
         _decorate_map_labels(globe, r, materials)
 
@@ -1358,6 +1522,7 @@ def _decorate_graticule(
 
 
 def _decorate_land_patches(
+    model: ArticulatedObject,
     globe: Part,
     r: ResolvedGlobeConfig,
     materials: dict[str, object],
@@ -1365,42 +1530,47 @@ def _decorate_land_patches(
     R = r.globe_radius
     if r.surface_style == "minimal_ocean":
         patch_specs = (
-            (-4, -20, R * 0.34, R * 0.16, "land"),
-            (22, 84, R * 0.24, R * 0.14, "land_light"),
-            (-28, 122, R * 0.28, R * 0.12, "land_dark"),
+            (12, -68, R * 0.46, R * 0.34, "land", "north_america"),
+            (8, 25, R * 0.52, R * 0.46, "land_dark", "africa"),
+            (28, 92, R * 0.64, R * 0.38, "land_light", "asia"),
+            (-25, 134, R * 0.34, R * 0.24, "land", "australia"),
         )
     elif r.land_patch_style == "dense_patches" or r.surface_style == "dense_map":
         patch_specs = (
-            (35, -100, R * 0.30, R * 0.20, "land"),
-            (5, -62, R * 0.23, R * 0.25, "land_dark"),
-            (-18, -58, R * 0.20, R * 0.28, "land_light"),
-            (48, 18, R * 0.25, R * 0.18, "land"),
-            (4, 22, R * 0.22, R * 0.24, "land_dark"),
-            (48, 90, R * 0.34, R * 0.20, "land_light"),
-            (18, 74, R * 0.22, R * 0.16, "land"),
-            (-25, 134, R * 0.25, R * 0.18, "land_dark"),
-            (-72, 20, R * 0.32, R * 0.10, "land_light"),
+            (43, -104, R * 0.48, R * 0.30, "land", "north_america"),
+            (-19, -61, R * 0.27, R * 0.42, "land_dark", "south_america"),
+            (72, -42, R * 0.20, R * 0.16, "land_light", "greenland"),
+            (50, 15, R * 0.28, R * 0.16, "land", "europe"),
+            (3, 22, R * 0.34, R * 0.44, "land_dark", "africa"),
+            (44, 86, R * 0.66, R * 0.34, "land_light", "asia"),
+            (-25, 134, R * 0.30, R * 0.22, "land_dark", "australia"),
+            (-73, 20, R * 0.78, R * 0.10, "land_light", "antarctica"),
+            (13, -84, R * 0.11, R * 0.08, "land", "island"),
+            (36, 139, R * 0.08, R * 0.07, "land_dark", "island"),
+            (-19, 47, R * 0.08, R * 0.12, "land_light", "island"),
         )
     elif r.land_patch_style == "abstract_patches" or r.surface_style == "graticule_patch":
         patch_specs = (
-            (28, -92, R * 0.28, R * 0.16, "land"),
-            (-12, -60, R * 0.22, R * 0.24, "land_light"),
-            (42, 42, R * 0.32, R * 0.15, "land_dark"),
-            (16, 102, R * 0.26, R * 0.17, "land"),
-            (-30, 128, R * 0.22, R * 0.16, "land_light"),
+            (32, -98, R * 0.42, R * 0.22, "land", "north_america"),
+            (-18, -60, R * 0.25, R * 0.34, "land_light", "south_america"),
+            (10, 22, R * 0.42, R * 0.40, "land_dark", "africa"),
+            (43, 78, R * 0.58, R * 0.28, "land", "asia"),
+            (-28, 134, R * 0.28, R * 0.18, "land_light", "australia"),
         )
     else:
         patch_specs = (
-            (42, -105, R * 0.28, R * 0.18, "land"),
-            (8, -72, R * 0.20, R * 0.24, "land_dark"),
-            (-22, -58, R * 0.18, R * 0.26, "land_light"),
-            (50, 20, R * 0.25, R * 0.17, "land"),
-            (8, 25, R * 0.18, R * 0.22, "land_dark"),
-            (43, 90, R * 0.32, R * 0.17, "land_light"),
-            (-25, 132, R * 0.24, R * 0.16, "land"),
+            (42, -104, R * 0.46, R * 0.28, "land", "north_america"),
+            (-18, -61, R * 0.26, R * 0.40, "land_dark", "south_america"),
+            (72, -42, R * 0.18, R * 0.14, "land_light", "greenland"),
+            (50, 15, R * 0.26, R * 0.16, "land", "europe"),
+            (4, 22, R * 0.34, R * 0.42, "land_dark", "africa"),
+            (43, 88, R * 0.62, R * 0.32, "land_light", "asia"),
+            (-25, 134, R * 0.30, R * 0.22, "land", "australia"),
+            (-73, 20, R * 0.72, R * 0.08, "land_light", "antarctica"),
         )
-    for i, (lat, lon, width, height, material_key) in enumerate(patch_specs):
-        _patch_visual(
+    for i, (lat, lon, width, height, material_key, outline_key) in enumerate(patch_specs):
+        _land_visual(
+            model,
             globe,
             radius=R,
             lat=lat,
@@ -1409,6 +1579,7 @@ def _decorate_land_patches(
             height=height,
             material=materials[material_key],
             name=f"continent_patch_{i}",
+            outline_key=outline_key,
         )
 
 

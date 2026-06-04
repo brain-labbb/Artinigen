@@ -103,9 +103,7 @@ from sdk import (
     mesh_from_geometry,
 )
 
-# Modular templates are flagged so the sweep coverage gate can skip
-# anchor_geometry_match (a single-anchor gate that does not apply when
-# topology varies across seeds) and run module_topology_diversity instead.
+# Modular template: sweep coverage uses module_topology_diversity.
 __modular__ = True
 
 

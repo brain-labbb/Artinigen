@@ -216,6 +216,18 @@ pattern = **mixed**（静态 body 身份链 + 1 个 CONTINUOUS beacon 子件 + l
 | `hatch_hinge` / `tower_to_hatch` / `panel_hinge` | revolute (gated) | A.body 或 B.lantern_room | E.hatch | `(0,0,±1)` | `[0, 1.65]` | 仅 Slot E=`tower_hatch`：塔壁 hatch 盖外开 | S8 |
 | `gallery_trap_hinge` / `rail_to_trap_door` | revolute (gated) | A.body | E.trap_door | `(0,0,±1)` | `[0, 1.35]` | 仅 Slot E=`gallery_trap_door`：甲板掀门绕竖直轴掀开 | 4767dd |
 
+## 每槽位 Module Emits / Interfaces
+
+本 spec 是 modular v1 早期写法；每个 slot/module 的 emitted parts、internal joints、upstream/downstream interface 已在「槽位 + 候选模块表」「槽位图」「部件（Parts）」「关节（Joints）」和 adopted source index 中给出。模板实现阶段必须把这些信息逐 module 显式落成 `ModuleBuild`、`InterfaceSpec` 和 `MatingContract`，不能只按全局部件清单拼装。
+
+| emits | 描述 | 来源 |
+|---|---|---|
+| parts / visuals | 以各 slot candidate 的结构特征和「部件（Parts）」表为准；不动装饰优先作为 parent visual | adopted source index + slot table |
+| internal joints | 以「关节（Joints）」表和 slot graph 中的 joint type / axis / range 为准 | adopted source index + joints table |
+| upstream interface | 来自 slot graph 中的 parent face、hinge line、socket、rail、axis、contact plane 或 support policy | slot graph + source snippets |
+| downstream interface | 消费相邻 slot 的 mating point / axis / face；必须在实现中转成真实 `InterfaceSpec` | slot graph + source snippets |
+| mating contracts | 每个 separate moving child 和跨 slot 连接必须有可见支撑路径；captured pin / shaft / bearing overlap 需要局部 allow-overlap 理由 | validator + reject cases |
+
 ## 参数范围汇总
 | 参数 | 类型 | 取值范围 / 候选值 | 默认值 | 派生关系 | 来源 |
 |---|---|---|---|---|---|
@@ -233,6 +245,12 @@ pattern = **mixed**（静态 body 身份链 + 1 个 CONTINUOUS beacon 子件 + l
 | `lantern_sides` | int/enum | `8`（八角，众数）/ 圆 / `10`/`12`（少数）| 8 | 灯室 mullion/pane 数；多为正八边形 | S3 / S9 / 0cd65f |
 | `beacon_axis_sign` | enum | `(0,0,1)` / `(0,0,-1)` | `(0,0,1)` | beacon 自旋轴朝向（两者皆出现，等价）| 全样本 |
 | `door_open_upper` | float | `1.05 – 1.92` rad（实测全距；众数 1.35）| 1.35 | 仅 Slot E≠none；REVOLUTE 开口件开角上限 | 全 22 个开口件实测 / S8 / S12 |
+
+## Multiplicity / Copy Logic
+
+- 无模板级复制数量逻辑：核心结构由固定 named slots 和 gated module-local fixed copies 表达，不暴露全局 `*_count` 作为主拓扑采样轴。
+- 若某个 module source 内部包含固定成对、环形阵列或若干重复 visual/part，模板实现应把它保留为 module-local construction，并使用稳定命名；不得把未审核的可变复制数量加入 seed domain。
+- 未来若要把固定重复结构升级为可变 multiplicity，必须补充来源、N_range、placement、joint policy、coverage seeds 和 reviewer 审核记录。
 
 ## 拓扑多样性审计
 
@@ -257,6 +275,34 @@ pattern = **mixed**（静态 body 身份链 + 1 个 CONTINUOUS beacon 子件 + l
 | Slot C beacon_optic | 4 | yes | 环笼 / 侧射反射镜 / Fresnel 鼓 / 双瓣 birdcage |
 | Slot D beacon_bearing_topology | 3 | yes | direct / pedestal / shaft |
 | Slot E access_opening | 5 | yes | none / 壁门 / 栏杆门 / hatch / 甲板掀门 |
+
+### Stage 1 / Stage 2 seed-domain plan
+
+seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+
+Stage 1 high-risk coverage seed plan：
+
+| seed/range | covered combo | risk type | viewer / validator focus |
+|---|---|---|---|
+| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
+| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
+| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+
+Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
+
+### Stage 1 / Stage 2 seed-domain plan
+
+seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+
+Stage 1 high-risk coverage seed plan：
+
+| seed/range | covered combo | risk type | viewer / validator focus |
+|---|---|---|---|
+| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
+| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
+| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+
+Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
 
 ## Validator（author_run_tests 必须覆盖的点）
 - identity：存在 1 个落地 body + 恰好 1 个 beacon；存在恰好 1 个 `*_to_beacon` CONTINUOUS 关节，axis = `(0,0,±1)`，无 lower/upper（无限位）。

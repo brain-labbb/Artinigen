@@ -11,13 +11,13 @@
 目标：
 
 ```text
-N 个类别 -> N 个 specs/<category_slug>.md -> 停止等待人工审核
+N 个类别 -> N 个 specs_modular_v1/<category_slug>.md -> 停止等待人工审核
 ```
 
 只允许创建或修改：
 
 ```text
-articraft_template_authoring/specs/<category_slug>.md
+articraft_template_authoring/specs_modular_v1/<category_slug>.md
 ```
 
 禁止创建或修改模板代码、测试、registry、CLI。
@@ -104,7 +104,7 @@ slot 成立条件：
 - 每槽位 module emits：按 module 说明会 emit 的 part、visual、internal articulation 和 interface。
 - 参数范围汇总：只包含公开语义参数、slot/module 选择、multiplicity 数量和必要尺寸。
 - Multiplicity / Copy Logic。
-- 拓扑多样性审计。
+- 拓扑多样性审计：必须写总合法组合数、`module_topology_diversity` 最低门槛是否可过、Stage-1 high-risk coverage seed plan 和 Stage-2 procedural seed migration target。
 - Validator、Reject cases、审核记录。
 
 不要使用单一 `primary_anchor` 作为 modular spec 的主来源。modular spec 用 per-module source table 和 seed=0 anchor module 组合表达来源。
@@ -124,7 +124,7 @@ slot 成立条件：
 - 每个 slot 恰好一个 seed=0 anchor module。
 - slot graph 能清楚描述 module 之间如何装配。
 - Multiplicity / Copy Logic 明确说明 N 的范围、采样域、复制对象、命名、placement 和 joint policy。
-- 拓扑多样性审计说明 `module_topology_diversity` 是否可过。
+- 拓扑多样性审计说明 `module_topology_diversity` 是否可过，并说明 Stage-1 high-risk coverage seed domain 覆盖计划和 Stage-2 procedural seed 扩展计划。
 
 ### 3.2 回溯 module sources
 
@@ -150,6 +150,8 @@ slot 成立条件：
 - 设置 `__modular__ = True`。
 - 定义 Config / ResolvedConfig。
 - `config_from_seed(0)` 返回 seed=0 anchor module 组合。
+- Stage 1 的 `config_from_seed(seed>0)` 可以使用有限 coverage / curated domain 覆盖关键合法组合，尤其是容易悬空、穿模、轴错、closed pose 失真、max multiplicity、bulky module、optional moving child 和 gate/fallback 的高风险组合；必须标注为临时稳定域，且不得采样未实现或未测试组合。
+- Stage 2 / final 再迁移到 slot 独立或条件独立的 unbounded procedural sampling。
 - `slot_choices_for_seed(seed)` 返回稳定的 `(slot_name, module_name)` 列表。
 - 每个 module factory 只消费 resolved config、palette、assets 和 `ctx.rng`。
 - 每个跨 module 连接用 InterfaceSpec 和 MatingContract 表达真实接触。

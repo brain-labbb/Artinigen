@@ -1,6 +1,6 @@
 """Parabolic dish on azimuth/elevation mount procedural template.
 
-Implements ``articraft_template_authoring/specs/
+Implements ``articraft_template_authoring/specs_modular_v1/
 parabolic_dish_on_azimuth_elevation_mount.md``.
 
 The template follows the spec's linear chain:

@@ -1,7 +1,7 @@
 """Bell tower with swinging bell procedural template.
 
 This module is the TEMPLATE_AFTER_REVIEW implementation pass for
-``articraft_template_authoring/specs/bell_tower_with_swinging_bell.md``.
+``articraft_template_authoring/specs_modular_v1/bell_tower_with_swinging_bell.md``.
 
 The template keeps the spec's modular vocabulary, but it builds with a
 hand-written mixed graph instead of the linear ``_modular.assemble`` helper:

@@ -90,8 +90,7 @@ from sdk import (
     section_loft,
 )
 
-# Flag for the sweep coverage gate: skip the single-anchor
-# anchor_geometry_match gate and run module_topology_diversity instead.
+# Modular template: sweep coverage uses module_topology_diversity.
 __modular__ = True
 
 

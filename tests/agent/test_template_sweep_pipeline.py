@@ -5,6 +5,7 @@ from pathlib import Path
 
 from agent import template_sweep_pipeline
 from agent.template_sweep import SeedOutcome
+from agent.template_sweep_coverage import CoverageGateResult, CoverageGates
 from agent.template_sweep_pipeline import run_sweep_pipeline
 
 
@@ -49,9 +50,24 @@ def _stub_seed_runner(monkeypatch, *, failing_seeds: set[int] | None = None):
     return calls
 
 
+def _stub_coverage_gate(monkeypatch, *, status: str = "pass") -> None:
+    monkeypatch.setattr(
+        "agent.template_sweep_coverage.evaluate_gates",
+        lambda **kwargs: CoverageGates(
+            module_topology_diversity=CoverageGateResult(
+                name="module_topology_diversity",
+                status=status,
+                details={"distinct_count": 5 if status == "pass" else 1},
+                reason="" if status == "pass" else "not enough distinct modular topology",
+            )
+        ),
+    )
+
+
 def test_pipeline_all_stages_pass_and_does_not_recompile_prior_seeds(monkeypatch, tmp_path: Path):
     _fake_template(tmp_path)
     calls = _stub_seed_runner(monkeypatch)
+    _stub_coverage_gate(monkeypatch)
 
     report = run_sweep_pipeline(
         slug="stub_slug",
@@ -71,6 +87,7 @@ def test_pipeline_all_stages_pass_and_does_not_recompile_prior_seeds(monkeypatch
 def test_pipeline_seed0_fail_skips_remaining_stages(monkeypatch, tmp_path: Path):
     _fake_template(tmp_path)
     calls = _stub_seed_runner(monkeypatch, failing_seeds={0})
+    _stub_coverage_gate(monkeypatch)
 
     report = run_sweep_pipeline(
         slug="stub_slug",
@@ -93,6 +110,7 @@ def test_pipeline_seed0_fail_skips_remaining_stages(monkeypatch, tmp_path: Path)
 def test_pipeline_fast_fail_skips_later_stages(monkeypatch, tmp_path: Path):
     _fake_template(tmp_path)
     calls = _stub_seed_runner(monkeypatch, failing_seeds={2})
+    _stub_coverage_gate(monkeypatch)
 
     report = run_sweep_pipeline(
         slug="stub_slug",
@@ -112,6 +130,7 @@ def test_pipeline_fast_fail_skips_later_stages(monkeypatch, tmp_path: Path):
 def test_pipeline_medium_fail_skips_final(monkeypatch, tmp_path: Path):
     _fake_template(tmp_path)
     calls = _stub_seed_runner(monkeypatch, failing_seeds={12})
+    _stub_coverage_gate(monkeypatch)
 
     report = run_sweep_pipeline(
         slug="stub_slug",
@@ -131,6 +150,7 @@ def test_pipeline_medium_fail_skips_final(monkeypatch, tmp_path: Path):
 def test_pipeline_final_fail_returns_fail(monkeypatch, tmp_path: Path):
     _fake_template(tmp_path)
     calls = _stub_seed_runner(monkeypatch, failing_seeds={49})
+    _stub_coverage_gate(monkeypatch)
 
     report = run_sweep_pipeline(
         slug="stub_slug",
@@ -148,8 +168,9 @@ def test_pipeline_final_fail_returns_fail(monkeypatch, tmp_path: Path):
 
 
 def test_pipeline_repair_summary_includes_failing_coverage_gates(monkeypatch, tmp_path: Path):
-    _fake_template(tmp_path, lines=3)
+    _fake_template(tmp_path)
     _stub_seed_runner(monkeypatch)
+    _stub_coverage_gate(monkeypatch, status="fail")
 
     report = run_sweep_pipeline(
         slug="stub_slug",
@@ -157,18 +178,18 @@ def test_pipeline_repair_summary_includes_failing_coverage_gates(monkeypatch, tm
         repo_root=tmp_path,
         max_workers=1,
         state_dir=None,
-        line_floor=1000,
     )
 
     assert report.verdict == "fail"
     assert report.stopped_at == "seed0"
-    assert "line_floor" in report.repair_summary["failing_coverage_gates"]
+    assert "module_topology_diversity" in report.repair_summary["failing_coverage_gates"]
     assert report.repair_summary["next_action"].startswith("Fix the largest failure cluster")
 
 
 def test_pipeline_state_tracking_updates_once_per_run(monkeypatch, tmp_path: Path):
     _fake_template(tmp_path)
     _stub_seed_runner(monkeypatch, failing_seeds={2})
+    _stub_coverage_gate(monkeypatch)
     state_dir = tmp_path / "state"
 
     report = run_sweep_pipeline(

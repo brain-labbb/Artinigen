@@ -114,8 +114,7 @@ from sdk import (
     tube_from_spline_points,
 )
 
-# Modular templates are flagged so the sweep coverage gate skips the single-
-# anchor anchor_geometry_match gate and runs module_topology_diversity instead.
+# Modular template: sweep coverage uses module_topology_diversity.
 __modular__ = True
 
 

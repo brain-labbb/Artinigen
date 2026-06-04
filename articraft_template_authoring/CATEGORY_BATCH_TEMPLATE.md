@@ -16,12 +16,13 @@ SPEC_ONLY
 
 ## Required Agent Behavior
 
-- 只写 `articraft_template_authoring/specs/<category_slug>.md`。
+- 只写 `articraft_template_authoring/specs_modular_v1/<category_slug>.md`。
 - 每个新增 spec 必须按 `SPEC_TEMPLATE.md` 的 modular slot/module schema 写。
 - 必须枚举并读取该类别全部 5 星样本；不得抽样、不得只读部分样本。
 - 每个 slot candidate 必须有真实 5 星样本 `model.py:Lx-Ly` 来源。
 - 每个 slot 必须标出恰好一个 `seed=0 anchor` module。
 - 必须写 slot graph、接口点位、Multiplicity / Copy Logic、拓扑多样性审计、Validator 和 Reject cases。
+- 拓扑多样性审计必须包含 Stage-1 high-risk coverage seed plan 和 Stage-2 procedural seed migration target。当前阶段允许有限 coverage / curated seed domain 先做稳模板，并优先覆盖悬空、穿模/clearance、joint axis、closed pose、max multiplicity、bulky module、optional moving child、gate/fallback 等高风险组合；但必须标注为临时覆盖域。
 - 已阅读但未采用的 5 星样本，不写入 module source 表。
 - 写完所有 spec 后停止，等待人工审核。
 - 审核前禁止写 `agent/templates/*.py`、测试、registry。

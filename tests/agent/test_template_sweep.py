@@ -17,6 +17,7 @@ from agent.template_sweep import (
     report_to_json,
     run_sweep,
 )
+from agent.template_sweep_coverage import CoverageGateResult, CoverageGates
 
 
 def test_parse_seed_spec_handles_ranges_and_lists() -> None:
@@ -193,6 +194,16 @@ def test_run_sweep_passes_when_threshold_met(monkeypatch, tmp_path: Path) -> Non
         "_template_module_path",
         lambda slug, *, repo_root: fake_template,
     )
+    monkeypatch.setattr(
+        "agent.template_sweep_coverage.evaluate_gates",
+        lambda **kwargs: CoverageGates(
+            module_topology_diversity=CoverageGateResult(
+                name="module_topology_diversity",
+                status="pass",
+                details={"distinct_count": 5},
+            )
+        ),
+    )
 
     report = run_sweep(
         slug="stub_slug",
@@ -319,4 +330,4 @@ def test_report_to_json_round_trip(monkeypatch, tmp_path: Path) -> None:
     assert decoded["failed_seeds"] == []
     assert decoded["verdict"] == "pass"
     assert "coverage_gates" in decoded
-    assert decoded["coverage_gates"]["line_floor"]["status"] == "pass"
+    assert decoded["coverage_gates"]["module_topology_diversity"]["status"] == "skipped"

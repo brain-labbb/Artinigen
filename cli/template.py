@@ -77,16 +77,19 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     "graphics_card_with_cooling_fans": "graphics_card",
     "globe": "globe",
     "louvered_shutter_assembly": "louvered_shutter",
+    "miter_saw_arm_assembly": "miter_saw_arm_assembly",
     "retractable_utility_knife": "retractable_utility_knife",
     "screwcap_bottle": "screwcap_bottle",
     "screwin_light_bulb_with_socket": "screwin_light_bulb_with_socket",
     "serial_elbow_arm": "serial_elbow_arm",
     "ferris_wheel": "ferris_wheel",
     "sliding_window": "sliding_window",
+    "studio_spotlight_on_yoke": "studio_spotlight_on_yoke",
     "tackle_box_with_simple_hinged_lid": "tackle_box",
     "telescoping_boom": "telescoping_boom",
     "turnstile_gates": "turnstile_gates",
     "turntable": "turntable",
+    "wall_safe_with_hinged_door_and_dial": "wall_safe_with_hinged_door_and_dial",
     "wind_turbine": "wind_turbine",
     "standing_desk_with_synchronous_telescoping_legs_and_articulated_controls": "standing_desk",
     "platform_cart": "platform_cart",
@@ -282,21 +285,6 @@ def _build_parser() -> argparse.ArgumentParser:
             help="Print the planned batch without creating records.",
         )
 
-    fp = subparsers.add_parser(
-        "anchor-fingerprint",
-        help=(
-            "Extract the geometry fingerprint of a 5-star anchor record so it can be "
-            "diffed against a template's seed=0 fingerprint."
-        ),
-    )
-    fp.add_argument(
-        "anchor",
-        help="Anchor reference, e.g. 'rec_ceiling_fan_xxx' or 'rec_ceiling_fan_xxx:rev_000001'.",
-    )
-    fp.add_argument(
-        "--indent", type=int, default=2, help="JSON indentation (default 2; 0 for compact)."
-    )
-
     sweep = subparsers.add_parser(
         "compile-sweep",
         help="Run multi-seed full-baseline compile sweep for a procedural template.",
@@ -342,19 +330,13 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     sweep.add_argument(
-        "--line-floor",
-        type=int,
-        default=1000,
-        help="Minimum line count for the line_floor gate (default 1000).",
-    )
-    sweep.add_argument(
         "--compile-timeout",
         type=float,
         default=DEFAULT_COMPILE_TIMEOUT_S,
         help=(
             "Per-seed wall-time budget in seconds. Each seed compile runs in a "
             "fresh subprocess that is SIGKILL'd on timeout; the seed is marked "
-            "compile_timeout in the JSON. Set to 0 to disable timeouts (legacy "
+            "compile_timeout in the JSON. Set to 0 to disable timeouts ("
             f"in-process ProcessPool path). Default {DEFAULT_COMPILE_TIMEOUT_S:.0f}s."
         ),
     )
@@ -406,19 +388,13 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     pipeline.add_argument(
-        "--line-floor",
-        type=int,
-        default=1000,
-        help="Minimum line count for the line_floor gate (default 1000).",
-    )
-    pipeline.add_argument(
         "--compile-timeout",
         type=float,
         default=DEFAULT_COMPILE_TIMEOUT_S,
         help=(
             "Per-seed wall-time budget in seconds. Each seed compile runs in a "
             "fresh subprocess that is SIGKILL'd on timeout; the seed is marked "
-            "compile_timeout in the JSON. Set to 0 to disable timeouts (legacy "
+            "compile_timeout in the JSON. Set to 0 to disable timeouts ("
             f"in-process ProcessPool path). Default {DEFAULT_COMPILE_TIMEOUT_S:.0f}s."
         ),
     )
@@ -456,7 +432,6 @@ def compile_sweep(
     sdk_package: str,
     out_path: Path | None,
     state_dir: Path | None,
-    line_floor: int,
     compile_timeout_s: float,
     quiet: bool,
 ) -> int:
@@ -471,7 +446,6 @@ def compile_sweep(
             max_workers=max_workers,
             progress=progress,
             state_dir=state_dir,
-            line_floor=line_floor,
             compile_timeout_s=compile_timeout_s,
         )
     except (FileNotFoundError, AttributeError, ValueError) as exc:
@@ -514,7 +488,6 @@ def sweep_pipeline(
     sdk_package: str,
     out_path: Path | None,
     state_dir: Path | None,
-    line_floor: int,
     compile_timeout_s: float,
     quiet: bool,
 ) -> int:
@@ -530,7 +503,6 @@ def sweep_pipeline(
             progress=progress,
             stage_progress=stage_progress,
             state_dir=state_dir,
-            line_floor=line_floor,
             compile_timeout_s=compile_timeout_s,
         )
     except (FileNotFoundError, AttributeError, ValueError) as exc:
@@ -553,20 +525,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    if args.command == "anchor-fingerprint":
-        import json as _json
-
-        from agent.template_sweep_anchor import extract_fingerprint_from_anchor
-
-        try:
-            fp = extract_fingerprint_from_anchor(args.anchor, repo_root=args.repo_root)
-        except (FileNotFoundError, ValueError) as exc:
-            print(str(exc), file=sys.stderr)
-            return 2
-        indent = None if int(args.indent) <= 0 else int(args.indent)
-        print(_json.dumps(fp.to_dict(), indent=indent))
-        return 0
-
     if args.command == "compile-sweep":
         try:
             seeds = parse_seed_spec(args.seeds)
@@ -583,7 +541,6 @@ def main(argv: list[str] | None = None) -> int:
             sdk_package=str(args.sdk_package),
             out_path=args.out,
             state_dir=state_dir,
-            line_floor=int(args.line_floor),
             compile_timeout_s=float(args.compile_timeout),
             quiet=bool(args.quiet),
         )
@@ -598,7 +555,6 @@ def main(argv: list[str] | None = None) -> int:
             sdk_package=str(args.sdk_package),
             out_path=args.out,
             state_dir=state_dir,
-            line_floor=int(args.line_floor),
             compile_timeout_s=float(args.compile_timeout),
             quiet=bool(args.quiet),
         )

@@ -4,21 +4,27 @@
 
 核心目标：**先用 slot graph 控制拓扑，再用 module factory 改编 5 星源码，最后用 InterfaceSpec / MatingContract / sweep gate 保证装配和运动语义。**
 
-## 1. 成熟 modular 模板标准
+## 1. 两阶段 modular 模板标准
 
-成熟模板至少满足：
+Stage 1 初版模板至少满足：
 
 - `__modular__ = True`。
 - spec 中每个 slot candidate 都有真实 5 星样本 `model.py:Lx-Ly` 来源。
 - 每个主要 module factory 都能追溯到对应 source，保留其 part tree、joint 语义、primitive 复杂度和接口关系。
 - `config_from_seed(0)` 选择 spec 标注的 anchor module 组合。
 - `slot_choices_for_seed(seed)` 稳定返回每个 seed 的 module 组合。
-- `config_from_seed` 只采样已实现、已测试、可装配的 module 组合。
+- `config_from_seed` 只采样已实现、已测试、可装配的 module 组合。Stage 1 允许有限 coverage / curated seed domain 来覆盖代表组合和高风险组合，先稳定 sweep 和 viewer 目检。
 - `resolve_config` 是唯一合法化和派生入口，负责 enum 校验、范围夹紧、互斥组合降级、尺寸链、接口点位和 joint range 派生。
 - Module factory 只消费 resolved config、assets、palette 和 `ctx.rng`；不重新决定高层 slot graph。
 - 每个跨 module 连接都有真实 InterfaceSpec；每个 separate moving child 有 joint metadata 和 MatingContract。
 - 不动的装饰、封条、螺丝、刻度和面板细节优先作为 parent visual。
-- `module_topology_diversity` gate 通过，且 sweep-pipeline 返回 `verdict=pass`。
+- `module_topology_diversity` gate 通过，high-risk coverage seed domain 覆盖计划已记录，且 sweep-pipeline 返回 `verdict=pass`。
+
+Stage 2 / final mature 模板额外满足：
+
+- 主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling。
+- 除 anchor、coverage 和 regression overrides 外，不再用有限 curated / modulo table 作为主 seed domain。
+- 1000-seed topology distinct target 达标，或有类别合法拓扑空间确实较小的审核理由。
 
 ## 2. High-quality modular reference map
 
@@ -93,10 +99,15 @@
 ## 6. Seed domain 和拓扑多样性
 
 - `config_from_seed(0)` 是 anchor 组合。
-- 其他 seeds 可以随机 slot candidate，但只能采样已实现、已测试、可装配的组合。
+- Stage 1 其他 seeds 可以使用有限 coverage / curated domain，但只能采样已实现、已测试、可装配的组合，并必须覆盖主要 module、multiplicity、稀有合法组合和 viewer 目检需求。
+- Stage 1 coverage seeds 应优先收敛 failure-prone 组合：悬空/漂浮风险、穿模/clearance 风险、joint 轴或 range 风险、closed pose 风险、max multiplicity、bulky module、可选 moving child、长链/多子件装配、互斥 gate 或 fallback 降级路径。
+- Stage 1 收敛出的 InterfaceSpec、尺寸派生、compatibility gates 和 validator 应作为 Stage 2 扩展 seed domain 的基础，避免第二阶段放开组合后失败率过高。
+- Stage 1 使用 `seed % len(table)` 或 curated table 时，必须明确标注为临时 coverage seed domain，不得宣称为最终 dataset-scale 生成逻辑。
+- Stage 2 默认策略是 slot-independent 或 conditionally-independent sampling：先采样上游结构槽，再按显式 gate 采样兼容下游槽。只有少量 anchor / coverage / visual regression seed 可以保留 curated preset。
 - 如果某些 module 组合互斥，`resolve_config` 必须显式降级或拒绝；不要让 builder 才失败。
 - `slot_choices_for_seed` 必须和实际 build 使用的 choices 一致。
-- `module_topology_diversity` 需要至少 5 个通过 seed 的 distinct slot choice tuple；如果样本池不足，应在 spec 中说明降级理由。
+- `module_topology_diversity` 需要至少 5 个通过 seed 的 distinct slot choice tuple；这是 sweep 的最低机械门槛，不是成熟数据生成目标。
+- Stage 2 / final 模板应在 1000 个 seed 下达到至少 100 个 topology distinct slot choice tuple。低于 100 时，必须记录原因：样本池确实小、slot 兼容约束强，或 reviewer 明确接受。
 
 ## 7. Builder 和 factory 规则
 

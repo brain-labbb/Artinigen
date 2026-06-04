@@ -226,9 +226,9 @@ exports the per-seed module picks; it's consumed by the
 
 Set `__modular__ = True` at module scope. The sweep coverage gate uses
 this flag to:
-- Skip the legacy `anchor_geometry_match` gate (replaced by per-module sources in the spec's module table)
-- Run `module_topology_diversity` instead (counts distinct slot_choice
-  tuples across passing seeds; needs ≥5)
+- Confirm the template is on the modular slot/module route.
+- Run `module_topology_diversity` (counts distinct slot_choice tuples across
+  passing seeds; needs ≥5 once the cumulative sweep reaches 20 seeds).
 
 ---
 
@@ -255,7 +255,7 @@ When adding a new modular template `<slug>`, produce:
    - All-combinations-build test (loop the entire slot×module grid — the
      sweep only samples seeds, so a rare combo may never be hit)
    - Seed=0 equals anchor combination test (the sweep does not assert this)
-3. **`articraft_template_authoring/specs/<slug>.md`** — spec doc.
+3. **`articraft_template_authoring/specs_modular_v1/<slug>.md`** — spec doc.
    Replace the single `primary_anchor` field with a `topology_variants`
    table listing each module and its source record.
 

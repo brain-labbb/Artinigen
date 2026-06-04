@@ -1,29 +1,25 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 from agent.template_sweep import SeedOutcome
 from agent.template_sweep_coverage import (
-    _extract_adopted_source_ids,
-    _literal_fields,
-    check_adopted_source,
-    check_enum_coverage,
-    check_line_floor,
+    CoverageGateResult,
+    CoverageGates,
+    _normalize_slot_choices,
+    check_module_topology_diversity,
     evaluate_gates,
 )
 
 
 def _outcome(
     seed: int,
-    verdict: str,
-    config: dict,
+    verdict: str = "pass",
 ) -> SeedOutcome:
     return SeedOutcome(
         seed=seed,
         verdict=verdict,
-        config=config,
+        config={"seed": seed},
         failure_type=None if verdict == "pass" else "fail_if_isolated_parts()",
         failure_type_normalized=None if verdict == "pass" else "fail_if_isolated_parts",
         failure_details=None if verdict == "pass" else "isolated antenna",
@@ -31,239 +27,129 @@ def _outcome(
     )
 
 
-# --------------------------------------------------------------------------- #
-# line_floor
-# --------------------------------------------------------------------------- #
+def _patch_modular_choices(monkeypatch, choices_by_seed: dict[int, object]) -> None:
+    monkeypatch.setattr("agent.template_sweep_coverage.is_modular_template", lambda slug: True)
+    monkeypatch.setattr(
+        "agent.template_sweep_coverage._slot_choices_for_seed",
+        lambda slug, seed: choices_by_seed[seed],
+    )
 
 
-def test_check_line_floor_passes_when_above_threshold() -> None:
-    gate = check_line_floor(1500, floor=1000)
-    assert gate.status == "pass"
-    assert gate.details["line_count"] == 1500
+def test_normalize_slot_choices_accepts_mapping_and_pairs() -> None:
+    assert _normalize_slot_choices({"base": "tripod", "head": "pan_tilt"}) == (
+        ("base", "tripod"),
+        ("head", "pan_tilt"),
+    )
+    assert _normalize_slot_choices([("base", "tripod")]) == (("base", "tripod"),)
 
 
-def test_check_line_floor_fails_when_below_threshold() -> None:
-    gate = check_line_floor(400, floor=1000)
+def test_normalize_slot_choices_rejects_invalid_shape() -> None:
+    try:
+        _normalize_slot_choices(["base_only"])
+    except ValueError as exc:
+        assert "pairs" in str(exc)
+    else:
+        raise AssertionError("expected invalid slot choices to fail")
+
+
+def test_module_topology_diversity_skips_before_min_sweep_size(monkeypatch) -> None:
+    monkeypatch.setattr("agent.template_sweep_coverage.is_modular_template", lambda slug: False)
+    gate = check_module_topology_diversity("demo", [_outcome(seed) for seed in range(5)])
+    assert gate.status == "skipped"
+    assert gate.details["min_sweep_size"] == 20
+
+
+def test_module_topology_diversity_fails_when_template_not_modular(monkeypatch) -> None:
+    monkeypatch.setattr("agent.template_sweep_coverage.is_modular_template", lambda slug: False)
+    gate = check_module_topology_diversity("demo", [_outcome(seed) for seed in range(20)])
     assert gate.status == "fail"
-    assert "below the 1000-line floor" in gate.reason
+    assert "__modular__ = True" in gate.reason
 
 
-# --------------------------------------------------------------------------- #
-# enum_coverage
-# --------------------------------------------------------------------------- #
+def test_module_topology_diversity_fails_when_slot_report_missing(monkeypatch) -> None:
+    monkeypatch.setattr("agent.template_sweep_coverage.is_modular_template", lambda slug: True)
+
+    def missing_slot_report(slug: str, seed: int):
+        raise AttributeError("missing callable slot_choices_for_seed(seed)")
+
+    monkeypatch.setattr("agent.template_sweep_coverage._slot_choices_for_seed", missing_slot_report)
+    gate = check_module_topology_diversity("demo", [_outcome(seed) for seed in range(20)])
+    assert gate.status == "fail"
+    assert gate.details["errors"][0]["error_kind"] == "AttributeError"
+    assert "slot_choices_for_seed" in gate.reason
 
 
-def test_literal_fields_extracts_literal_typed_annotations() -> None:
-    @dataclass
-    class Cfg:
-        shape: Literal["a", "b", "c"]
-        size: float
-        layout: Literal["x", "y"]
-
-    fields = _literal_fields(Cfg)
-    assert sorted(fields.keys()) == ["layout", "shape"]
-    assert fields["shape"] == ["a", "b", "c"]
-
-
-def test_check_enum_coverage_passes_when_every_value_seen_in_pass(monkeypatch) -> None:
-    @dataclass
-    class FakeCfg:
-        shape: Literal["a", "b", "c"]
-
-    monkeypatch.setattr("agent.template_sweep_coverage._input_config_class", lambda slug: FakeCfg)
-
-    outcomes = [
-        _outcome(0, "pass", {"shape": "a"}),
-        _outcome(1, "pass", {"shape": "b"}),
-        _outcome(2, "pass", {"shape": "c"}),
-    ]
-    gate = check_enum_coverage("fake", outcomes)
-    assert gate.status == "pass"
-    assert gate.details["fields"]["shape"]["missing"] == []
-
-
-def test_check_enum_coverage_fails_when_value_missing_or_only_in_failure(
+def test_module_topology_diversity_passes_with_five_distinct_passing_tuples(
     monkeypatch,
 ) -> None:
-    @dataclass
-    class FakeCfg:
-        shape: Literal["a", "b", "c"]
+    choices = {
+        seed: [("base", f"base_{seed % 5}"), ("head", f"head_{seed % 2}")] for seed in range(20)
+    }
+    _patch_modular_choices(monkeypatch, choices)
 
-    monkeypatch.setattr("agent.template_sweep_coverage._input_config_class", lambda slug: FakeCfg)
+    gate = check_module_topology_diversity("demo", [_outcome(seed) for seed in range(20)])
 
-    outcomes = [
-        _outcome(0, "pass", {"shape": "a"}),
-        _outcome(1, "fail", {"shape": "b"}),  # b only seen in failure -> not exercised
-        # c never sampled
-    ]
-    gate = check_enum_coverage("fake", outcomes)
-    assert gate.status == "fail"
-    missing_values = {(m["field"], m["value"]) for m in gate.details["missing"]}
-    assert missing_values == {("shape", "b"), ("shape", "c")}
-
-
-def test_check_enum_coverage_skips_when_no_enum_fields(monkeypatch) -> None:
-    @dataclass
-    class FakeCfg:
-        size: float
-        count: int
-
-    monkeypatch.setattr("agent.template_sweep_coverage._input_config_class", lambda slug: FakeCfg)
-
-    gate = check_enum_coverage("fake", [_outcome(0, "pass", {"size": 1.0, "count": 2})])
-    assert gate.status == "skipped"
-    assert "no Literal-typed enum fields" in gate.reason
-
-
-def test_check_enum_coverage_skips_when_template_uninspectable(monkeypatch) -> None:
-    monkeypatch.setattr("agent.template_sweep_coverage._input_config_class", lambda slug: None)
-    gate = check_enum_coverage("nonexistent", [])
-    assert gate.status == "skipped"
-
-
-# --------------------------------------------------------------------------- #
-# adopted_source
-# --------------------------------------------------------------------------- #
-
-
-def test_extract_adopted_source_ids_picks_S_ids_from_table() -> None:
-    spec_text = (
-        "## 采用源码索引（Adopted Source Index）\n"
-        "| source_id | sample_id | model.py 来源 | 采纳用途 |\n"
-        "|---|---|---|---|\n"
-        "| S1 | rec_abc | `data/.../model.py:L1-L10` | desc1 |\n"
-        "| S2 | rec_def | `data/.../model.py:L20-L30` | desc2 |\n"
-        "\n## 部件（Parts）\n"
-        "| S99 | should-not-be-picked |\n"  # outside section
-    )
-    assert _extract_adopted_source_ids(spec_text) == ["S1", "S2"]
-
-
-def test_extract_adopted_source_ids_empty_when_section_missing() -> None:
-    spec_text = "## 核心身份\nsome text\n"
-    assert _extract_adopted_source_ids(spec_text) == []
-
-
-def test_check_adopted_source_passes_when_all_ids_referenced(tmp_path: Path) -> None:
-    spec = tmp_path / "articraft_template_authoring" / "specs" / "demo.md"
-    spec.parent.mkdir(parents=True)
-    spec.write_text(
-        "## 采用源码索引（Adopted Source Index）\n"
-        "| source_id | sample_id |\n|---|---|\n| S1 | x |\n| S2 | y |\n"
-        "\n## next\n",
-        encoding="utf-8",
-    )
-    template = tmp_path / "agent" / "templates" / "demo.py"
-    template.parent.mkdir(parents=True)
-    template.write_text(
-        "from x import y\n# adopted: S1 from data/abc/model.py:L1-L10\n"
-        "# adopted: S2 from data/def/model.py:L20-L30\n",
-        encoding="utf-8",
-    )
-    gate = check_adopted_source("demo", repo_root=tmp_path)
     assert gate.status == "pass"
-    assert gate.details["missing"] == []
+    assert gate.details["distinct_count"] >= 5
+    assert gate.details["passing_seed_count"] == 20
 
 
-def test_check_adopted_source_fails_when_template_missing_markers(tmp_path: Path) -> None:
-    spec = tmp_path / "articraft_template_authoring" / "specs" / "demo.md"
-    spec.parent.mkdir(parents=True)
-    spec.write_text(
-        "## 采用源码索引（Adopted Source Index）\n"
-        "| source_id | sample_id |\n|---|---|\n| S1 | x |\n| S2 | y |\n"
-        "\n## next\n",
-        encoding="utf-8",
-    )
-    template = tmp_path / "agent" / "templates" / "demo.py"
-    template.parent.mkdir(parents=True)
-    template.write_text("# adopted: S1\n# no S2 marker here\n", encoding="utf-8")
+def test_module_topology_diversity_fails_when_distinct_count_is_too_low(
+    monkeypatch,
+) -> None:
+    choices = {seed: [("base", "same"), ("head", f"head_{seed % 2}")] for seed in range(20)}
+    _patch_modular_choices(monkeypatch, choices)
 
-    gate = check_adopted_source("demo", repo_root=tmp_path)
+    gate = check_module_topology_diversity("demo", [_outcome(seed) for seed in range(20)])
+
     assert gate.status == "fail"
-    assert gate.details["missing"] == ["S2"]
+    assert gate.details["distinct_count"] == 2
+    assert "at least 5" in gate.reason
 
 
-def test_check_adopted_source_skips_when_spec_missing(tmp_path: Path) -> None:
-    gate = check_adopted_source("no_spec_here", repo_root=tmp_path)
-    assert gate.status == "skipped"
-    assert "spec markdown not found" in gate.reason
+def test_module_topology_diversity_counts_only_passing_seeds(monkeypatch) -> None:
+    choices = {seed: [("base", f"base_{seed}")] for seed in range(20)}
+    _patch_modular_choices(monkeypatch, choices)
+    outcomes = [_outcome(seed, "pass" if seed < 4 else "fail") for seed in range(20)]
+
+    gate = check_module_topology_diversity("demo", outcomes)
+
+    assert gate.status == "fail"
+    assert gate.details["passing_seed_count"] == 4
+    assert gate.details["distinct_count"] == 4
 
 
-def test_check_adopted_source_skips_when_spec_has_no_section(tmp_path: Path) -> None:
-    spec = tmp_path / "articraft_template_authoring" / "specs" / "demo.md"
-    spec.parent.mkdir(parents=True)
-    spec.write_text("## 核心身份\nA description\n", encoding="utf-8")
-    gate = check_adopted_source("demo", repo_root=tmp_path)
-    assert gate.status == "skipped"
-    assert "no Adopted Source Index entries" in gate.reason
+def test_module_topology_diversity_fails_on_invalid_slot_choices(monkeypatch) -> None:
+    choices = {seed: [("base", f"base_{seed % 5}")] for seed in range(20)}
+    choices[7] = ["bad"]
+    _patch_modular_choices(monkeypatch, choices)
+
+    gate = check_module_topology_diversity("demo", [_outcome(seed) for seed in range(20)])
+
+    assert gate.status == "fail"
+    assert gate.details["errors"][0]["seed"] == 7
+    assert gate.details["errors"][0]["error_kind"] == "ValueError"
 
 
-# --------------------------------------------------------------------------- #
-# aggregate
-# --------------------------------------------------------------------------- #
-
-
-def test_evaluate_gates_aggregates(monkeypatch, tmp_path: Path) -> None:
-    @dataclass
-    class FakeCfg:
-        shape: Literal["a", "b"]
-
-    monkeypatch.setattr("agent.template_sweep_coverage._input_config_class", lambda slug: FakeCfg)
-    # enum_coverage / adopted_source are currently grandfathered (skipped).
-    # Force them on for this test so we still cover the pass path.
-    monkeypatch.setattr("agent.template_sweep_coverage.ADOPTED_SOURCE_GATE_ENABLED", True)
-    monkeypatch.setattr("agent.template_sweep_coverage.ENUM_COVERAGE_GATE_ENABLED", True)
+def test_evaluate_gates_returns_only_module_topology(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "agent.template_sweep_coverage.check_module_topology_diversity",
+        lambda slug, outcomes: CoverageGateResult(
+            name="module_topology_diversity",
+            status="pass",
+            details={"distinct_count": 5},
+        ),
+    )
 
     gates = evaluate_gates(
         slug="demo",
-        line_count=1200,
-        outcomes=[_outcome(0, "pass", {"shape": "a"}), _outcome(1, "pass", {"shape": "b"})],
-        repo_root=tmp_path,  # no spec -> adopted_source skipped
-        line_floor=1000,
+        line_count=100,
+        outcomes=[_outcome(seed) for seed in range(20)],
+        repo_root=tmp_path,
     )
-    assert gates.line_floor.status == "pass"
-    assert gates.enum_coverage.status == "pass"
-    assert gates.adopted_source.status == "skipped"
+
+    assert isinstance(gates, CoverageGates)
+    assert gates.to_dict().keys() == {"module_topology_diversity"}
+    assert gates.module_topology_diversity.status == "pass"
     assert gates.all_pass_or_skipped() is True
     assert gates.failing_gates() == []
-
-
-def test_evaluate_gates_reports_failures(monkeypatch, tmp_path: Path) -> None:
-    @dataclass
-    class FakeCfg:
-        shape: Literal["a", "b"]
-
-    monkeypatch.setattr("agent.template_sweep_coverage._input_config_class", lambda slug: FakeCfg)
-    monkeypatch.setattr("agent.template_sweep_coverage.ENUM_COVERAGE_GATE_ENABLED", True)
-
-    gates = evaluate_gates(
-        slug="demo",
-        line_count=400,  # below floor
-        outcomes=[_outcome(0, "pass", {"shape": "a"})],  # b missing
-        repo_root=tmp_path,
-        line_floor=1000,
-    )
-    failing = gates.failing_gates()
-    assert "line_floor" in failing
-    assert "enum_coverage" in failing
-    assert gates.all_pass_or_skipped() is False
-
-
-def test_evaluate_gates_skips_disabled_enum_coverage_by_default(
-    monkeypatch, tmp_path: Path
-) -> None:
-    @dataclass
-    class FakeCfg:
-        shape: Literal["a", "b"]
-
-    monkeypatch.setattr("agent.template_sweep_coverage._input_config_class", lambda slug: FakeCfg)
-    gates = evaluate_gates(
-        slug="demo",
-        line_count=1200,
-        outcomes=[_outcome(0, "pass", {"shape": "a"})],  # b would be missing
-        repo_root=tmp_path,
-        line_floor=1000,
-    )
-    assert gates.enum_coverage.status == "skipped"
-    assert gates.adopted_source.status == "skipped"
-    assert gates.all_pass_or_skipped() is True

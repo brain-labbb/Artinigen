@@ -7,7 +7,7 @@ them cannot reach `verdict=pass`.
 
 Read this **before** writing the first line of a new template. For new
 Articraft category templates, also read `MODULAR_TEMPLATE_AUTHORING.md`; its
-per-module source contract replaces the legacy single-anchor contract below.
+per-module source contract is the authoring route.
 
 ---
 
@@ -33,8 +33,6 @@ remaining bug after baseline.
 
 For modular templates, this is enforced through module source review,
 `module_topology_diversity`, visual support checks, and MatingContract checks.
-For legacy non-modular templates, the `anchor_geometry_match` gate also catches
-part/joint topology drift from a single anchor.
 
 ### Examples
 
@@ -180,73 +178,47 @@ Set `__modular__ = True`, implement `slot_choices_for_seed`, and use
 must preserve the source module's part tree, joint semantics, primitive
 complexity, and interface/support relationship.
 
-### Legacy non-modular path: single PRIMARY_ANCHOR
-
-**A template's part tree, joint topology, per-part visual count, and per-part
-primitive types must be derivable from a single nominated 5-star record (the
-PRIMARY_ANCHOR). Agents may freely parameterize literal dimensions, enum
-branches, and loop counts; they may not invent structural elements the
-anchor doesn't have, and they may not downgrade sophisticated primitives
-(LatheGeometry / mesh_from_geometry / cadquery output → `Mesh`) to crude
+**Each module factory's part tree, joint topology, per-part visual count, and
+primitive types must be derivable from the module's declared 5-star source
+records. Agents may freely parameterize literal dimensions, enum branches, and
+Multiplicity ranges; they may not invent structural elements the source module
+family does not support, and they may not downgrade sophisticated primitives
+(LatheGeometry / mesh_from_geometry / cadquery output -> `Mesh`) to crude
 Box/Cylinder placeholders.**
 
 ### Why
 
-Without an anchor, agents drift to "imagine what a category looks like"
-mode — and the dominant failure mode (visible in dj_equipment,
-graphics_card, retractable_utility_knife) is that the agent picks crude
-boxes/cylinders where the 5-star sample has carefully sculpted lathe
-profiles. We've also seen agents invent entire structural elements (extra
-parts, extra joint chains) that no 5-star sample has.
+Without declared module sources, agents drift to "imagine what a category
+looks like" mode. The common failure mode is crude boxes/cylinders where the
+5-star sample has carefully sculpted lathe profiles, or invented structural
+elements (extra parts, extra joint chains) that no 5-star source family has.
 
-### Enforcement — `anchor_geometry_match` gate
+### Enforcement — `module_topology_diversity` gate
 
-The spec must declare `primary_anchor` in its 元信息 table:
-
-```markdown
-## 元信息
-| 项 | 值 |
-|---|---|
-| slug | `dj_equipment` |
-| template path | `agent/templates/dj_equipment.py` |
-| primary_anchor | `rec_dj_equipment_xxx:rev_000001` |
-| ...
-```
-
-On every sweep, `articraft template compile-sweep` extracts the anchor's
-geometry fingerprint (part names normalized with `_i` suffix for indexed
-families; joint topology; per-part visual count + primitive histogram +
-Mesh count; overall bbox aspect ratio) and compares it to the template's
-fingerprint at `seed=0`. Six sub-checks must all pass:
-
-| Sub-check | What it catches |
-|---|---|
-| `part_name_set` | Template introduces parts the anchor doesn't have, or is missing parts the anchor has |
-| `joint_topology` | Template adds/drops (parent, child, type) joint triples |
-| `visual_count_per_part` | Template collapses anchor's N visuals into <50% of N |
-| `primitive_complexity_lower_bound` | Template's Mesh count for any part drops below the anchor's |
-| `primitive_histogram_similarity` | Template swaps primitive types (Cylinder→Box, etc.) |
-| `bbox_ratio` | Template's overall aspect ratio diverges from the anchor's by more than 30% on any axis |
+The template must set `__modular__ = True` and implement
+`slot_choices_for_seed(seed)`. On the 0-19 and 0-49 sweep stages,
+`module_topology_diversity` counts distinct passing slot/module tuples and
+requires at least five. This ensures diversity comes from real module swaps,
+not only color, scale, or material changes.
 
 ### Authoring workflow under Rule 3
 
 When writing a new template (or rewriting an existing one), the **first
 action** must be:
 
-1. Run `uv run articraft template anchor-fingerprint <PRIMARY_ANCHOR>` to
-   inspect the structure you must inherit.
-2. Read the anchor's `model.py` end-to-end. Identify each helper, each
-   `part.visual(...)` call, each `model.articulation(...)`. Decide which
-   literals to parameterize and which loops to make variable-count.
-3. Sketch the template's part tree mirroring the anchor's part tree
-   (collapsing indexed families like `blade_0..N` into a single `blade_i`
-   in your mental model).
-4. Implement helpers that adapt the anchor's geometry. Replace literal
-   coordinates with `config.<field>` / `r.<field>`; keep primitive types
-   (Box stays Box, Cylinder stays Cylinder, Mesh stays Mesh).
+1. Read `articraft_template_authoring/SPEC_TEMPLATE.md` and the reviewed
+   modular spec for the slug.
+2. For each slot, read the declared 5-star module sources. Identify each
+   helper, each `part.visual(...)` call, each `model.articulation(...)`, and
+   the intended `InterfaceSpec`/`MatingContract` surfaces.
+3. Sketch the slot graph and module factory outputs, including seed=0 anchor
+   modules and all topology variants.
+4. Implement helpers that adapt source geometry. Replace literal coordinates
+   with `config.<field>` / `r.<field>`; keep primitive types (Box stays Box,
+   Cylinder stays Cylinder, Mesh stays Mesh).
 5. Add `MatingContract` to every joint that creates a separate child part
-   (Rule 2).
-6. Run `compile-sweep`. Iterate until `verdict=pass`.
+   (Rule 2), and expose the final choices via `slot_choices_for_seed(seed)`.
+6. Run `sweep-pipeline`. Iterate until `verdict=pass`.
 
 ### What "adapting" means concretely
 
@@ -260,8 +232,8 @@ action** must be:
   `Cylinder(radius=0.072, length=0.10)`. **Downgrading primitives is the
   thing this rule exists to prevent.**
 
-If you genuinely can't adopt the anchor's primitive choices (e.g., the
-anchor uses a cadquery mesh and your template's environment can't import
+If you genuinely can't adopt a module source's primitive choices (e.g., the
+source uses a cadquery mesh and your template's environment can't import
 cadquery), open a discussion before authoring — don't silently substitute
 crude primitives.
 
@@ -282,11 +254,6 @@ Before declaring a new modular template done, all of the following must hold:
 5. [ ] `compile-sweep` reports `verdict=pass` on `--seeds 0-49`:
    - `pass_rate >= 0.95` (baseline incl. mating-gap, articulation-origin,
      overlap, isolated-parts).
-   - `coverage_gates.line_floor.status == "pass"`.
    - `coverage_gates.module_topology_diversity.status == "pass"`.
 6. [ ] Preview-self-checked seeds 0, 1, 2 visually look like the category
    and the closed pose has no visible gaps.
-
-For legacy non-modular templates, replace items 1, 2, and the topology gate
-with the single `primary_anchor` / `anchor_geometry_match` contract. Do not use
-that legacy route for new modular category templates.

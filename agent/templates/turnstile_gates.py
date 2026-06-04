@@ -1,6 +1,6 @@
 """Turnstile gates procedural template.
 
-This module implements ``articraft_template_authoring/specs/turnstile_gates.md``.
+This module implements ``articraft_template_authoring/specs_modular_v1/turnstile_gates.md``.
 
 Identity invariant
 -------------------
@@ -734,9 +734,10 @@ def _decorate_service_bearing(frame: Part, r: ResolvedTurnstileGatesConfig, m: d
             material=m["bearing"] if idx % 2 == 0 else m["bearing_bright"],
             name=f"wear_ring_{idx}",
         )
+    housing_front_y = -r.cab_d * 0.31
     frame.visual(
         Box((r.cab_w * 0.9, 0.012, r.cab_h)),
-        origin=Origin(xyz=(r.cab_cx, -r.cab_d * 0.5, r.base_h + r.cab_h * 0.5)),
+        origin=Origin(xyz=(r.cab_cx, housing_front_y - 0.003, r.base_h + r.cab_h * 0.5)),
         material=m["frame"],
         name="service_door_fixed",
     )
@@ -936,6 +937,93 @@ def _add_hub_detail(rotor: Part, r: ResolvedTurnstileGatesConfig, m: dict) -> No
 
 
 # adopted: S2, S1
+def _add_arm_surface_pattern(
+    rotor: Part,
+    r: ResolvedTurnstileGatesConfig,
+    m: dict,
+    *,
+    index: int,
+    angle: float,
+    span_len: float,
+) -> None:
+    """Add arm-local manufacturing detail while keeping every element bonded.
+
+    The pattern pieces overlap the main arm body by a few millimetres, so the
+    compiler sees one connected rotor island. Round/capsule arms get sleeve
+    collars and side beads; flat/paddle arms get raised grip plates and ribs.
+    """
+    z = r.arm_z
+    perp_x = -math.sin(angle)
+    perp_y = math.cos(angle)
+    fractions = (0.30, 0.52, 0.74)
+
+    for band_i, frac in enumerate(fractions):
+        pos_r = r.arm_inner_r + span_len * frac
+        bx, by = _radial_xy(pos_r, angle)
+        if r.arm_style in ("round_tube", "capsule_rail"):
+            rotor.visual(
+                Cylinder(radius=r.arm_radius * 1.28, length=max(0.026, r.arm_radius * 1.45)),
+                origin=Origin(xyz=(bx, by, z), rpy=_radial_cyl_rpy(angle)),
+                material=m["accent"] if band_i % 2 == 0 else m["hardware"],
+                name=f"arm_{index}_grip_band_{band_i}",
+            )
+        else:
+            rotor.visual(
+                Box((max(0.035, span_len * 0.08), r.arm_radius * 3.2, r.arm_radius * 0.72)),
+                origin=Origin(
+                    xyz=(bx, by, z + r.arm_radius * 0.30),
+                    rpy=(0.0, 0.0, angle),
+                ),
+                material=m["accent"] if band_i % 2 == 0 else m["hardware"],
+                name=f"arm_{index}_raised_grip_plate_{band_i}",
+            )
+
+    # A short contrasting root ferrule makes the arms read as bolted into the
+    # hub instead of simple sticks.
+    ferrule_r = r.arm_inner_r + span_len * 0.10
+    fx, fy = _radial_xy(ferrule_r, angle)
+    rotor.visual(
+        Cylinder(radius=r.arm_radius * 1.38, length=max(0.030, r.arm_radius * 1.7)),
+        origin=Origin(xyz=(fx, fy, z), rpy=_radial_cyl_rpy(angle)),
+        material=m["bearing_bright"],
+        name=f"arm_{index}_root_ferrule",
+    )
+
+    if r.arm_style == "paddle":
+        paddle_center = r.arm_tip_r - span_len * 0.16
+        for rib_i, offset in enumerate((-0.95, 0.0, 0.95)):
+            rx = math.cos(angle) * paddle_center + perp_x * r.arm_radius * offset
+            ry = math.sin(angle) * paddle_center + perp_y * r.arm_radius * offset
+            rotor.visual(
+                Box((span_len * 0.28, r.arm_radius * 0.52, r.arm_radius * 3.8)),
+                origin=Origin(xyz=(rx, ry, z + r.arm_radius * 0.04), rpy=(0.0, 0.0, angle)),
+                material=m["hardware"],
+                name=f"arm_{index}_paddle_rib_{rib_i}",
+            )
+    elif r.arm_style == "flat_bar":
+        for rib_i, frac in enumerate((0.40, 0.66)):
+            rr = r.arm_inner_r + span_len * frac
+            rx, ry = _radial_xy(rr, angle)
+            rotor.visual(
+                Box((span_len * 0.18, r.arm_radius * 0.46, r.arm_radius * 2.4)),
+                origin=Origin(xyz=(rx, ry, z), rpy=(0.0, 0.0, angle + math.pi / 2.0)),
+                material=m["hardware"],
+                name=f"arm_{index}_cross_stamp_{rib_i}",
+            )
+    elif r.arm_style == "capsule_rail":
+        bead_len = span_len * 0.78
+        bead_mid = r.arm_inner_r + span_len * 0.52
+        for bead_i, side in enumerate((-1.0, 1.0)):
+            cx = math.cos(angle) * bead_mid + perp_x * side * r.arm_radius * 1.05
+            cy = math.sin(angle) * bead_mid + perp_y * side * r.arm_radius * 1.05
+            rotor.visual(
+                Cylinder(radius=r.arm_radius * 0.34, length=bead_len),
+                origin=Origin(xyz=(cx, cy, z), rpy=_radial_cyl_rpy(angle)),
+                material=m["bearing_bright"],
+                name=f"arm_{index}_side_bead_{bead_i}",
+            )
+
+
 def _add_arm(
     rotor: Part, r: ResolvedTurnstileGatesConfig, m: dict, *, index: int, angle: float
 ) -> None:
@@ -1013,6 +1101,14 @@ def _add_arm(
         material=m["arm_tip"],
         name=f"arm_{index}_end_sleeve",
     )
+    _add_arm_surface_pattern(
+        rotor,
+        r,
+        m,
+        index=index,
+        angle=angle,
+        span_len=span_len,
+    )
 
 
 def _pawl_geometry(r: ResolvedTurnstileGatesConfig) -> tuple[float, float, float, float, float]:
@@ -1031,31 +1127,10 @@ def _pawl_geometry(r: ResolvedTurnstileGatesConfig) -> tuple[float, float, float
     return pivot_r, tip_r, bar_len, pin_z, ratchet_r
 
 
-# adopted: S5
-def _add_ratchet_ring(rotor: Part, r: ResolvedTurnstileGatesConfig, m: dict) -> None:
-    """Discrete ratchet teeth for the lockout pawl to engage (S5).
-
-    Placed well below the arm plane and the bearing body, outside the frame
-    post radius, so they never foul the support in the rest pose.
-    """
-    _, _, _, pin_z, ratchet_r = _pawl_geometry(r)
-    ratchet_z = pin_z - r.bearing_top_z  # local z on the rotor
-    for i, ang in enumerate(_arm_angles(8)):
-        tx, ty = _radial_xy(ratchet_r, ang)
-        rotor.visual(
-            Box((0.02, 0.012, 0.02)),
-            origin=Origin(xyz=(tx, ty, ratchet_z), rpy=(0.0, 0.0, ang)),
-            material=m["ratchet"],
-            name=f"ratchet_tooth_{i}",
-        )
-
-
 def _build_rotor(model: ArticulatedObject, r: ResolvedTurnstileGatesConfig, m: dict) -> Part:
     rotor = model.part("rotor")
     _build_hub(rotor, r, m)
     _add_hub_detail(rotor, r, m)
-    if r.service_module == "lockout_pawl":
-        _add_ratchet_ring(rotor, r, m)
     for index, angle in enumerate(_arm_angles(r.arm_count)):
         _add_arm(rotor, r, m, index=index, angle=angle)
     rotor.inertial = Inertial.from_geometry(
@@ -1200,6 +1275,24 @@ def _add_pawl_bracket(
     part of the fixed frame.
     """
     pivot_r, _, _, pin_z, _ = _pawl_geometry(r)
+    # Fixed lockout indexing blocks embedded into the central post. Earlier
+    # versions placed these as separate rotor teeth at this height, which read
+    # as small floating blocks in the viewer; seating them into the fixed post
+    # keeps the center detail visually attached.
+    block_depth = 0.026
+    block_width = 0.014
+    block_height = 0.024
+    block_embed = 0.003
+    block_r = r.post_radius + block_depth * 0.5 - block_embed
+    for i, ang in enumerate(_arm_angles(8)):
+        bx, by = _radial_xy(block_r, ang)
+        frame.visual(
+            Box((block_depth, block_width, block_height)),
+            origin=Origin(xyz=(bx, by, pin_z), rpy=(0.0, 0.0, ang)),
+            material=m["ratchet"],
+            name=f"fixed_lockout_index_block_{i}",
+        )
+
     # Low foot strut from the pedestal out to the standoff (below the arms).
     strut_len = pivot_r + 0.06
     frame.visual(

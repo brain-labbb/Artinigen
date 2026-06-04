@@ -1,7 +1,7 @@
 """Playground swing modular template.
 
 Reviewed spec:
-``articraft_template_authoring/specs/playground_swing.md``.
+``articraft_template_authoring/specs_modular_v1/playground_swing.md``.
 
 The category-level multiplicity is a wide playground frame carrying
 ``station_count`` independent swing stations. Each station samples a recipe
@@ -45,7 +45,10 @@ __modular__ = True
 
 SupportFrameModule = Literal[
     "compact_a_frame_crossbeam",
+    "tube_a_frame_with_clevises",
+    "long_gantry_tire_frame",
     "multi_station_wide_frame",
+    "minimal_top_beam_mount",
 ]
 StationRecipe = Literal[
     "simple_belt_station",
@@ -71,6 +74,26 @@ STATION_RECIPES: tuple[StationRecipe, ...] = (
     "glider_station",
     "swivel_disc_station",
     "nest_station",
+)
+
+SUPPORT_FRAME_MODULES: tuple[SupportFrameModule, ...] = (
+    "compact_a_frame_crossbeam",
+    "tube_a_frame_with_clevises",
+    "long_gantry_tire_frame",
+    "multi_station_wide_frame",
+    "minimal_top_beam_mount",
+)
+
+MINIMAL_MOUNT_RECIPES: tuple[StationRecipe, ...] = (
+    "simple_belt_station",
+    "swivel_disc_station",
+)
+
+COMPACT_FRAME_RECIPES: tuple[StationRecipe, ...] = (
+    "simple_belt_station",
+    "bucket_station",
+    "lap_bar_station",
+    "swivel_disc_station",
 )
 
 PALETTES: dict[PaletteTheme, dict[str, tuple[float, float, float, float]]] = {
@@ -138,6 +161,19 @@ RECIPE_FOOTPRINTS: dict[StationRecipe, float] = {
 
 
 @dataclass(frozen=True)
+class StationParams:
+    recipe: StationRecipe
+    footprint: float
+    scale: float
+    drop: float
+    width: float
+    depth: float
+    radius: float
+    hanger_half_width: float
+    hub_length: float
+
+
+@dataclass(frozen=True)
 class PlaygroundSwingConfig:
     support_frame_module: SupportFrameModule = "compact_a_frame_crossbeam"
     station_count: int = 1
@@ -147,6 +183,7 @@ class PlaygroundSwingConfig:
     station_spacing: float = 0.18
     end_clearance: float = 0.32
     swing_limit: float = 0.62
+    geometry_seed: int = 0
     name: str = "playground_swing"
     palette: dict[str, tuple[float, float, float, float]] = field(
         default_factory=lambda: dict(PALETTES["park_green"])
@@ -162,6 +199,7 @@ class ResolvedPlaygroundSwingConfig:
     top_z: float
     beam_length: float
     station_centers: tuple[float, ...]
+    station_params: tuple[StationParams, ...]
     swing_limit: float
     name: str
     palette: dict[str, tuple[float, float, float, float]]
@@ -177,22 +215,43 @@ def _validate_recipe(name: str) -> StationRecipe:
     return name  # type: ignore[return-value]
 
 
-def _recipe_sequence_for_seed(seed: int) -> tuple[StationRecipe, ...]:
+def _frame_capacity(frame: SupportFrameModule) -> int:
+    if frame in ("compact_a_frame_crossbeam", "minimal_top_beam_mount"):
+        return 1
+    if frame == "tube_a_frame_with_clevises":
+        return 2
+    return 5
+
+
+def _allowed_recipes_for_frame(frame: SupportFrameModule) -> tuple[StationRecipe, ...]:
+    if frame == "minimal_top_beam_mount":
+        return MINIMAL_MOUNT_RECIPES
+    if frame == "compact_a_frame_crossbeam":
+        return COMPACT_FRAME_RECIPES
+    return STATION_RECIPES
+
+
+def _recipe_sequence_for_seed(
+    seed: int,
+    *,
+    frame: SupportFrameModule = "multi_station_wide_frame",
+) -> tuple[StationRecipe, ...]:
     if seed == 0:
         return ("simple_belt_station",)
     rng = random.Random(seed)
-    station_count = rng.randint(1, 5)
+    station_count = rng.randint(1, _frame_capacity(frame))
+    allowed_recipes = _allowed_recipes_for_frame(frame)
     recipes: list[StationRecipe] = []
     for index in range(station_count):
         if index == 0 and station_count >= 4:
             # Force at least one compact bay when the beam is very crowded.
-            pool: tuple[StationRecipe, ...] = (
-                "simple_belt_station",
-                "bucket_station",
-                "swivel_disc_station",
+            pool = tuple(
+                recipe
+                for recipe in ("simple_belt_station", "bucket_station", "swivel_disc_station")
+                if recipe in allowed_recipes
             )
         else:
-            pool = STATION_RECIPES
+            pool = allowed_recipes
         recipes.append(rng.choice(pool))
     return tuple(recipes)
 
@@ -206,16 +265,122 @@ def config_from_seed(seed: int) -> PlaygroundSwingConfig:
             palette_theme="park_green",
             name="playground_swing_anchor_seed_0",
         )
-    recipes = _recipe_sequence_for_seed(seed)
     rng = random.Random(seed * 7919 + 17)
+    support_frame_module = rng.choice(SUPPORT_FRAME_MODULES)
+    recipes = _recipe_sequence_for_seed(seed, frame=support_frame_module)
     palette_theme = rng.choice(tuple(PALETTES.keys()))
     return PlaygroundSwingConfig(
-        support_frame_module="multi_station_wide_frame",
+        support_frame_module=support_frame_module,
         station_count=len(recipes),
         station_recipes=recipes,
         palette_theme=palette_theme,
         swing_limit=rng.uniform(0.48, 0.72),
+        geometry_seed=seed,
         name=f"seeded_playground_swing_{seed}",
+    )
+
+
+def _resolve_station_params(
+    recipe: StationRecipe,
+    *,
+    rng: random.Random,
+    top_z: float,
+) -> StationParams:
+    scale = rng.uniform(0.88, 1.16)
+    width_jitter = rng.uniform(0.94, 1.12)
+    depth_jitter = rng.uniform(0.92, 1.10)
+    drop_jitter = rng.uniform(0.94, 1.08)
+
+    base = RECIPE_FOOTPRINTS[recipe]
+    width = base * width_jitter
+    depth = 0.36 * depth_jitter
+    radius = 0.20 * scale
+    hanger_half_width = 0.22 * scale
+    hub_length = 0.42 * scale
+    drop = 1.20 * drop_jitter
+
+    if recipe == "simple_belt_station":
+        width = 0.54 * width_jitter
+        depth = 0.24 * depth_jitter
+        hanger_half_width = _clamp(width * 0.38, 0.18, 0.26)
+        hub_length = _clamp(width * 0.82, 0.36, 0.52)
+        drop = 1.42 * drop_jitter
+        footprint = max(0.58, width + 0.16)
+    elif recipe == "bucket_station":
+        width = 0.54 * width_jitter
+        depth = 0.44 * depth_jitter
+        hanger_half_width = _clamp(width * 0.42, 0.20, 0.29)
+        hub_length = _clamp(width * 0.82, 0.38, 0.54)
+        drop = 1.28 * drop_jitter
+        footprint = max(0.64, width + 0.20)
+    elif recipe == "tire_station":
+        radius = 0.36 * scale
+        depth = 0.14 * depth_jitter
+        width = radius * 2.0
+        hanger_half_width = _clamp(radius * 0.72, 0.22, 0.32)
+        hub_length = _clamp(radius * 1.56, 0.50, 0.68)
+        drop = 1.14 * drop_jitter
+        footprint = max(0.84, radius * 2.0 + 0.22)
+    elif recipe == "lap_bar_station":
+        width = 0.56 * width_jitter
+        depth = 0.35 * depth_jitter
+        hanger_half_width = _clamp(width * 0.43, 0.22, 0.30)
+        hub_length = _clamp(width * 0.80, 0.38, 0.56)
+        drop = 1.06 * drop_jitter
+        footprint = max(0.68, width + 0.20)
+    elif recipe == "platform_station":
+        width = 0.82 * width_jitter
+        depth = 0.70 * depth_jitter
+        hanger_half_width = _clamp(width * 0.39, 0.28, 0.42)
+        hub_length = _clamp(width * 0.86, 0.64, 0.88)
+        drop = 1.18 * drop_jitter
+        footprint = max(0.92, width + 0.22)
+    elif recipe == "bench_station":
+        width = 1.06 * width_jitter
+        depth = 0.48 * depth_jitter
+        hanger_half_width = _clamp(width * 0.40, 0.38, 0.52)
+        hub_length = _clamp(width * 0.74, 0.72, 0.96)
+        drop = 1.14 * drop_jitter
+        footprint = max(1.22, width + 0.30)
+    elif recipe == "glider_station":
+        width = 1.02 * width_jitter
+        depth = 0.86 * depth_jitter
+        hanger_half_width = _clamp(width * 0.45, 0.42, 0.58)
+        hub_length = _clamp(width * 0.88, 0.88, 1.12)
+        drop = 1.14 * drop_jitter
+        footprint = max(1.34, width + 0.40)
+    elif recipe == "swivel_disc_station":
+        radius = 0.20 * scale
+        width = radius * 2.0
+        depth = radius * 2.0
+        hanger_half_width = 0.0
+        hub_length = _clamp(radius * 1.2, 0.22, 0.30)
+        drop = 0.58 * drop_jitter
+        footprint = max(0.52, radius * 2.0 + 0.16)
+    elif recipe == "nest_station":
+        radius = 0.48 * scale
+        width = radius * 2.0
+        depth = radius * 2.0
+        hanger_half_width = _clamp(radius * 0.72, 0.32, 0.43)
+        hub_length = _clamp(radius * 1.72, 0.78, 1.00)
+        drop = 1.18 * drop_jitter
+        footprint = max(1.10, radius * 2.0 + 0.26)
+    else:  # pragma: no cover - validated earlier.
+        footprint = base
+
+    max_drop = max(0.55, top_z - 0.58)
+    drop = _clamp(drop, 0.52, max_drop)
+    footprint = max(footprint, hub_length + 0.16)
+    return StationParams(
+        recipe=recipe,
+        footprint=footprint,
+        scale=scale,
+        drop=drop,
+        width=width,
+        depth=depth,
+        radius=radius,
+        hanger_half_width=hanger_half_width,
+        hub_length=hub_length,
     )
 
 
@@ -228,18 +393,26 @@ def resolve_config(config: PlaygroundSwingConfig) -> ResolvedPlaygroundSwingConf
     else:
         recipes = ("simple_belt_station",) * station_count
 
-    if config.support_frame_module not in ("compact_a_frame_crossbeam", "multi_station_wide_frame"):
+    if config.support_frame_module not in SUPPORT_FRAME_MODULES:
         support_frame_module: SupportFrameModule = "multi_station_wide_frame"
     else:
         support_frame_module = config.support_frame_module
-    if support_frame_module == "compact_a_frame_crossbeam":
-        station_count = 1
-        recipes = recipes[:1] or ("simple_belt_station",)
+    station_count = min(station_count, _frame_capacity(support_frame_module))
+    allowed_recipes = _allowed_recipes_for_frame(support_frame_module)
+    recipes = tuple(
+        recipe if recipe in allowed_recipes else allowed_recipes[0] for recipe in recipes
+    )
+    recipes = recipes[:station_count] or (allowed_recipes[0],)
+    station_count = len(recipes)
 
     top_z = _clamp(config.top_z, 1.85, 2.45)
     spacing = _clamp(config.station_spacing, 0.12, 0.32)
     end_clearance = _clamp(config.end_clearance, 0.22, 0.55)
-    footprints = [RECIPE_FOOTPRINTS[recipe] for recipe in recipes]
+    param_rng = random.Random(int(config.geometry_seed) * 104729 + 3011)
+    station_params = tuple(
+        _resolve_station_params(recipe, rng=param_rng, top_z=top_z) for recipe in recipes
+    )
+    footprints = [params.footprint for params in station_params]
     beam_length = max(
         1.40, sum(footprints) + spacing * max(0, station_count - 1) + end_clearance * 2.0
     )
@@ -263,6 +436,7 @@ def resolve_config(config: PlaygroundSwingConfig) -> ResolvedPlaygroundSwingConf
         top_z=top_z,
         beam_length=beam_length,
         station_centers=tuple(centers),
+        station_params=station_params,
         swing_limit=_clamp(config.swing_limit, 0.35, 0.85),
         name=config.name,
         palette=palette,
@@ -311,21 +485,107 @@ def _build_frame(model: ArticulatedObject, r: ResolvedPlaygroundSwingConfig) -> 
         origin=Origin(xyz=(0.0, 0.0, (r.top_z + 0.12) * 0.5)),
     )
 
-    _add_tube(
-        frame,
-        "top_beam",
-        (-r.beam_length / 2.0, 0.0, r.top_z),
-        (r.beam_length / 2.0, 0.0, r.top_z),
-        0.055,
-        frame_mat,
-    )
+    if r.support_frame_module == "minimal_top_beam_mount":
+        frame.visual(
+            Box((r.beam_length + 0.46, 0.24, 0.16)),
+            origin=Origin(xyz=(0.0, 0.0, r.top_z + 0.03)),
+            material=frame_mat,
+            name="timber_overhead_beam",
+        )
+        frame.visual(
+            Box((r.beam_length + 0.30, 0.30, 0.035)),
+            origin=Origin(xyz=(0.0, 0.0, r.top_z + 0.125)),
+            material=frame_dark,
+            name="ceiling_mount_plate",
+        )
+        for bx in (-r.beam_length * 0.38, r.beam_length * 0.38):
+            frame.visual(
+                Cylinder(radius=0.018, length=0.18),
+                origin=Origin(xyz=(bx, -0.08, r.top_z + 0.15)),
+                material=steel,
+                name=f"mount_bolt_front_{bx:+.2f}",
+            )
+            frame.visual(
+                Cylinder(radius=0.018, length=0.18),
+                origin=Origin(xyz=(bx, 0.08, r.top_z + 0.15)),
+                material=steel,
+                name=f"mount_bolt_rear_{bx:+.2f}",
+            )
+    elif r.support_frame_module == "tube_a_frame_with_clevises":
+        _add_tube(
+            frame,
+            "round_tube_top_beam",
+            (-r.beam_length / 2.0, 0.0, r.top_z),
+            (r.beam_length / 2.0, 0.0, r.top_z),
+            0.050,
+            frame_mat,
+        )
+        frame.visual(
+            Box((r.beam_length + 0.10, 0.040, 0.050)),
+            origin=Origin(xyz=(0.0, -0.07, r.top_z - 0.18)),
+            material=frame_dark,
+            name="front_tube_spreader",
+        )
+        frame.visual(
+            Box((r.beam_length + 0.10, 0.040, 0.050)),
+            origin=Origin(xyz=(0.0, 0.07, r.top_z - 0.18)),
+            material=frame_dark,
+            name="rear_tube_spreader",
+        )
+    elif r.support_frame_module == "long_gantry_tire_frame":
+        _add_tube(
+            frame,
+            "heavy_gantry_top_beam",
+            (-r.beam_length / 2.0, 0.0, r.top_z),
+            (r.beam_length / 2.0, 0.0, r.top_z),
+            0.065,
+            frame_mat,
+        )
+        frame.visual(
+            Box((r.beam_length + 0.28, 0.070, 0.045)),
+            origin=Origin(xyz=(0.0, -0.82, 0.055)),
+            material=frame_dark,
+            name="front_ground_skid",
+        )
+        frame.visual(
+            Box((r.beam_length + 0.28, 0.070, 0.045)),
+            origin=Origin(xyz=(0.0, 0.82, 0.055)),
+            material=frame_dark,
+            name="rear_ground_skid",
+        )
+        frame.visual(
+            Box((r.beam_length + 0.18, 0.050, 0.050)),
+            origin=Origin(xyz=(0.0, -0.82, r.top_z - 0.30)),
+            material=frame_dark,
+            name="front_upper_side_rail",
+        )
+        frame.visual(
+            Box((r.beam_length + 0.18, 0.050, 0.050)),
+            origin=Origin(xyz=(0.0, 0.82, r.top_z - 0.30)),
+            material=frame_dark,
+            name="rear_upper_side_rail",
+        )
+    else:
+        _add_tube(
+            frame,
+            "top_beam",
+            (-r.beam_length / 2.0, 0.0, r.top_z),
+            (r.beam_length / 2.0, 0.0, r.top_z),
+            0.055,
+            frame_mat,
+        )
 
-    support_xs = [-r.beam_length / 2.0 + 0.18, r.beam_length / 2.0 - 0.18]
-    if r.station_count >= 4:
+    support_xs: list[float] = []
+    if r.support_frame_module != "minimal_top_beam_mount":
+        support_xs = [-r.beam_length / 2.0 + 0.18, r.beam_length / 2.0 - 0.18]
+    if r.station_count >= 4 and r.support_frame_module in (
+        "long_gantry_tire_frame",
+        "multi_station_wide_frame",
+    ):
         gap_index = max(1, r.station_count // 2)
         center_support_x = (r.station_centers[gap_index - 1] + r.station_centers[gap_index]) * 0.5
         support_xs.insert(1, center_support_x)
-    elif r.station_count == 3:
+    elif r.station_count == 3 and r.support_frame_module == "multi_station_wide_frame":
         frame.visual(
             Box((r.beam_length - 0.40, 0.050, 0.045)),
             origin=Origin(xyz=(0.0, -0.07, r.top_z - 0.20)),
@@ -340,17 +600,93 @@ def _build_frame(model: ArticulatedObject, r: ResolvedPlaygroundSwingConfig) -> 
         )
 
     for idx, x in enumerate(support_xs):
+        foot_y = 0.86 if r.support_frame_module == "long_gantry_tire_frame" else 0.76
+        leg_radius = 0.045 if r.support_frame_module == "long_gantry_tire_frame" else 0.040
+        if r.support_frame_module == "long_gantry_tire_frame":
+            front_base = (x, -foot_y, 0.06)
+            rear_base = (x, foot_y, 0.06)
+            front_top = (x, -foot_y, r.top_z - 0.01)
+            rear_top = (x, foot_y, r.top_z - 0.01)
+            _add_tube(
+                frame, f"portal_{idx}_front_upright", front_base, front_top, leg_radius, frame_mat
+            )
+            _add_tube(
+                frame, f"portal_{idx}_rear_upright", rear_base, rear_top, leg_radius, frame_mat
+            )
+            _add_tube(frame, f"portal_{idx}_top_crossmember", front_top, rear_top, 0.038, frame_mat)
+            _add_tube(
+                frame,
+                f"portal_{idx}_mid_crossmember",
+                (x, -foot_y, 1.05),
+                (x, foot_y, 1.05),
+                0.026,
+                frame_dark,
+            )
+            _add_tube(
+                frame,
+                f"portal_{idx}_front_knee_brace",
+                (x, -foot_y, r.top_z - 0.34),
+                (x, -foot_y * 0.45, r.top_z - 0.01),
+                0.024,
+                frame_dark,
+            )
+            _add_tube(
+                frame,
+                f"portal_{idx}_rear_knee_brace",
+                (x, foot_y, r.top_z - 0.34),
+                (x, foot_y * 0.45, r.top_z - 0.01),
+                0.024,
+                frame_dark,
+            )
+            continue
+
         top = (x, 0.0, r.top_z - 0.01)
-        front_foot = (x, 0.76, 0.06)
-        rear_foot = (x, -0.76, 0.06)
-        _add_tube(frame, f"support_{idx}_front_leg", top, front_foot, 0.040, frame_mat)
-        _add_tube(frame, f"support_{idx}_rear_leg", top, rear_foot, 0.040, frame_mat)
+        front_foot = (x, foot_y, 0.06)
+        rear_foot = (x, -foot_y, 0.06)
+        _add_tube(frame, f"support_{idx}_front_leg", top, front_foot, leg_radius, frame_mat)
+        _add_tube(frame, f"support_{idx}_rear_leg", top, rear_foot, leg_radius, frame_mat)
         _add_tube(
-            frame, f"support_{idx}_foot_bar", (x, -0.84, 0.055), (x, 0.84, 0.055), 0.030, frame_dark
+            frame,
+            f"support_{idx}_foot_bar",
+            (x, -foot_y - 0.08, 0.055),
+            (x, foot_y + 0.08, 0.055),
+            0.030,
+            frame_dark,
         )
         _add_tube(
-            frame, f"support_{idx}_mid_brace", (x, -0.54, 1.12), (x, 0.54, 1.12), 0.024, frame_dark
+            frame,
+            f"support_{idx}_mid_brace",
+            (x, -foot_y * 0.70, 1.12),
+            (x, foot_y * 0.70, 1.12),
+            0.024,
+            frame_dark,
         )
+        if r.support_frame_module == "tube_a_frame_with_clevises":
+            _add_tube(
+                frame,
+                f"support_{idx}_upper_cross_tie",
+                (x, -foot_y * 0.42, r.top_z - 0.32),
+                (x, foot_y * 0.42, r.top_z - 0.32),
+                0.022,
+                steel,
+            )
+        elif r.support_frame_module == "long_gantry_tire_frame":
+            _add_tube(
+                frame,
+                f"support_{idx}_diagonal_front_brace",
+                (x, -foot_y, 0.10),
+                (x, 0.0, r.top_z - 0.32),
+                0.024,
+                frame_dark,
+            )
+            _add_tube(
+                frame,
+                f"support_{idx}_diagonal_rear_brace",
+                (x, foot_y, 0.10),
+                (x, 0.0, r.top_z - 0.32),
+                0.024,
+                frame_dark,
+            )
 
     for index, x in enumerate(r.station_centers):
         # Visible bay hardware adapted from the dual-bay 5-star frame: two
@@ -409,20 +745,24 @@ def _add_top_hub(part, prefix: str, material, *, length: float = 0.42) -> None:
 
 
 def _add_belt_station(
-    model: ArticulatedObject, r: ResolvedPlaygroundSwingConfig, index: int, x: float
+    model: ArticulatedObject,
+    r: ResolvedPlaygroundSwingConfig,
+    index: int,
+    x: float,
+    p: StationParams,
 ) -> None:
     steel = _mat(model, f"station_{index}_steel", r.palette["steel"])
     dark = _mat(model, f"station_{index}_dark", r.palette["dark"])
     seat_mat = _mat(model, f"station_{index}_seat", r.palette["seat"])
     swing = model.part(f"station_{index}_swing")
-    _add_top_hub(swing, f"station_{index}", steel)
-    drop = 1.42
-    for side, sx in (("left", -0.20), ("right", 0.20)):
+    _add_top_hub(swing, f"station_{index}", steel, length=p.hub_length)
+    drop = p.drop
+    for side, sx in (("left", -p.hanger_half_width), ("right", p.hanger_half_width)):
         _add_tube(
             swing,
             f"{side}_front_chain",
             (sx, 0.025, -0.030),
-            (sx * 0.72, 0.10, -drop + 0.03),
+            (sx * 0.72, p.depth * 0.42, -drop + 0.03),
             0.009,
             steel,
         )
@@ -430,24 +770,24 @@ def _add_belt_station(
             swing,
             f"{side}_rear_chain",
             (sx, -0.025, -0.030),
-            (sx * 0.72, -0.10, -drop + 0.03),
+            (sx * 0.72, -p.depth * 0.42, -drop + 0.03),
             0.009,
             steel,
         )
         swing.visual(
-            Box((0.060, 0.22, 0.070)),
+            Box((0.060, p.depth * 0.92, 0.070)),
             origin=Origin(xyz=(sx * 0.72, 0.0, -drop)),
             material=dark,
             name=f"{side}_seat_bracket",
         )
     swing.visual(
-        Box((0.54, 0.24, 0.040)),
+        Box((p.width, p.depth, 0.040)),
         origin=Origin(xyz=(0.0, 0.0, -drop - 0.03)),
         material=seat_mat,
         name="belt_seat",
     )
     swing.visual(
-        Box((0.46, 0.20, 0.015)),
+        Box((p.width * 0.85, p.depth * 0.82, 0.015)),
         origin=Origin(xyz=(0.0, 0.0, -drop - 0.005)),
         material=dark,
         name="seat_pad",
@@ -464,57 +804,61 @@ def _add_belt_station(
 
 
 def _add_bucket_station(
-    model: ArticulatedObject, r: ResolvedPlaygroundSwingConfig, index: int, x: float
+    model: ArticulatedObject,
+    r: ResolvedPlaygroundSwingConfig,
+    index: int,
+    x: float,
+    p: StationParams,
 ) -> None:
     steel = _mat(model, f"station_{index}_steel", r.palette["steel"])
     shell_mat = _mat(model, f"station_{index}_bucket_shell", r.palette["accent"])
     strap_mat = _mat(model, f"station_{index}_strap", r.palette["dark"])
     dark = _mat(model, f"station_{index}_bucket_shadow", r.palette["dark"])
     swing = model.part(f"station_{index}_bucket")
-    _add_top_hub(swing, f"station_{index}", steel)
-    drop = 1.28
-    for sx in (-0.22, 0.22):
+    _add_top_hub(swing, f"station_{index}", steel, length=p.hub_length)
+    drop = p.drop
+    for sx in (-p.hanger_half_width, p.hanger_half_width):
         _add_tube(
             swing,
             f"side_strap_{sx:+.1f}",
             (sx, 0.0, -0.02),
-            (sx * 0.88, 0.0, -drop + 0.18),
+            (sx * 0.88, 0.0, -drop + p.depth * 0.41),
             0.015,
             strap_mat,
         )
         swing.visual(
             Sphere(radius=0.038),
-            origin=Origin(xyz=(sx * 0.88, 0.0, -drop + 0.16)),
+            origin=Origin(xyz=(sx * 0.88, 0.0, -drop + p.depth * 0.36)),
             material=steel,
             name=f"side_bolt_{sx:+.1f}",
         )
     swing.visual(
-        Box((0.54, 0.44, 0.34)),
+        Box((p.width, p.depth, 0.34 * p.scale)),
         origin=Origin(xyz=(0.0, 0.0, -drop)),
         material=shell_mat,
         name="bucket_shell",
     )
     swing.visual(
-        Box((0.22, 0.05, 0.13)),
-        origin=Origin(xyz=(-0.12, 0.24, -drop - 0.02)),
+        Box((p.width * 0.40, 0.05, 0.13 * p.scale)),
+        origin=Origin(xyz=(-p.width * 0.22, p.depth * 0.545, -drop - 0.02)),
         material=dark,
         name="left_leg_opening_shadow",
     )
     swing.visual(
-        Box((0.22, 0.05, 0.13)),
-        origin=Origin(xyz=(0.12, 0.24, -drop - 0.02)),
+        Box((p.width * 0.40, 0.05, 0.13 * p.scale)),
+        origin=Origin(xyz=(p.width * 0.22, p.depth * 0.545, -drop - 0.02)),
         material=dark,
         name="right_leg_opening_shadow",
     )
     swing.visual(
-        Box((0.58, 0.055, 0.060)),
-        origin=Origin(xyz=(0.0, 0.245, -drop + 0.10)),
+        Box((p.width + 0.04, 0.055, 0.060)),
+        origin=Origin(xyz=(0.0, p.depth * 0.50, -drop + 0.10)),
         material=steel,
         name="front_rim",
     )
     swing.visual(
-        Box((0.58, 0.055, 0.060)),
-        origin=Origin(xyz=(0.0, -0.245, -drop + 0.10)),
+        Box((p.width + 0.04, 0.055, 0.060)),
+        origin=Origin(xyz=(0.0, -p.depth * 0.50, -drop + 0.10)),
         material=steel,
         name="rear_rim",
     )
@@ -530,17 +874,22 @@ def _add_bucket_station(
 
 
 def _add_tire_station(
-    model: ArticulatedObject, r: ResolvedPlaygroundSwingConfig, index: int, x: float
+    model: ArticulatedObject,
+    r: ResolvedPlaygroundSwingConfig,
+    index: int,
+    x: float,
+    p: StationParams,
 ) -> None:
     steel = _mat(model, f"station_{index}_steel", r.palette["steel"])
     rubber = _mat(model, f"station_{index}_rubber", r.palette["rubber"])
     accent = _mat(model, f"station_{index}_accent", r.palette["accent"])
     swing = model.part(f"station_{index}_tire")
-    _add_top_hub(swing, f"station_{index}", steel, length=0.56)
+    _add_top_hub(swing, f"station_{index}", steel, length=p.hub_length)
+    tire_z = -(p.drop + p.radius * 0.22)
     tire = TireGeometry(
-        0.36,
-        0.14,
-        inner_radius=0.20,
+        p.radius,
+        p.depth,
+        inner_radius=p.radius * 0.56,
         carcass=TireCarcass(belt_width_ratio=0.72, sidewall_bulge=0.08),
         tread=TireTread(style="block", depth=0.010, count=24, land_ratio=0.55),
         grooves=(TireGroove(center_offset=0.0, width=0.018, depth=0.004),),
@@ -549,20 +898,24 @@ def _add_tire_station(
     )
     swing.visual(
         mesh_from_geometry(tire, f"station_{index}_tire_mesh"),
-        origin=Origin(xyz=(0.0, 0.0, -1.22), rpy=(0.0, -math.pi / 2.0, 0.0)),
+        origin=Origin(xyz=(0.0, 0.0, tire_z), rpy=(0.0, -math.pi / 2.0, 0.0)),
         material=rubber,
         name="tire_shell",
     )
     swing.visual(
-        Box((0.64, 0.64, 0.070)),
-        origin=Origin(xyz=(0.0, 0.0, -1.10)),
+        Box((p.radius * 1.78, p.radius * 1.78, 0.070)),
+        origin=Origin(xyz=(0.0, 0.0, -p.drop)),
         material=steel,
         name="tire_anchor_spider_plate",
     )
     for name, top, bottom in (
-        ("left", (-0.26, 0.0, -0.055), (-0.24, -0.17, -1.10)),
-        ("center", (0.0, 0.0, -0.055), (0.0, 0.29, -1.10)),
-        ("right", (0.26, 0.0, -0.055), (0.24, -0.17, -1.10)),
+        (
+            "left",
+            (-p.hanger_half_width, 0.0, -0.055),
+            (-p.radius * 0.67, -p.radius * 0.47, -p.drop),
+        ),
+        ("center", (0.0, 0.0, -0.055), (0.0, p.radius * 0.81, -p.drop)),
+        ("right", (p.hanger_half_width, 0.0, -0.055), (p.radius * 0.67, -p.radius * 0.47, -p.drop)),
     ):
         _add_tube(swing, f"{name}_hanger", top, bottom, 0.016, steel)
         swing.visual(
@@ -575,7 +928,7 @@ def _add_tire_station(
             swing,
             f"{name}_tire_anchor_pin",
             bottom,
-            (bottom[0], bottom[1], -1.245),
+            (bottom[0], bottom[1], tire_z - p.radius * 0.07),
             0.020,
             steel,
         )
@@ -591,34 +944,39 @@ def _add_tire_station(
 
 
 def _add_lap_bar_station(
-    model: ArticulatedObject, r: ResolvedPlaygroundSwingConfig, index: int, x: float
+    model: ArticulatedObject,
+    r: ResolvedPlaygroundSwingConfig,
+    index: int,
+    x: float,
+    p: StationParams,
 ) -> None:
     steel = _mat(model, f"station_{index}_steel", r.palette["steel"])
     wood = _mat(model, f"station_{index}_wood", r.palette["wood"])
     red = _mat(model, f"station_{index}_red", r.palette["accent"])
     seat = model.part(f"station_{index}_slatted_seat")
-    _add_top_hub(seat, f"station_{index}", steel)
-    drop = 1.06
-    for sx in (-0.24, 0.24):
+    _add_top_hub(seat, f"station_{index}", steel, length=p.hub_length)
+    drop = p.drop
+    for sx in (-p.hanger_half_width, p.hanger_half_width):
         _add_tube(
             seat, f"hanger_{sx:+.1f}", (sx, 0.0, -0.02), (sx, 0.0, -drop + 0.01), 0.014, steel
         )
     seat.visual(
-        Box((0.56, 0.35, 0.065)),
+        Box((p.width, p.depth, 0.065)),
         origin=Origin(xyz=(0.0, 0.0, -drop)),
         material=steel,
         name="seat_frame",
     )
-    for j, yy in enumerate((-0.13, -0.04, 0.05, 0.14)):
+    slat_ys = (-p.depth * 0.37, -p.depth * 0.12, p.depth * 0.14, p.depth * 0.40)
+    for j, yy in enumerate(slat_ys):
         seat.visual(
-            Box((0.50, 0.055, 0.030)),
+            Box((p.width * 0.89, p.depth * 0.16, 0.030)),
             origin=Origin(xyz=(0.0, yy, -drop + 0.035)),
             material=wood,
             name=f"seat_slat_{j}",
         )
     seat.visual(
-        Box((0.48, 0.080, 0.130)),
-        origin=Origin(xyz=(0.0, 0.18, -drop + 0.035)),
+        Box((p.width * 0.86, p.depth * 0.23, 0.130)),
+        origin=Origin(xyz=(0.0, p.depth * 0.51, -drop + 0.035)),
         material=steel,
         name="lap_hinge_socket",
     )
@@ -632,17 +990,33 @@ def _add_lap_bar_station(
         motion_limits=_motion(r),
     )
     lap = model.part(f"station_{index}_lap_bar")
+    lap_width = p.width * 0.90
+    lap_y = p.depth * 0.51
     lap.visual(
-        Cylinder(radius=0.018, length=0.50),
+        Cylinder(radius=0.018, length=lap_width),
         origin=Origin(rpy=(0.0, math.pi / 2.0, 0.0)),
         material=red,
         name="lap_bar_hinge",
     )
-    _add_tube(lap, "left_bar_arm", (-0.20, 0.0, 0.0), (-0.20, 0.18, 0.14), 0.012, red)
-    _add_tube(lap, "right_bar_arm", (0.20, 0.0, 0.0), (0.20, 0.18, 0.14), 0.012, red)
+    _add_tube(
+        lap,
+        "left_bar_arm",
+        (-lap_width * 0.40, 0.0, 0.0),
+        (-lap_width * 0.40, lap_y, 0.14),
+        0.012,
+        red,
+    )
+    _add_tube(
+        lap,
+        "right_bar_arm",
+        (lap_width * 0.40, 0.0, 0.0),
+        (lap_width * 0.40, lap_y, 0.14),
+        0.012,
+        red,
+    )
     lap.visual(
-        Cylinder(radius=0.014, length=0.44),
-        origin=Origin(xyz=(0.0, 0.18, 0.14), rpy=(0.0, math.pi / 2.0, 0.0)),
+        Cylinder(radius=0.014, length=lap_width * 0.88),
+        origin=Origin(xyz=(0.0, lap_y, 0.14), rpy=(0.0, math.pi / 2.0, 0.0)),
         material=red,
         name="front_guard",
     )
@@ -651,22 +1025,26 @@ def _add_lap_bar_station(
         ArticulationType.REVOLUTE,
         parent=seat,
         child=lap,
-        origin=Origin(xyz=(0.0, 0.20, -drop + 0.11)),
+        origin=Origin(xyz=(0.0, p.depth * 0.57, -drop + 0.11)),
         axis=(1.0, 0.0, 0.0),
         motion_limits=MotionLimits(effort=10.0, velocity=1.5, lower=0.0, upper=1.15),
     )
 
 
 def _add_platform_station(
-    model: ArticulatedObject, r: ResolvedPlaygroundSwingConfig, index: int, x: float
+    model: ArticulatedObject,
+    r: ResolvedPlaygroundSwingConfig,
+    index: int,
+    x: float,
+    p: StationParams,
 ) -> None:
     steel = _mat(model, f"station_{index}_steel", r.palette["steel"])
     dark = _mat(model, f"station_{index}_dark", r.palette["dark"])
     red = _mat(model, f"station_{index}_red", r.palette["accent"])
     links = model.part(f"station_{index}_platform_links")
-    _add_top_hub(links, f"station_{index}", steel, length=0.70)
-    drop = 1.18
-    for sx in (-0.32, 0.32):
+    _add_top_hub(links, f"station_{index}", steel, length=p.hub_length)
+    drop = p.drop
+    for sx in (-p.hanger_half_width, p.hanger_half_width):
         _add_tube(links, f"side_link_{sx:+.1f}", (sx, 0.0, -0.02), (sx, 0.0, -drop), 0.018, steel)
         links.visual(
             Cylinder(radius=0.040, length=0.075),
@@ -675,7 +1053,7 @@ def _add_platform_station(
             name=f"lower_eye_{sx:+.1f}",
         )
     links.visual(
-        Cylinder(radius=0.020, length=0.72),
+        Cylinder(radius=0.020, length=p.hanger_half_width * 2.24),
         origin=Origin(xyz=(0.0, 0.0, -drop), rpy=(0.0, math.pi / 2.0, 0.0)),
         material=steel,
         name="lower_pivot_crossbar",
@@ -691,40 +1069,46 @@ def _add_platform_station(
     )
     platform = model.part(f"station_{index}_platform")
     platform.visual(
-        Cylinder(radius=0.026, length=0.72),
+        Cylinder(radius=0.026, length=p.hanger_half_width * 2.24),
         origin=Origin(rpy=(0.0, math.pi / 2.0, 0.0)),
         material=red,
         name="platform_pivot_bar",
     )
     platform.visual(
-        Box((0.70, 0.11, 0.080)),
+        Box((p.hanger_half_width * 2.16, 0.11, 0.080)),
         origin=Origin(xyz=(0.0, 0.0, -0.035)),
         material=red,
         name="pivot_to_deck_web",
     )
     platform.visual(
-        Box((0.82, 0.70, 0.040)),
+        Box((p.width, p.depth, 0.040)),
         origin=Origin(xyz=(0.0, 0.0, -0.08)),
         material=dark,
         name="tread_deck",
     )
     platform.visual(
-        Box((0.86, 0.055, 0.070)),
-        origin=Origin(xyz=(0.0, -0.36, -0.06)),
+        Box((p.width + 0.04, 0.055, 0.070)),
+        origin=Origin(xyz=(0.0, -p.depth * 0.515, -0.06)),
         material=red,
         name="side_rail_front",
     )
     platform.visual(
-        Box((0.86, 0.055, 0.070)),
-        origin=Origin(xyz=(0.0, 0.36, -0.06)),
+        Box((p.width + 0.04, 0.055, 0.070)),
+        origin=Origin(xyz=(0.0, p.depth * 0.515, -0.06)),
         material=red,
         name="side_rail_rear",
     )
-    _add_tube(platform, "hand_post_front", (0.30, -0.24, -0.06), (0.30, -0.24, 0.26), 0.018, red)
-    _add_tube(platform, "hand_post_rear", (0.30, 0.24, -0.06), (0.30, 0.24, 0.26), 0.018, red)
+    hand_x = p.width * 0.36
+    hand_y = p.depth * 0.34
+    _add_tube(
+        platform, "hand_post_front", (hand_x, -hand_y, -0.06), (hand_x, -hand_y, 0.26), 0.018, red
+    )
+    _add_tube(
+        platform, "hand_post_rear", (hand_x, hand_y, -0.06), (hand_x, hand_y, 0.26), 0.018, red
+    )
     platform.visual(
-        Cylinder(radius=0.020, length=0.54),
-        origin=Origin(xyz=(0.30, 0.0, 0.26), rpy=(math.pi / 2.0, 0.0, 0.0)),
+        Cylinder(radius=0.020, length=hand_y * 2.16),
+        origin=Origin(xyz=(hand_x, 0.0, 0.26), rpy=(math.pi / 2.0, 0.0, 0.0)),
         material=red,
         name="hand_bar",
     )
@@ -745,6 +1129,7 @@ def _add_bench_station(
     r: ResolvedPlaygroundSwingConfig,
     index: int,
     x: float,
+    p: StationParams,
     *,
     glider: bool = False,
 ) -> None:
@@ -753,9 +1138,9 @@ def _add_bench_station(
     wood = _mat(model, f"station_{index}_wood", r.palette["wood"])
     dark = _mat(model, f"station_{index}_bench_dark", r.palette["dark"])
     yoke = model.part(f"station_{index}_glider_links" if glider else f"station_{index}_bench_yoke")
-    _add_top_hub(yoke, f"station_{index}", steel, length=0.95 if glider else 0.78)
-    drop = 1.14
-    for sx in (-0.42, 0.42):
+    _add_top_hub(yoke, f"station_{index}", steel, length=p.hub_length)
+    drop = p.drop
+    for sx in (-p.hanger_half_width, p.hanger_half_width):
         _add_tube(yoke, f"side_arm_{sx:+.1f}", (sx, 0.0, -0.02), (sx, -0.05, -drop), 0.019, steel)
         yoke.visual(
             Cylinder(radius=0.032, length=0.09),
@@ -764,7 +1149,7 @@ def _add_bench_station(
             name=f"lower_bushing_{sx:+.1f}",
         )
     yoke.visual(
-        Cylinder(radius=0.020, length=0.88),
+        Cylinder(radius=0.020, length=p.hanger_half_width * 2.10),
         origin=Origin(xyz=(0.0, -0.05, -drop), rpy=(0.0, math.pi / 2.0, 0.0)),
         material=steel,
         name="lower_pivot_crossbar",
@@ -787,85 +1172,85 @@ def _add_bench_station(
         f"station_{index}_face_to_face_bench" if glider else f"station_{index}_bench"
     )
     bench.visual(
-        Cylinder(radius=0.025, length=0.90),
+        Cylinder(radius=0.025, length=p.hanger_half_width * 2.14),
         origin=Origin(rpy=(0.0, math.pi / 2.0, 0.0)),
         material=frame_mat,
         name="bench_pivot_bar",
     )
     bench.visual(
-        Box((0.88, 0.12, 0.140)),
+        Box((p.hanger_half_width * 2.06, 0.12, 0.140)),
         origin=Origin(xyz=(0.0, 0.0, -0.055)),
         material=frame_mat,
         name="pivot_to_bench_frame_web",
     )
     bench.visual(
-        Box((1.06, 0.48, 0.055)),
+        Box((p.width, p.depth if not glider else p.depth * 0.56, 0.055)),
         origin=Origin(xyz=(0.0, 0.0, -0.12)),
         material=frame_mat,
         name="bench_frame",
     )
     if glider:
         bench.visual(
-            Box((1.02, 0.24, 0.050)),
-            origin=Origin(xyz=(0.0, -0.23, -0.08)),
+            Box((p.width, p.depth * 0.28, 0.050)),
+            origin=Origin(xyz=(0.0, -p.depth * 0.27, -0.08)),
             material=wood,
             name="seat_pan_front",
         )
         bench.visual(
-            Box((1.02, 0.24, 0.050)),
-            origin=Origin(xyz=(0.0, 0.23, -0.08)),
+            Box((p.width, p.depth * 0.28, 0.050)),
+            origin=Origin(xyz=(0.0, p.depth * 0.27, -0.08)),
             material=wood,
             name="seat_pan_rear",
         )
         bench.visual(
-            Box((1.00, 0.22, 0.140)),
-            origin=Origin(xyz=(0.0, -0.34, -0.04)),
+            Box((p.width * 0.98, p.depth * 0.26, 0.140)),
+            origin=Origin(xyz=(0.0, -p.depth * 0.40, -0.04)),
             material=frame_mat,
             name="front_seat_to_back_web",
         )
         bench.visual(
-            Box((1.00, 0.22, 0.140)),
-            origin=Origin(xyz=(0.0, 0.34, -0.04)),
+            Box((p.width * 0.98, p.depth * 0.26, 0.140)),
+            origin=Origin(xyz=(0.0, p.depth * 0.40, -0.04)),
             material=frame_mat,
             name="rear_seat_to_back_web",
         )
         bench.visual(
-            Box((1.02, 0.055, 0.30)),
-            origin=Origin(xyz=(0.0, -0.43, 0.12)),
+            Box((p.width, 0.055, 0.30 * p.scale)),
+            origin=Origin(xyz=(0.0, -p.depth * 0.50, 0.12)),
             material=wood,
             name="back_panel_front",
         )
         bench.visual(
-            Box((1.02, 0.055, 0.30)),
-            origin=Origin(xyz=(0.0, 0.43, 0.12)),
+            Box((p.width, 0.055, 0.30 * p.scale)),
+            origin=Origin(xyz=(0.0, p.depth * 0.50, 0.12)),
             material=wood,
             name="back_panel_rear",
         )
         bench.visual(
-            Box((0.86, 0.18, 0.050)),
+            Box((p.width * 0.84, p.depth * 0.21, 0.050)),
             origin=Origin(xyz=(0.0, 0.0, -0.16)),
             material=dark,
             name="center_footwell",
         )
     else:
-        for j, yy in enumerate((-0.17, -0.06, 0.05, 0.16)):
+        for j, yy in enumerate((-p.depth * 0.35, -p.depth * 0.12, p.depth * 0.10, p.depth * 0.33)):
             bench.visual(
-                Box((1.04, 0.080, 0.025)),
+                Box((p.width * 0.98, p.depth * 0.17, 0.025)),
                 origin=Origin(xyz=(0.0, yy, -0.10)),
                 material=wood,
                 name=f"seat_slat_{j}",
             )
-        for sx in (-0.44, 0.44):
+        for sx in (-p.width * 0.42, p.width * 0.42):
             bench.visual(
-                Box((0.060, 0.090, 0.420)),
-                origin=Origin(xyz=(sx, -0.25, 0.05)),
+                Box((0.060, p.depth * 0.19, 0.420 * p.scale)),
+                origin=Origin(xyz=(sx, -p.depth * 0.52, 0.05)),
                 material=frame_mat,
                 name=f"back_post_{sx:+.1f}",
             )
         for j, zz in enumerate((0.02, 0.12, 0.22)):
             bench.visual(
-                Box((1.04, 0.035, 0.075)),
-                origin=Origin(xyz=(0.0, -0.28, zz)),
+                Box((p.width * 0.98, 0.035, 0.075)),
+                origin=Origin(xyz=(0.0, -p.depth * 0.58, zz)),
                 material=wood,
                 name=f"back_slat_{j}",
             )
@@ -882,21 +1267,29 @@ def _add_bench_station(
 
 
 def _add_disc_station(
-    model: ArticulatedObject, r: ResolvedPlaygroundSwingConfig, index: int, x: float
+    model: ArticulatedObject,
+    r: ResolvedPlaygroundSwingConfig,
+    index: int,
+    x: float,
+    p: StationParams,
 ) -> None:
     steel = _mat(model, f"station_{index}_steel", r.palette["steel"])
     dark = _mat(model, f"station_{index}_dark", r.palette["dark"])
     seat = model.part(f"station_{index}_disc_seat")
-    _add_top_hub(seat, f"station_{index}", steel, length=0.24)
-    _add_tube(seat, "single_strap", (0.0, 0.0, -0.02), (0.0, 0.0, -0.55), 0.018, dark)
+    _add_top_hub(seat, f"station_{index}", steel, length=p.hub_length)
+    seat_z = -(p.drop + 0.04)
+    _add_tube(seat, "single_strap", (0.0, 0.0, -0.02), (0.0, 0.0, seat_z + 0.07), 0.018, dark)
     seat.visual(
-        Cylinder(radius=0.20, length=0.040),
-        origin=Origin(xyz=(0.0, 0.0, -0.62)),
+        Cylinder(radius=p.radius, length=0.040),
+        origin=Origin(xyz=(0.0, 0.0, seat_z)),
         material=dark,
         name="seat_disk",
     )
     seat.visual(
-        Sphere(radius=0.055), origin=Origin(xyz=(0.0, 0.0, -0.57)), material=steel, name="seat_hub"
+        Sphere(radius=0.055),
+        origin=Origin(xyz=(0.0, 0.0, seat_z + 0.05)),
+        material=steel,
+        name="seat_hub",
     )
     model.articulation(
         f"station_{index}_frame_to_disc",
@@ -910,41 +1303,51 @@ def _add_disc_station(
     foot = model.part(f"station_{index}_footrest_ring")
     foot.visual(
         mesh_from_geometry(
-            TorusGeometry(radius=0.15, tube=0.010, radial_segments=16, tubular_segments=48),
+            TorusGeometry(
+                radius=p.radius * 0.75, tube=0.010, radial_segments=16, tubular_segments=48
+            ),
             f"station_{index}_footrest_ring_mesh",
         ),
-        origin=Origin(xyz=(-0.11, 0.0, -0.10)),
+        origin=Origin(xyz=(-p.radius * 0.55, 0.0, -0.10)),
         material=steel,
         name="footrest_loop",
     )
     foot.visual(Box((0.04, 0.03, 0.035)), origin=Origin(), material=steel, name="footrest_hinge")
-    _add_tube(foot, "footrest_hinge_strut", (0.0, 0.0, 0.0), (0.04, 0.0, -0.10), 0.012, steel)
+    _add_tube(
+        foot, "footrest_hinge_strut", (0.0, 0.0, 0.0), (p.radius * 0.20, 0.0, -0.10), 0.012, steel
+    )
     model.articulation(
         f"station_{index}_disc_to_footrest",
         ArticulationType.REVOLUTE,
         parent=seat,
         child=foot,
-        origin=Origin(xyz=(0.09, 0.0, -0.64)),
+        origin=Origin(xyz=(p.radius * 0.45, 0.0, seat_z - 0.02)),
         axis=(0.0, 1.0, 0.0),
         motion_limits=MotionLimits(effort=4.0, velocity=1.5, lower=0.0, upper=0.60),
     )
 
 
 def _add_nest_station(
-    model: ArticulatedObject, r: ResolvedPlaygroundSwingConfig, index: int, x: float
+    model: ArticulatedObject,
+    r: ResolvedPlaygroundSwingConfig,
+    index: int,
+    x: float,
+    p: StationParams,
 ) -> None:
     steel = _mat(model, f"station_{index}_steel", r.palette["steel"])
     rope = _mat(model, f"station_{index}_rope", r.palette["rope"])
     blue = _mat(model, f"station_{index}_blue", r.palette["blue"])
     hanger = model.part(f"station_{index}_nest_hanger")
-    _add_top_hub(hanger, f"station_{index}", steel, length=0.82)
-    drop = 1.18
-    for sx in (-0.34, 0.34):
+    _add_top_hub(hanger, f"station_{index}", steel, length=p.hub_length)
+    drop = p.drop
+    link_y = p.radius * 0.75
+    lower_x = p.hanger_half_width * 0.72
+    for sx in (-p.hanger_half_width, p.hanger_half_width):
         _add_tube(
             hanger,
             f"paired_link_{sx:+.1f}_a",
             (sx, -0.02, -0.02),
-            (sx * 0.72, -0.36, -drop),
+            (sx * 0.72, -link_y, -drop),
             0.016,
             steel,
         )
@@ -952,26 +1355,38 @@ def _add_nest_station(
             hanger,
             f"paired_link_{sx:+.1f}_b",
             (sx, 0.02, -0.02),
-            (sx * 0.72, 0.36, -drop),
+            (sx * 0.72, link_y, -drop),
             0.016,
             steel,
         )
     hanger.visual(
-        Cylinder(radius=0.022, length=0.78),
+        Cylinder(radius=0.022, length=p.hub_length * 0.95),
         origin=Origin(xyz=(0.0, 0.0, -drop), rpy=(0.0, math.pi / 2.0, 0.0)),
         material=steel,
         name="lower_basket_pivot_bar",
     )
     _add_tube(
-        hanger, "lower_front_spreader", (-0.25, -0.36, -drop), (0.25, -0.36, -drop), 0.014, steel
+        hanger,
+        "lower_front_spreader",
+        (-lower_x, -link_y, -drop),
+        (lower_x, -link_y, -drop),
+        0.014,
+        steel,
     )
     _add_tube(
-        hanger, "lower_rear_spreader", (-0.25, 0.36, -drop), (0.25, 0.36, -drop), 0.014, steel
+        hanger,
+        "lower_rear_spreader",
+        (-lower_x, link_y, -drop),
+        (lower_x, link_y, -drop),
+        0.014,
+        steel,
     )
     _add_tube(
-        hanger, "lower_center_web_front", (0.0, 0.0, -drop), (0.0, -0.36, -drop), 0.012, steel
+        hanger, "lower_center_web_front", (0.0, 0.0, -drop), (0.0, -link_y, -drop), 0.012, steel
     )
-    _add_tube(hanger, "lower_center_web_rear", (0.0, 0.0, -drop), (0.0, 0.36, -drop), 0.012, steel)
+    _add_tube(
+        hanger, "lower_center_web_rear", (0.0, 0.0, -drop), (0.0, link_y, -drop), 0.012, steel
+    )
     model.articulation(
         f"station_{index}_frame_to_nest_hanger",
         ArticulationType.REVOLUTE,
@@ -983,14 +1398,16 @@ def _add_nest_station(
     )
     basket = model.part(f"station_{index}_nest_basket")
     basket.visual(
-        Cylinder(radius=0.026, length=0.76),
+        Cylinder(radius=0.026, length=p.hub_length * 0.92),
         origin=Origin(rpy=(0.0, math.pi / 2.0, 0.0)),
         material=blue,
         name="basket_pivot_bar",
     )
     basket.visual(
         mesh_from_geometry(
-            TorusGeometry(radius=0.48, tube=0.045, radial_segments=24, tubular_segments=72),
+            TorusGeometry(
+                radius=p.radius, tube=0.045 * p.scale, radial_segments=24, tubular_segments=72
+            ),
             f"station_{index}_nest_ring_mesh",
         ),
         material=blue,
@@ -998,18 +1415,21 @@ def _add_nest_station(
     )
     basket.visual(
         mesh_from_geometry(
-            TorusGeometry(radius=0.27, tube=0.010, radial_segments=12, tubular_segments=48),
+            TorusGeometry(
+                radius=p.radius * 0.56, tube=0.010, radial_segments=12, tubular_segments=48
+            ),
             f"station_{index}_inner_rope_ring_mesh",
         ),
         origin=Origin(xyz=(0.0, 0.0, -0.025)),
         material=rope,
         name="inner_rope_ring",
     )
-    for j, yy in enumerate((-0.30, -0.15, 0.0, 0.15, 0.30)):
-        half = math.sqrt(max(0.0, 0.45 * 0.45 - yy * yy))
+    weave_offsets = tuple(p.radius * t for t in (-0.62, -0.31, 0.0, 0.31, 0.62))
+    for j, yy in enumerate(weave_offsets):
+        half = math.sqrt(max(0.0, (p.radius * 0.94) ** 2 - yy * yy))
         _add_tube(basket, f"weave_x_{j}", (-half, yy, -0.035), (half, yy, -0.035), 0.006, rope)
-    for j, xx in enumerate((-0.30, -0.15, 0.0, 0.15, 0.30)):
-        half = math.sqrt(max(0.0, 0.45 * 0.45 - xx * xx))
+    for j, xx in enumerate(weave_offsets):
+        half = math.sqrt(max(0.0, (p.radius * 0.94) ** 2 - xx * xx))
         _add_tube(basket, f"weave_y_{j}", (xx, -half, -0.043), (xx, half, -0.043), 0.006, rope)
     model.articulation(
         f"station_{index}_hanger_to_nest",
@@ -1028,25 +1448,26 @@ def _build_station(
     index: int,
     recipe: StationRecipe,
     x: float,
+    p: StationParams,
 ) -> None:
     if recipe == "simple_belt_station":
-        _add_belt_station(model, r, index, x)
+        _add_belt_station(model, r, index, x, p)
     elif recipe == "bucket_station":
-        _add_bucket_station(model, r, index, x)
+        _add_bucket_station(model, r, index, x, p)
     elif recipe == "tire_station":
-        _add_tire_station(model, r, index, x)
+        _add_tire_station(model, r, index, x, p)
     elif recipe == "lap_bar_station":
-        _add_lap_bar_station(model, r, index, x)
+        _add_lap_bar_station(model, r, index, x, p)
     elif recipe == "platform_station":
-        _add_platform_station(model, r, index, x)
+        _add_platform_station(model, r, index, x, p)
     elif recipe == "bench_station":
-        _add_bench_station(model, r, index, x, glider=False)
+        _add_bench_station(model, r, index, x, p, glider=False)
     elif recipe == "glider_station":
-        _add_bench_station(model, r, index, x, glider=True)
+        _add_bench_station(model, r, index, x, p, glider=True)
     elif recipe == "swivel_disc_station":
-        _add_disc_station(model, r, index, x)
+        _add_disc_station(model, r, index, x, p)
     elif recipe == "nest_station":
-        _add_nest_station(model, r, index, x)
+        _add_nest_station(model, r, index, x, p)
     else:  # pragma: no cover - resolve_config validates.
         raise ValueError(f"Unhandled station recipe {recipe!r}")
 
@@ -1059,8 +1480,10 @@ def build_playground_swing(
     r = resolve_config(config or PlaygroundSwingConfig())
     model = ArticulatedObject(name=r.name, assets=assets)
     _build_frame(model, r)
-    for index, (recipe, x) in enumerate(zip(r.station_recipes, r.station_centers)):
-        _build_station(model, r, index, recipe, x)
+    for index, (recipe, x, params) in enumerate(
+        zip(r.station_recipes, r.station_centers, r.station_params)
+    ):
+        _build_station(model, r, index, recipe, x, params)
     model.meta["template_slug"] = "playground_swing"
     model.meta["station_recipes"] = list(r.station_recipes)
     return model
@@ -1161,6 +1584,7 @@ def run_playground_swing_tests(
 __all__ = [
     "PlaygroundSwingConfig",
     "ResolvedPlaygroundSwingConfig",
+    "StationParams",
     "build_playground_swing",
     "build_seeded_playground_swing",
     "config_from_seed",

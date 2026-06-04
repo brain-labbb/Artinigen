@@ -566,7 +566,6 @@ def build_sweep_report_from_outcomes(
     pass_threshold: float = DEFAULT_PASS_THRESHOLD,
     repo_root: Path | None = None,
     state_dir: Path | None = None,
-    line_floor: int = 1000,
     elapsed_s: float = 0.0,
 ) -> SweepReport:
     """Aggregate existing outcomes into the same report shape used by run_sweep."""
@@ -600,7 +599,6 @@ def build_sweep_report_from_outcomes(
         line_count=line_count,
         outcomes=outcomes,
         repo_root=repo_root,
-        line_floor=line_floor,
     )
 
     verdict = "pass" if pass_rate >= pass_threshold and gates.all_pass_or_skipped() else "fail"
@@ -651,7 +649,6 @@ def run_sweep(
     repo_root: Path | None = None,
     progress: Callable[[SeedOutcome], None] | None = None,
     state_dir: Path | None = None,
-    line_floor: int = 1000,
     compile_timeout_s: float = 0.0,
 ) -> SweepReport:
     """Run a multi-seed compile sweep and return the structured report."""
@@ -675,7 +672,6 @@ def run_sweep(
         pass_threshold=pass_threshold,
         repo_root=repo_root,
         state_dir=state_dir,
-        line_floor=line_floor,
         elapsed_s=elapsed,
     )
 

@@ -62,7 +62,7 @@ def test_resolve_config_rejects_invalid_combos() -> None:
         resolve_config(ArticulatedTaskLampConfig(material_style="neon_pink"))  # type: ignore[arg-type]
 
 
-def test_resolve_config_gates_wall_mount_arm() -> None:
+def test_resolve_config_keeps_wall_mount_slot_choice() -> None:
     resolved = resolve_config(
         ArticulatedTaskLampConfig(
             mount_style="wall_plate",
@@ -70,7 +70,7 @@ def test_resolve_config_gates_wall_mount_arm() -> None:
             shade_style="lathe_conical",
         )
     )
-    assert resolved.arm_style == "wall_cylinder"
+    assert resolved.arm_style == "twin_rail_two_link"
     assert resolved.pitch_axis_family == "pos_y_wall"
 
 

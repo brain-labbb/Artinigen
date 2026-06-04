@@ -1,6 +1,6 @@
 """Casino machine procedural template.
 
-This module implements ``articraft_template_authoring/specs/casino_machine.md``.
+This module implements ``articraft_template_authoring/specs_modular_v1/casino_machine.md``.
 
 The template follows the spec's mixed slot graph:
 

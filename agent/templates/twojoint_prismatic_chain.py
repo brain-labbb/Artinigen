@@ -86,8 +86,7 @@ from sdk import (
     mesh_from_cadquery,
 )
 
-# Modular templates are flagged so the sweep coverage gate skips the
-# single-anchor anchor_geometry_match gate and runs module_topology_diversity.
+# Modular template: sweep coverage uses module_topology_diversity.
 __modular__ = True
 
 

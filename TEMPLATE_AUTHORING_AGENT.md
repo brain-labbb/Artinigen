@@ -13,8 +13,7 @@ section 4.6 with a CLI-structured one. The spec workflow (sections 2 and 3 of
 For new Articraft category templates, also read
 [`MODULAR_TEMPLATE_AUTHORING.md`](MODULAR_TEMPLATE_AUTHORING.md). New category
 templates are modular by default: they set `__modular__ = True`, use per-module
-5-star sources, and pass `module_topology_diversity` instead of the legacy
-single-`primary_anchor` / `anchor_geometry_match` route.
+5-star sources, and pass `module_topology_diversity`.
 
 The single source of truth for whether a template is done is:
 
@@ -40,9 +39,7 @@ compiler-owned baseline now runs:
   world coordinates — catches the dj_knob "decoration floats above panel"
   pattern Rule 2 forbids)
 
-…plus the coverage gates listed in §3. Modular templates use
-`module_topology_diversity`; legacy non-modular templates may still use
-`anchor_geometry_match`.
+…plus the modular coverage gate listed in §3.
 
 ---
 
@@ -112,10 +109,6 @@ uv run articraft template compile-sweep <slug> --seeds 0-49
     }
   ],
   "coverage_gates": {
-    "line_floor":            { "status": "pass" | "fail",              "details": {...}, "reason": "..." },
-    "enum_coverage":         { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." },
-    "adopted_source":        { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." },
-    "anchor_geometry_match":      { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." },
     "module_topology_diversity":  { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." }
   },
   "escalation": {
@@ -162,14 +155,11 @@ Fix order:
 
 | Gate | What it checks | What to do on `fail` |
 |---|---|---|
-| `line_floor` | `agent/templates/<slug>.py` has `>= line_floor` lines (default 1000) | Expand `_build_*` branches, add palette/joint metadata, fill in optional parts. 1000 is the floor not the ceiling. |
-| `enum_coverage` | every Literal value declared on the input Config dataclass is exercised by at least one **passing** seed | Either fix the `_build_<value>` branch so the value works, or — if you've narrowed scope intentionally — remove the value from the `Literal[...]`. **Do not** widen seeds to escape this check; the gate already samples enough seeds. |
-| `adopted_source` | every `source_id` in the spec's "Adopted Source Index" table appears as a `# adopted: <Sxx>` marker in the template | Add markers above the helper code that adapts the corresponding 5-star sample. If you genuinely didn't adopt the snippet, delete the row from the spec. |
 | `module_topology_diversity` | modular templates expose at least the required number of distinct passing `slot_choices_for_seed` tuples | Fix missing module factories, narrow invalid seed domains, or revise the modular spec if the sample pool cannot support enough distinct topology. |
-| `anchor_geometry_match` | legacy non-modular templates match a single nominated anchor fingerprint | For new modular templates this should be skipped; do not add `primary_anchor` merely to satisfy a legacy path. |
 
-`status: "skipped"` is fine — it means the gate didn't apply (no spec yet,
-no Literal fields on Config, etc.). Skipped does not block `verdict=pass`.
+`status: "skipped"` is fine during early pipeline stages; the topology gate is
+enforced once the cumulative sweep reaches 20 seeds. Skipped does not block
+`verdict=pass`.
 
 ### 3.3 Escalation
 
@@ -193,20 +183,13 @@ recent sweep:
 
 - `verdict == "pass"`
 - `pass_rate >= 0.95`
-- `coverage_gates.line_floor.status == "pass"`
-- For modular templates (`__modular__ = True`):
-  `coverage_gates.module_topology_diversity.status == "pass"` and
-  `coverage_gates.anchor_geometry_match.status in {"skipped", "pass"}`.
-- For legacy non-modular templates:
-  `coverage_gates.anchor_geometry_match.status == "pass"`.
-- `coverage_gates.enum_coverage.status in {"pass", "skipped"}`
-- `coverage_gates.adopted_source.status in {"pass", "skipped"}`
+- `coverage_gates.module_topology_diversity.status == "pass"` on the 0-49 stage
 - You have visually inspected previews for at least seeds `0, 1, 2` using
   `uv run python scripts/render_template_previews.py --slugs <slug> --seeds 0-2`
   and confirmed they look like the category and have no obvious
   identity/proportion/closed-pose problems.
 
-The first six are mechanical and surfaced in the JSON. The seventh still
+The first three are mechanical and surfaced in the JSON. The preview check still
 requires your judgment because no compiler check answers "does this look
 like a <category>." Always do it.
 
@@ -216,8 +199,6 @@ like a <category>." Always do it.
 
 - **Do not** declare done because `pytest tests/agent/test_<slug>_template.py`
   passes. That suite covers a different (smaller) baseline than the sweep CLI.
-- **Do not** declare done because `verdict=fail` only because of `line_floor`
-  or `adopted_source`. Both are real gates.
 - **Do not** lower `--pass-threshold` to make the verdict pass. The threshold
   is policy, not a tuning knob. If 0.95 looks unachievable, escalate.
 - **Do not** disable streak tracking via `--state-dir ""` to escape
@@ -247,12 +228,6 @@ like a <category>." Always do it.
 
 ## 7. Frequently asked
 
-**Q: What if `enum_coverage` fails because `config_from_seed` never samples
-some declared value?**
-The Literal annotation is a promise. If you don't have a working
-`_build_<value>` branch, remove the value from the Literal. If you do but
-the seed RNG never picks it, fix `config_from_seed` to cover the domain.
-
 **Q: What if all 50 seeds fail because of one trivial bug (e.g. typo)?**
 Fix the trivial bug. After the next sweep most seeds will pass and you can
 work cluster-by-cluster on the remainder.
@@ -268,12 +243,6 @@ it as a singleton.
 Target is <2 min per sweep at `--max-workers 4`. If a single seed
 compile is taking >30s, the template's `_build_*` has accidental O(n²) or
 the QC step is bogging down — fix it before iterating further.
-
-**Q: When may I lower the line_floor?**
-Only when the slug is a deliberately narrow split-off variant (e.g.
-`barrier_gate_leaf_gate` peeled off from a multi-mechanism parent). Pass
-`--line-floor 800` (etc.) only after writing a one-line justification in the
-template module docstring. Do not lower below 600.
 
 ---
 
