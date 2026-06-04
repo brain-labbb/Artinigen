@@ -1,9 +1,8 @@
 # Modular Spec Template
 
-`articraft_template_authoring/specs/<category_slug>.md` 的字段规范。
-SPEC_ONLY 阶段必须按本格式产出 spec。
+`articraft_template_authoring/specs/<category_slug>.md` 的唯一字段规范。SPEC_ONLY 阶段必须按本格式产出 spec。
 
----
+Modular spec 不使用单一 `primary_anchor` 作为主来源。它使用 per-module source table、每 slot 的 `seed=0 anchor` module，以及 slot graph 来描述模板结构。
 
 ## 强制字段
 
@@ -15,20 +14,21 @@ SPEC_ONLY 阶段必须按本格式产出 spec。
 |---|---|
 | slug | `<category_slug>` |
 | template path | `agent/templates/<slug>.py` |
-| test path (optional) | `tests/agent/test_<slug>_template.py` — 可选回归网，默认被 pytest 排除；验收以 compile-sweep 为准 |
+| test path (optional) | `tests/agent/test_<slug>_template.py` |
 | stage | `SPEC_ONLY_DRAFT` |
 | status | `pending` |
 | __modular__ | `True` |
 | pattern | `linear_chain` / `parallel_children` / `multiplicity` / `mixed` |
 ```
 
-`pattern` 字段说明这个模板的主要 slot 组装方式：
-- `linear_chain`：A → B → C 串成链（knife / monitor_mount basic）
-- `parallel_children`：所有槽位 part 都 parent 到同一个 chassis（dj_equipment）
-- `multiplicity`：某槽位是"同部件 N 次"（fan blades / N-link arm）
-- `mixed`：混合多种
+`pattern` 说明主要 slot 组装方式：
 
-### 2. 5 星样本阅读清单
+- `linear_chain`：slot 串成链。
+- `parallel_children`：多个 slot 的 part 挂到共同 chassis / parent。
+- `multiplicity`：某 slot 负责同构子件 N 次复制。
+- `mixed`：混合多种。
+
+### 2. 5 星样本阅读摘要
 
 ```markdown
 ## 5 星样本阅读摘要
@@ -37,30 +37,20 @@ SPEC_ONLY 阶段必须按本格式产出 spec。
 | five_star_total | N |
 | read_count | N |
 | read_scope | all 5-star samples in this category |
-| samples_adopted_as_module_sources | M |
-| samples_read_but_not_adopted | N - M |
+| source_index_policy | only adopted module sources are indexed below |
 ```
 
-后面紧跟全部样本的清单（含 record_id），每个标 "adopted as source for
-slot X module Y" 或 "read but not adopted, reason: ..."。
-
 ### 3. 核心身份
-
-类别的物理含义（保证跟相邻类别区分开）+ 主要功能 + 默认成熟域。
 
 ```markdown
 ## 核心身份
 
-<一段散文>，约 100-200 字。
-
-边界：
-- 不包括 ...
-- 不混入 ...（说明边界）
+<类别物理含义、主要功能、默认成熟域。说明不该混入的相邻类别。>
 ```
 
-### 4. 槽位 + 候选模块表（核心）
+### 4. 槽位 + 候选模块表
 
-这是 spec 最核心的字段。
+每个 slot 表示一个可替换结构/功能层。每个 candidate module 必须结构不同，并有 5 星样本来源。
 
 ```markdown
 ## 槽位 + 候选模块表
@@ -69,134 +59,93 @@ slot X module Y" 或 "read but not adopted, reason: ..."。
 
 | module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
 |---|---|---|---|---|
-| <module_alpha> | rec_<slug>_xxx | L25-L120 | **yes** | 描述这个 module 的结构和外形 |
+| <module_alpha> | rec_<slug>_xxx | L25-L120 | yes | part tree / joint / primitive / interface 特征 |
 | <module_beta> | rec_<slug>_yyy | L40-L155 | | ... |
-| <module_gamma> | rec_<slug>_zzz | L30-L170 | | ... |
 
 ### Slot B：<slot_name_b>
 
-...（同样的结构）
-
-### Slot C：<slot_name_c>
-
-...（同样的结构）
+...
 ```
 
-**硬约束**：
-- 每个槽位 **至少 3 个候选**（不够 3 个，给出理由并退到 2，**禁止 1**）
-- 每个候选必须有 `model.py:Lx-Ly` 引用（来自 spec 已读的某个 5 星样本）
-- 每个候选必须**结构上不同**（不同 part 树 / 不同 joint 数 / 不同 mesh），
-  不能只换比例 / 颜色 / 装饰
-- 每槽位标恰好一个 `seed=0 anchor`
+硬约束：
 
-### 5. 槽位图
+- 每个 slot 目标 3-6 个 candidate；样本池不足时可降到 2，但必须说明理由。
+- 禁止只有 1 个 candidate 的 slot，除非该 slot 折入相邻 module 或改成 module-local fixed structure。
+- 每个 candidate 必须有 `model.py:Lx-Ly` 来源。
+- 每个 slot 恰好一个 `seed=0 anchor`。
+- Candidate 之间必须有结构差异；只换尺寸、颜色、材质或装饰不是新 candidate。
+
+### 5. 槽位图（slot graph）
 
 ```markdown
 ## 槽位图（slot graph）
 
 pattern: <linear_chain / parallel_children / multiplicity / mixed>
 
-<slot A> --[chain_joint_type axis]--> <slot B> --[chain_joint_type axis]--> <slot C>
-
-或者：
-
-<slot A: chassis> ↘ (parents)
-                  ├── <slot B parts>  (parallel REVOLUTE)
-                  └── <slot C parts>  (parallel PRISMATIC)
-
-或者（multiplicity）：
-
-<slot A> → [multiplicity slot B: N=N_min..N_max, candidates: <list>] → <slot C>
+<slot A> --[joint_type axis + interface]--> <slot B> --[...]--> <slot C>
 ```
 
-### 6. 每槽位的 Parts / Joints
+必须说明：
+
+- slot 顺序或 parent 关系。
+- 每条跨 slot 连接的接口点位：mating face、pivot、rail、socket、axis、contact plane 或 symmetry plane。
+- 跨 slot joint type、axis、range 或 fixed support policy。
+- 哪些 slot 是互斥、可选或由上游 module 派生。
+
+### 6. 每槽位 Module Emits / Interfaces
 
 ```markdown
-## 部件（Parts）
-
-按槽位组织。每个 module 候选下列出它会 emit 的 part 名和 visual 概览。
+## 每槽位 Module Emits / Interfaces
 
 ### Slot A / module <name>
-| part | visual_count | 描述 | 来源 |
-| <part_x> | ~N | ... | model.py:Lx-Ly |
-
-## 关节（Joints）
-
-按 chain 顺序列出：
-
-| 关节 | 类型 | parent_slot.part | child_slot.part | axis | range | 描述 |
-| ... | REVOLUTE | A.x | B.y | (0,0,1) | [-π,π] | ... |
+| emits | 描述 | 来源 |
+|---|---|---|
+| parts | <part names / visual groups> | S1 / model.py:Lx-Ly |
+| internal joints | <joint names, type, axis, range> | S1 / model.py:Lx-Ly |
+| upstream interface | <face / anchor / parent policy> | S1 / model.py:Lx-Ly |
+| downstream interface | <face / anchor / consumer joint> | S1 / model.py:Lx-Ly |
 ```
+
+要求：
+
+- 活动件必须有 articulation 语义。
+- 不动细节写成 parent visual，不作为独立 part。
+- Interface 必须能映射到后续 `InterfaceSpec` 和 `MatingContract`。
 
 ### 7. 参数范围汇总
 
 ```markdown
 ## 参数范围汇总
-| 参数 | 类型 | 取值范围 | 默认 | 派生关系 | 来源 |
-| ... | float | [0.x, 0.y] | 0.x | ... | model.py:... |
+| 参数 | 类型 | 取值范围 / 候选值 | 默认 | 派生关系 | 来源 |
+|---|---|---|---|---|---|
+| <slot_choice> | enum | <module names> | <seed0 module> | 由 seed 或 override 选择 | module table |
+| <dimension> | float | [min, max] | value | 从接口或父基准派生 | Sx / model.py:Lx-Ly |
 ```
 
-主要列：尺寸参数（含 multiplicity 槽位的 N_min / N_max）、palette、enum
-选择（如果模块内部还有 sub-enum）。
+参数只表达语义选择、尺寸、行程、角度、multiplicity 数量、palette 或 module-local variant。不要把未实现拓扑放进 enum。
 
-### 8. Multiplicity / Copy Logic（强制判断）
+### 8. Multiplicity / Copy Logic
 
-每个 spec 都必须写本节，由 agent 判断该类别是否有**模板级复制数量逻辑**。
-这里的 Multiplicity 只指 "同一种 visual/part/joint 或 part+joint 组合需要按
-N 复制" 的规则。若有 `*_count`、`N` 个同构子件、径向重复、并排重复、
-串联重复或 "fan blades / arm links / reels / bells" 这类逻辑，必须展开写清楚；
-若没有，也必须显式写 "无复制数量逻辑"，并说明不要引入独立 count 参数。
+每个 spec 都必须写本节。若没有模板级复制数量逻辑，也要明确说明没有。
 
-不要把类别身份中的固定单件硬写成 count：例如 one propeller、one car、
-one safe door、one lift panel、left/right guide rails、fixed hinge knuckles、
-fixed control surfaces、bolts/ribs/tick marks 都不是模板级 Multiplicity，除非
-模板真的要通过循环复制这些对象并暴露 N 或固定 N 个同构复制件。
+有复制数量逻辑时写：
 
-只要出现可变 N，就必须给出可采样的整数闭区间 `N_min..N_max`，或离散集合；
-若是固定 N，也必须是固定 N 个同构复制件（例如 fixed 3 branches），不是
-fixed 1 的普通 named slot。不要只写 "N 个"。范围要来自 5 星样本或
-reviewer-gated 外推，例如 `blade_count=3..8`、`arm_link_count=1..5`、
-`reel_count=2..4`。
+- `count_param`
+- `N_range`
+- sampling domain
+- copied object
+- naming
+- placement
+- joint policy
+- source/gating
+
+无复制数量逻辑时写：
 
 ```markdown
 ## Multiplicity / Copy Logic
 
-有复制数量逻辑时写：
-
-- `count_param`: 谁决定 N，N 是随机采样、模块派生、还是固定的同构复制件数量。
-- `N_range`: 必填；写可采样整数闭区间、离散集合或固定同构复制件数量，
-  例如 `3..8` / `{1,2}` / `fixed 4`。
-- sampling domain: 是否允许区间内所有整数，还是只允许离散集合（如 `{3, 5, 7}`）。
-- copied object: 复制的是 visual、part、joint，还是 part+joint 成对复制。
-- naming: 复制件命名方式，例如 `blade_i` / `reel_i_spin`。
-- placement: 复制件如何分布，例如 `360°/N` 径向等分、并排等间距、串联链。
-- joint policy: 每个复制件是否有独立 joint；若没有，说明共享哪个主 joint。
-- source/gating: 哪些 N 来自 5 星样本，哪些是 reviewer-gated 参数外推；
-  外推必须写清为什么不会破坏间距、bbox、joint 拓扑或 validator 覆盖。
-
-示例：
-
-- `blade_count`: `N_range=3..8`, sampling domain=`all integers`; copied object=
-  blade visual(s) under shared rotor part; placement=`360°/N` radial spacing.
-- `arm_link_count`: `N_range=1..5`, sampling domain=`all integers`; copied object=
-  serial link part + revolute joint pair; naming=`arm_link_i` / `arm_joint_i`.
-- `branch_count`: `N_range=fixed 3`, sampling domain=`fixed constant`; copied
-  object=branch part + independent rotary joint; naming=`branch_i` / `branch_i_spin`.
-- `wiper_count`: `N_range={1,2}`, module-derived, not sampled independently;
-  copied object=wiper arm + blade + sweep joint for dual modules.
-
-无复制数量逻辑时写：
-
-- 无复制数量逻辑：本类别的核心可动件是固定 named slots，不随机采样
-  `*_count`，也不通过循环复制模板级 visual/part/joint。
-- 固定单件不要写成 `foo_count=fixed 1`。例如 one propeller、one door、
-  one lift panel、one car、one chassis 都只是 named slots。
-- 若某些 module 内部有 source-local 重复视觉或固定结构（例如 left/right rails,
-  ribs、bolts、tick marks、hinge knuckles、fixed decorative controls），它们是
-  baked visuals 或 module-local fixed structure，不暴露为模板级 count 参数。
+- 无复制数量逻辑：核心结构由固定 named slots 表达，不暴露 `*_count`，也不通过循环复制模板级 visual/part/joint。
 ```
-
-本节要能让实现 agent 不需要从参数表反推复制规则。
 
 ### 9. 拓扑多样性审计
 
@@ -204,28 +153,31 @@ reviewer-gated 外推，例如 `blade_count=3..8`、`arm_link_count=1..5`、
 ## 拓扑多样性审计
 
 总组合数：A × B × C = X
-（如果有 multiplicity 槽位，把 N_max - N_min + 1 算进去）
+（如有 multiplicity，把 N 的采样数量算进去）
 
 预计 `module_topology_diversity` 门控（≥5 distinct）能否过：yes / no
 理由：...
 
-每槽位候选数：
-| slot | candidate_count | 是否 ≥3 | 备注 |
-| A | 4 | yes | |
-| B | 3 | yes | |
-| C | 2 | **no** | 理由：5 星样本只有 2 种结构家族 |
+| slot | candidate_count | 是否 ≥2 | 是否 ≥3 | 备注 |
+|---|---:|---|---|---|
+| A | 4 | yes | yes | |
 ```
 
-### 10. 验证器和拒绝条件
+### 10. Validator 和 Reject cases
 
 ```markdown
-## Validator（author_run_tests 必须覆盖的点）
+## Validator
 
-- ...
+- seed=0 equals anchor module combination
+- slot_choices_for_seed returns implemented module names
+- module_topology_diversity expected to pass
+- critical InterfaceSpec / MatingContract points exist
+- key joints have expected type / axis / range
+- copied objects follow naming and placement policy
 
-## Reject cases（必须能识别并拒绝）
+## Reject cases
 
-- ...
+- <会让模板失败的 5-8 条模式>
 ```
 
 ### 11. 与相邻类别的边界
@@ -237,39 +189,41 @@ reviewer-gated 外推，例如 `blade_count=3..8`、`arm_link_count=1..5`、
 - 不该混入：<相邻类别 2>（理由）
 ```
 
----
+### 12. 审核记录
+
+```markdown
+## 审核记录
+| 项 | 结论 |
+|---|---|
+| reviewer status | pending / approved / rejected |
+| reviewer notes | ... |
+```
 
 ## 可选字段
 
-### 12. 模板实现备注（给后续实现 agent 的提示）
+### 13. 模板实现备注
 
 ```markdown
 ## 模板实现备注（可选）
 
-- 哪些 module 共享 helper 函数
-- 哪些 joint 要 grandfathered（no MatingContract）
-- 哪些 inter-part 重叠预期需要 allow_overlap 声明
-- 任何 spec → 代码翻译的非平凡映射
+- 哪些 module 共享 helper
+- 哪些 InterfaceSpec / MatingContract 要特别注意
+- 哪些 captured-pin overlap 需要 element-scoped allow_overlap
+- 哪些 module 组合暂不进入 seed domain
 ```
 
-### 13. Adopted Source Index
+### 14. Module Source Index
+
+如果 slot table 太长，可以在这里汇总 source id。
 
 ```markdown
-## 采用源码索引（Adopted Source Index）
+## Module Source Index
 
-| source_id | sample_id | model.py 来源 | 采纳用途 |
-| S1 | rec_xxx | L25-L120 | slot A.module_alpha 的 part 树和 helper |
-| S2 | rec_yyy | L40-L155 | slot A.module_beta 的 alternate part 树 |
-| ... | ... | ... | ... |
+| source_id | slot | module | sample_id | model.py 来源 | 采纳用途 |
+|---|---|---|---|---|---|
+| S1 | Slot A | module_alpha | rec_xxx | L25-L120 | part tree + upstream interface |
 ```
-
-（参考已有 spec 的） source index 表，让 review 和后续实现 agent
-可以追溯每片代码的来源。
-
----
 
 ## 写完后
 
-spec 自身的 `stage` 字段还在 `SPEC_ONLY_DRAFT`。停下，等 reviewer 看
-[`SPEC_REVIEW_TEMPLATE.md`](SPEC_REVIEW_TEMPLATE.md) 检查、修改 `stage`
-为 `approved` 或 `rejected + 修改意见`。审核通过前**不要**进入实现。
+spec 的 `stage` 保持 `SPEC_ONLY_DRAFT`，`reviewer status` 保持 `pending`。停下，等待人工审核。审核通过前不要进入模板实现。

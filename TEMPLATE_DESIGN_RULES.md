@@ -5,8 +5,9 @@ follow. These are checked mechanically by `articraft template compile-sweep`'s
 gates and by the compiler-owned baseline; a template that violates any of
 them cannot reach `verdict=pass`.
 
-Read this **before** writing the first line of a new template, and again
-whenever a sweep surfaces a rule-3 cluster.
+Read this **before** writing the first line of a new template. For new
+Articraft category templates, also read `MODULAR_TEMPLATE_AUTHORING.md`; its
+per-module source contract replaces the legacy single-anchor contract below.
 
 ---
 
@@ -30,12 +31,10 @@ remaining bug after baseline.
 
 ### Enforcement
 
-The `anchor_geometry_match` gate's `part_name_set` and `joint_topology`
-sub-checks fail when a template introduces parts or FIXED joints that the
-PRIMARY_ANCHOR record doesn't have. The `visual_count_per_part` sub-check
-fails when a template's per-part visual count drops below 50% of the anchor's
-— which catches the "5 visuals on rotor → 1 visual + 4 separate parts"
-collapse directly.
+For modular templates, this is enforced through module source review,
+`module_topology_diversity`, visual support checks, and MatingContract checks.
+For legacy non-modular templates, the `anchor_geometry_match` gate also catches
+part/joint topology drift from a single anchor.
 
 ### Examples
 
@@ -172,7 +171,16 @@ deviation report.
 
 ---
 
-## Rule 3: derive structure from a single PRIMARY_ANCHOR
+## Rule 3: derive structure from declared 5-star sources
+
+New category templates are modular. They derive structure from per-module
+5-star sources declared in the modular spec, not from a single `primary_anchor`.
+Set `__modular__ = True`, implement `slot_choices_for_seed`, and use
+`module_topology_diversity` as the topology coverage gate. Each module factory
+must preserve the source module's part tree, joint semantics, primitive
+complexity, and interface/support relationship.
+
+### Legacy non-modular path: single PRIMARY_ANCHOR
 
 **A template's part tree, joint topology, per-part visual count, and per-part
 primitive types must be derivable from a single nominated 5-star record (the
@@ -261,12 +269,12 @@ crude primitives.
 
 ## Putting it together: a checklist for a new template
 
-Before declaring a template done, all of the following must hold:
+Before declaring a new modular template done, all of the following must hold:
 
-1. [ ] Spec declares `primary_anchor | rec_xxx:rev_yyy` in 元信息.
-2. [ ] Every `_build_<part>` helper was authored after reading the anchor's
-   corresponding helper. Literal values were parameterized; primitive
-   types were preserved.
+1. [ ] Spec declares `__modular__ = True` and per-module 5-star sources.
+2. [ ] Every module factory was authored after reading its source snippet.
+   Literal values were parameterized; primitive types and joint semantics were
+   preserved.
 3. [ ] No FIXED articulation exists unless the docstring justifies why
    visual fusing won't work (Rule 1).
 4. [ ] Every non-FIXED articulation declares a `MatingContract` pointing
@@ -275,12 +283,10 @@ Before declaring a template done, all of the following must hold:
    - `pass_rate >= 0.95` (baseline incl. mating-gap, articulation-origin,
      overlap, isolated-parts).
    - `coverage_gates.line_floor.status == "pass"`.
-   - `coverage_gates.anchor_geometry_match.status == "pass"` (all 6
-     sub-checks pass).
+   - `coverage_gates.module_topology_diversity.status == "pass"`.
 6. [ ] Preview-self-checked seeds 0, 1, 2 visually look like the category
    and the closed pose has no visible gaps.
 
-If you reach step 5 with a persistent failure cluster in
-`anchor_geometry_match`, **do not patch around it**. Either correct the
-template to match the anchor, or escalate to the user — never weaken the
-anchor declaration to make the gate pass.
+For legacy non-modular templates, replace items 1, 2, and the topology gate
+with the single `primary_anchor` / `anchor_geometry_match` contract. Do not use
+that legacy route for new modular category templates.

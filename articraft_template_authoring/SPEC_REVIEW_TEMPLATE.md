@@ -1,6 +1,6 @@
-# Spec Review Template
+# Modular Spec Review Template
 
-用于人工审核 agent 写出的 `specs/<category_slug>.md`。
+用于人工审核 `articraft_template_authoring/specs/<category_slug>.md`。
 
 ## Review Target
 
@@ -12,25 +12,24 @@
 
 ## 必查项
 
-- [ ] agent 是否声明已枚举并完整读取该类别全部 5 星样本的 `model.py / revision.json / record.json`。
-- [ ] spec 是否只保留被采纳为模板依据的 `model.py:Lx-Ly` 来源索引，没有把已读但未采用的样本索引塞进来。
-- [ ] Parts / Joints / 关键参数的来源索引是否来自适合模板复用的 5 星样本代码片段。
-- [ ] 核心身份是否清楚，能否区分相邻类别。
-- [ ] required parts 是否过多，是否混入了单样本特有装饰。
-- [ ] optional parts 是否合理。
-- [ ] 关节 type / axis / origin / range 是否明确。
-- [ ] 参数是否能产生结构级变化，而不是只换色。
-- [ ] 是否包含 `部件多样性审计（Part Diversity Audit）`。
-- [ ] 审计是否覆盖所有核心部件类型，而不是只检查整机有没有 enum。
-- [ ] 若某部件存在连续尺寸无法表达的定性差异，是否补了 `*_shape / *_style / *_profile / *_variant / *_layout`。
-- [ ] 若某部件没有观察到多样性，是否记录 `observed_variation = none`；若只有尺寸/角度变化，是否说明连续参数足够。
-- [ ] `已有模板写法参考` 是否只用于定位旧 11 个 gold-standard 模板的骨架、SDK 写法、测试风格，以及新 20+ 模板的二级经验，而不是决定或替代被采纳的 5 星样本源码片段。
-- [ ] 若 spec 覆盖多个不兼容主运动 spine，是否已标注建议拆分 slug 或明确模板阶段只实现的稳定子域。
-- [ ] spec 中被采纳的 5 星样本片段是否足够支持后续模板 helper / part / joint 的实际源码改编，而不是只作为阅读引用。
-- [ ] 参数表是否支持拓扑匹配的约束派生：先确定外壳 / frame / base / rail / hinge line / axis / socket / contact plane / symmetry plane 等主约束基准，再派生数量、尺寸、origin、orientation、joint range；没有把抽屉柜公式机械套到其他拓扑。
-- [ ] 关节表是否体现真实部件语义：父件、子件、closed pose、运动方向、axis、origin、range 都明确。
-- [ ] Validator 是否能转成测试。
-- [ ] Reject cases 是否覆盖关键失败模式。
+- [ ] agent 声明已枚举并完整读取该类别全部 5 星样本的 `model.py / revision.json / record.json`。
+- [ ] spec 使用 `SPEC_TEMPLATE.md` 的 modular schema，且 `__modular__ = True`。
+- [ ] 核心身份清楚，能区分相邻类别。
+- [ ] slot count 合理：每个 slot 都代表真实结构/功能层，且能通过接口点位与相邻 slot 装配。
+- [ ] 每个 slot 至少 2 个结构不同的 candidate module；若少于目标 3 个，有基于 5 星样本池的理由。
+- [ ] 每个 candidate module 都有真实 5 星样本 `model.py:Lx-Ly` 来源。
+- [ ] 每个 slot 恰好一个 `seed=0 anchor` module。
+- [ ] Candidate module 之间的差异是 part tree、joint topology、chain depth、primitive 或复制逻辑差异，不只是尺寸、颜色或装饰差异。
+- [ ] Slot graph 清楚说明 serial / parallel / multiplicity / mixed 装配关系。
+- [ ] 接口点位明确：共同 parent、mating face、pivot、rail、socket、axis、contact plane 或 symmetry plane。
+- [ ] 跨 module joint 的 type / axis / range / parent-child 语义明确。
+- [ ] Multiplicity / Copy Logic 说明 N_range、sampling domain、copied object、naming、placement、joint policy 和 source/gating。
+- [ ] 参数表只暴露语义参数、slot/module 选择、必要尺寸和 multiplicity 数量；没有把未实现拓扑塞进 enum。
+- [ ] 拓扑多样性审计说明组合数，以及 `module_topology_diversity` 是否预计可过。
+- [ ] Validator 能转成模板内 `run_<slug>_tests` 或 sweep 可检查项。
+- [ ] Reject cases 覆盖漂浮、穿模、接口错位、joint 方向错误、类别身份丢失、module 组合非法等失败模式。
+- [ ] spec 没有使用单一 `primary_anchor` 替代 per-module source table。
+- [ ] spec 没有把已读但未采用的样本写入 module source 表。
 
 ## 审核结论
 
@@ -46,4 +45,4 @@ approved / rejected
 
 ## Template 阶段提醒
 
-审核通过后，agent 写模板时应优先改编 spec 中已采纳并带 `model.py:Lx-Ly` 索引的 5 星样本部件 / 关节 / 参数代码。模板文件至少 1000 行，且 1000 是下限不是上限。旧 11 个 gold-standard 模板用于统一代码结构、SDK 用法、palette、validator 和测试风格；新 20+ 模板可作为拆分、seed domain、QC/预览修复和测试断言的二级参考；`MATURE_TEMPLATE_METHOD.md` 用于决定拆分/收窄、参数化、拓扑匹配的空间约束、joint 语义、seed domain、`resolve_config`、QC 和自动调参闭环。抽屉柜 envelope-first 只是一个约束例子，不是通用公式。多类别模板实现必须逐个或最多 2-3 个同族模板一组推进；测试、QC、预览和明显调参问题必须由 agent 自己闭环解决。
+审核通过后，agent 必须进入 modular template 实现：读取 `MODULAR_TEMPLATE_AUTHORING.md`、`MATURE_TEMPLATE_METHOD.md`、`TEMPLATE_AUTHORING_AGENT.md` 和 `TEMPLATE_DESIGN_RULES.md`；实现 `__modular__ = True`、`slot_choices_for_seed`、module factories、InterfaceSpec、MatingContract、seed=0 anchor module 组合和 `run_<slug>_tests`；运行 `uv run articraft template sweep-pipeline <slug>` 直到 `verdict=pass`，再做 preview / viewer 目检。

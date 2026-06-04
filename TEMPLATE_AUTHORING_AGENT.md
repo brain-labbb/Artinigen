@@ -10,10 +10,11 @@ section 4.6 with a CLI-structured one. The spec workflow (sections 2 and 3 of
 `agent_workflow.md`) is unchanged; this doc only governs **TEMPLATE_AFTER_REVIEW**.
 
 **Before writing the first line of code, read [`TEMPLATE_DESIGN_RULES.md`](TEMPLATE_DESIGN_RULES.md).**
-That document defines three hard rules — "不动就不是 part", "parent must
-really anchor the child", and "derive structure from a single
-PRIMARY_ANCHOR" — that are mechanically enforced by the gates below.
-Violating any of them prevents `verdict=pass`.
+For new Articraft category templates, also read
+[`MODULAR_TEMPLATE_AUTHORING.md`](MODULAR_TEMPLATE_AUTHORING.md). New category
+templates are modular by default: they set `__modular__ = True`, use per-module
+5-star sources, and pass `module_topology_diversity` instead of the legacy
+single-`primary_anchor` / `anchor_geometry_match` route.
 
 The single source of truth for whether a template is done is:
 
@@ -39,8 +40,9 @@ compiler-owned baseline now runs:
   world coordinates — catches the dj_knob "decoration floats above panel"
   pattern Rule 2 forbids)
 
-…plus the coverage gates listed in §3 (line_floor, anchor_geometry_match,
-and the grandfathered enum_coverage / adopted_source slots).
+…plus the coverage gates listed in §3. Modular templates use
+`module_topology_diversity`; legacy non-modular templates may still use
+`anchor_geometry_match`.
 
 ---
 
@@ -113,7 +115,8 @@ uv run articraft template compile-sweep <slug> --seeds 0-49
     "line_floor":            { "status": "pass" | "fail",              "details": {...}, "reason": "..." },
     "enum_coverage":         { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." },
     "adopted_source":        { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." },
-    "anchor_geometry_match": { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." }
+    "anchor_geometry_match":      { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." },
+    "module_topology_diversity":  { "status": "pass" | "fail" | "skipped", "details": {...}, "reason": "..." }
   },
   "escalation": {
     "required": false,
@@ -162,6 +165,8 @@ Fix order:
 | `line_floor` | `agent/templates/<slug>.py` has `>= line_floor` lines (default 1000) | Expand `_build_*` branches, add palette/joint metadata, fill in optional parts. 1000 is the floor not the ceiling. |
 | `enum_coverage` | every Literal value declared on the input Config dataclass is exercised by at least one **passing** seed | Either fix the `_build_<value>` branch so the value works, or — if you've narrowed scope intentionally — remove the value from the `Literal[...]`. **Do not** widen seeds to escape this check; the gate already samples enough seeds. |
 | `adopted_source` | every `source_id` in the spec's "Adopted Source Index" table appears as a `# adopted: <Sxx>` marker in the template | Add markers above the helper code that adapts the corresponding 5-star sample. If you genuinely didn't adopt the snippet, delete the row from the spec. |
+| `module_topology_diversity` | modular templates expose at least the required number of distinct passing `slot_choices_for_seed` tuples | Fix missing module factories, narrow invalid seed domains, or revise the modular spec if the sample pool cannot support enough distinct topology. |
+| `anchor_geometry_match` | legacy non-modular templates match a single nominated anchor fingerprint | For new modular templates this should be skipped; do not add `primary_anchor` merely to satisfy a legacy path. |
 
 `status: "skipped"` is fine — it means the gate didn't apply (no spec yet,
 no Literal fields on Config, etc.). Skipped does not block `verdict=pass`.
@@ -189,9 +194,11 @@ recent sweep:
 - `verdict == "pass"`
 - `pass_rate >= 0.95`
 - `coverage_gates.line_floor.status == "pass"`
-- `coverage_gates.anchor_geometry_match.status == "pass"` (or `"skipped"`
-  only if the slug is grandfathered legacy code; new templates must declare
-  `primary_anchor` and pass).
+- For modular templates (`__modular__ = True`):
+  `coverage_gates.module_topology_diversity.status == "pass"` and
+  `coverage_gates.anchor_geometry_match.status in {"skipped", "pass"}`.
+- For legacy non-modular templates:
+  `coverage_gates.anchor_geometry_match.status == "pass"`.
 - `coverage_gates.enum_coverage.status in {"pass", "skipped"}`
 - `coverage_gates.adopted_source.status in {"pass", "skipped"}`
 - You have visually inspected previews for at least seeds `0, 1, 2` using
@@ -227,11 +234,10 @@ like a <category>." Always do it.
 
 | Document / Tool | What it covers | Who is in charge |
 |---|---|---|
-| `articraft_template_authoring/agent_workflow.md` §1–3 | **SPEC_ONLY** stage: read 5-star samples, write spec, wait for review | Unchanged |
-| `articraft_template_authoring/agent_workflow.md` §4.1–4.5 | Reading the approved spec, choosing skeleton templates, adapting adopted source | Still applies — write code per these sections |
-| `articraft_template_authoring/agent_workflow.md` §4.6 | "Automatic iteration loop" | **Superseded by this doc.** Use sweep-pipeline, not the manual checklist. |
-| `articraft_template_authoring/agent_workflow.md` §5–7 | Hard fail rules, conventions, written-pattern reference | Unchanged |
-| `articraft_template_authoring/MATURE_TEMPLATE_METHOD.md` | How to reach gold-standard maturity | Unchanged |
+| `articraft_template_authoring/agent_workflow.md` | **SPEC_ONLY** modular spec workflow and reviewed-spec handoff | Applies before implementation |
+| `articraft_template_authoring/SPEC_TEMPLATE.md` | Required modular slot/module spec schema | Applies to new category specs |
+| `MODULAR_TEMPLATE_AUTHORING.md` | Slot/module implementation contract, `__modular__`, InterfaceSpec, `module_topology_diversity` | Applies to new category templates |
+| `articraft_template_authoring/MATURE_TEMPLATE_METHOD.md` | Modular maturity notes for source adaptation, interfaces, seed domain, and sweep repair | Applies during implementation |
 | `articraft template sweep-pipeline <slug>` | Per-iteration ground-truth signal | **You read this every iteration** |
 | `articraft template compile-sweep <slug> --seeds X` | Manual fallback / targeted diagnosis | Use only when pipeline output asks for focused follow-up |
 | `articraft template batch <slug> --seeds X` | Promote template into real records | Run only after this doc's stop conditions are met |
