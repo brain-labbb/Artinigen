@@ -69,6 +69,7 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     "monitor_mount": "monitor_mount",
     "paper_cutter_guillotine": "paper_cutter_guillotine",
     "parabolic_dish_on_azimuth_elevation_mount": "parabolic_dish",
+    "playground_swing": "playground_swing",
     "desktop_pc_tower": "desktop_pc_tower",
     "display_freezer_with_sliding_glass_lids": "display_freezer",
     "dj_equipment": "dj_equipment",
