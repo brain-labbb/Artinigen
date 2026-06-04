@@ -62,37 +62,37 @@
 ## 槽位 + 候选模块表
 
 ### Slot A：support_base
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `classic_desktop_base_yoke` | S1 | `model.py:L187-L260` | **yes** | pedestal base, vertical yoke arms, brass feet/trim |
-| `outer_cradle_stand` | S2 | `model.py:L152-L198` | | outer ring/cradle and column support, inner ring pivots inside |
-| `partial_ring_stand` | S3 | `model.py:L241-L340` | | decorative stand with partial support ring, globe directly spins |
-| `rotating_pedestal_base` | S5 | `model.py:L106-L187` | | base_ring -> support_pedestal CONTINUOUS stage |
-| `wall_arm_mount` | S6 | `model.py:L113-L159` | | wall bracket/cantilever arm supporting meridian ring |
+| `classic_desktop_base_yoke` | S1 | `model.py:L187-L260` | eligible if compatible | pedestal base, vertical yoke arms, brass feet/trim |
+| `outer_cradle_stand` | S2 | `model.py:L152-L198` | eligible if compatible | outer ring/cradle and column support, inner ring pivots inside |
+| `partial_ring_stand` | S3 | `model.py:L241-L340` | eligible if compatible | decorative stand with partial support ring, globe directly spins |
+| `rotating_pedestal_base` | S5 | `model.py:L106-L187` | eligible if compatible | base_ring -> support_pedestal CONTINUOUS stage |
+| `wall_arm_mount` | S6 | `model.py:L113-L159` | eligible if compatible | wall bracket/cantilever arm supporting meridian ring |
 
 ### Slot B：meridian_or_cradle
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `full_meridian_ring_tilting` | S1 | `model.py:L279-L331,L373-L393` | **yes** | complete meridian ring with tick/axis cap, REVOLUTE tilt + globe spin |
-| `inner_ring_nested_cradle` | S2 | `model.py:L205-L237,L281-L296` | | inner_ring inside outer cradle, ring tilt then globe spin |
-| `fixed_meridian_ring` | S4 | `model.py:L233-L276,L386-L392` | | fixed meridian, only globe rotates |
-| `no_ring_pedestal_spin` | S5 | `model.py:L144-L242` | | support pedestal directly carries globe, no meridian ring |
-| `partial_wall_meridian` | S6 | `model.py:L159-L194,L309-L324` | | partial meridian frame on wall arm, REVOLUTE at arm |
+| `full_meridian_ring_tilting` | S1 | `model.py:L279-L331,L373-L393` | eligible if compatible | complete meridian ring with tick/axis cap, REVOLUTE tilt + globe spin |
+| `inner_ring_nested_cradle` | S2 | `model.py:L205-L237,L281-L296` | eligible if compatible | inner_ring inside outer cradle, ring tilt then globe spin |
+| `fixed_meridian_ring` | S4 | `model.py:L233-L276,L386-L392` | eligible if compatible | fixed meridian, only globe rotates |
+| `no_ring_pedestal_spin` | S5 | `model.py:L144-L242` | eligible if compatible | support pedestal directly carries globe, no meridian ring |
+| `partial_wall_meridian` | S6 | `model.py:L159-L194,L309-L324` | eligible if compatible | partial meridian frame on wall arm, REVOLUTE at arm |
 
 ### Slot C：globe_surface
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `continent_patch_globe` | S1 | `model.py:L80-L94,L346-L361` | **yes** | ocean sphere with separate continent meshes and equator/latitude visual |
-| `graticule_patch_globe` | S2 | `model.py:L54-L126,L244-L253` | | graticule mesh plus surface patches |
-| `dense_map_graticule` | S4 | `model.py:L36-L178,L276-L386` | | many land patches, graticule, meridian tick visual |
-| `minimal_ocean_globe` | S5 | `model.py:L199-L212` | | simplified globe sphere with bands, useful for stable seed domain |
+| `continent_patch_globe` | S1 | `model.py:L80-L94,L346-L361` | eligible if compatible | ocean sphere with separate continent meshes and equator/latitude visual |
+| `graticule_patch_globe` | S2 | `model.py:L54-L126,L244-L253` | eligible if compatible | graticule mesh plus surface patches |
+| `dense_map_graticule` | S4 | `model.py:L36-L178,L276-L386` | eligible if compatible | many land patches, graticule, meridian tick visual |
+| `minimal_ocean_globe` | S5 | `model.py:L199-L212` | eligible if compatible | simplified globe sphere with bands, useful for stable seed domain |
 
 ### Slot D：auxiliary_rotary
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `none` | S1 | `model.py:L373-L393` | **yes** | only meridian tilt + globe spin |
-| `date_ring_spin` | S3 | `model.py:L391-L421` | | date ring part spins around stand/globe axis |
-| `rotating_support_stage` | S5 | `model.py:L227-L242` | | base -> support_pedestal CONTINUOUS plus support -> globe CONTINUOUS |
+| `none` | S1 | `model.py:L373-L393` | eligible if compatible | only meridian tilt + globe spin |
+| `date_ring_spin` | S3 | `model.py:L391-L421` | eligible if compatible | date ring part spins around stand/globe axis |
+| `rotating_support_stage` | S5 | `model.py:L227-L242` | eligible if compatible | base -> support_pedestal CONTINUOUS plus support -> globe CONTINUOUS |
 
 ## 槽位图（slot graph）
 pattern = `mixed`
@@ -173,7 +173,7 @@ pattern = `mixed`
 
 总组合数：5 support modules x 5 meridian modules x 4 surface modules x 3 auxiliary modules = 300 before legality gating.
 
-预计 `module_topology_diversity` 门控（>=5 distinct）能否过：yes。理由：tilting meridian vs fixed meridian vs no-ring pedestal vs wall arm vs date ring/top support stages produce distinct joint graphs.
+预计 `module_topology_diversity` 门控（>=10 distinct）能否过：yes。理由：tilting meridian vs fixed meridian vs no-ring pedestal vs wall arm vs date ring/top support stages produce distinct joint graphs.
 
 | slot | candidate_count | 是否 >=3 | 备注 |
 |---|---:|---|---|
@@ -209,19 +209,16 @@ pattern = `mixed`
 - Wall-arm support must expose wall plane/base bracket, not float as desktop stand.
 - Date ring/support yaw are optional, not substitutes for globe spin.
 
-### Stage 1 / Stage 2 seed-domain plan
+### Procedural Sampling / Sweep Plan
 
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+seed_domain_policy：procedural_first。`config_from_seed(seed)` 对普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊，不作为 anchor 或 reference seed。Sampling 先选择上游结构槽，再从 compatible 下游 candidate 集合中选择 module / multiplicity / module-local variant。
 
-Stage 1 high-risk coverage seed plan：
+Compatibility matrix / gating：以「槽位图」「每槽位 Module Emits / Interfaces」「Validator」中定义的接口、joint 轴、支撑面、range 和互斥关系为准；不兼容组合必须在 sampler 或 `resolve_config` 中降级、重采样或拒绝，不能让 builder 后期失败。
 
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+Regression overrides：默认无。若未来 sweep 发现稳定失败组合，或 reviewer 指定固定回归样本，可以添加少量显式 regression seed，但必须写明 seed、组合和原因；不得用小型 curated / modulo 表作为主 seed domain。
 
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
+Random sweep / viewer plan：首次模板验收跑 `uv run articraft template sweep-pipeline <slug>`，依赖 0、0-4、0-19、0-49 的 cumulative random seeds 检查 build、MatingContract、joint origin / axis / range、support、collision 和 `module_topology_diversity`。机械通过后 viewer 目检一小批随机 seed，重点看类别身份、比例、closed pose、bulky module、optional moving child、max multiplicity、captured-pin / bearing / hinge / rail 接口。
+
 
 ## Validator
 | 检查项 | 标准 |

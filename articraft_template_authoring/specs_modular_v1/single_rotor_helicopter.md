@@ -41,28 +41,28 @@ Single rotor helicopter is an aircraft with one main rotor on a mast above the f
 ## 槽位 + 候选模块表
 
 ### Slot A：airframe_landing
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `fire_utility_skid_airframe` | `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce` | L66-L197 | **yes** | robust fuselage, skid landing gear, service-door frames |
-| `offshore_wheeled_airframe` | `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a` | L184-L472 | | long fuselage, wheeled landing gear, cockpit/cabin door cutouts |
+| `fire_utility_skid_airframe` | `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce` | L66-L197 | eligible if compatible | robust fuselage, skid landing gear, service-door frames |
+| `offshore_wheeled_airframe` | `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a` | L184-L472 | eligible if compatible | long fuselage, wheeled landing gear, cockpit/cabin door cutouts |
 
 ### Slot B：main_rotor
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `five_blade_fire_rotor` | `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce` | L198-L249, L328-L336 | **yes** | five-blade rotor with mast/hub; CONTINUOUS vertical spin |
-| `tall_mast_transport_rotor` | `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a` | L473-L500, L570-L578 | | taller mast and rotor disk for transport helicopter |
+| `five_blade_fire_rotor` | `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce` | L198-L249, L328-L336 | eligible if compatible | five-blade rotor with mast/hub; CONTINUOUS vertical spin |
+| `tall_mast_transport_rotor` | `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a` | L473-L500, L570-L578 | eligible if compatible | taller mast and rotor disk for transport helicopter |
 
 ### Slot C：tail_rotor
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `compact_tail_rotor` | `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce` | L250-L279, L337-L345 | **yes** | tail rotor near boom tip, horizontal axis |
-| `fin_mounted_tail_rotor` | `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a` | L501-L527, L579-L587 | | tail rotor on fin with transport-airframe proportions |
+| `compact_tail_rotor` | `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce` | L250-L279, L337-L345 | eligible if compatible | tail rotor near boom tip, horizontal axis |
+| `fin_mounted_tail_rotor` | `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a` | L501-L527, L579-L587 | eligible if compatible | tail rotor on fin with transport-airframe proportions |
 
 ### Slot D：doors_service
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `service_and_crew_hinges` | `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce` | L280-L387 | **yes** | paired service doors plus crew access door, all REVOLUTE |
-| `cockpit_hinges_and_cabin_slide` | `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a` | L459-L569 | | two cockpit hinge doors plus PRISMATIC sliding cabin door |
+| `service_and_crew_hinges` | `rec_single_rotor_helicopter_39863ea3a843412f8349168b699859ce` | L280-L387 | eligible if compatible | paired service doors plus crew access door, all REVOLUTE |
+| `cockpit_hinges_and_cabin_slide` | `rec_single_rotor_helicopter_90637aef635c4429a1f1b432e4449e0a` | L459-L569 | eligible if compatible | two cockpit hinge doors plus PRISMATIC sliding cabin door |
 
 > Reviewer caveat: all slots have only 2 candidates because the category has only two 5-star samples. This is the allowed fallback case; do not invent a third source family without new 5-star records.
 
@@ -112,20 +112,20 @@ pattern: `mixed`
 | `main_rotor_style` | enum | `five_blade_fire_rotor` / `tall_mast_transport_rotor` | `five_blade_fire_rotor` | Slot B | S1/S2 |
 | `tail_rotor_style` | enum | `compact_tail_rotor` / `fin_mounted_tail_rotor` | `compact_tail_rotor` | Slot C | S1/S2 |
 | `door_style` | enum | `service_and_crew_hinges` / `cockpit_hinges_and_cabin_slide` / `none` | `service_and_crew_hinges` | Slot D | S1/S2 |
-| `main_blade_count` | int | `3..8` | 5 | sampled blade multiplicity; seed 0 remains source anchor | S1/S2 + reviewer-gated count extrapolation |
-| `tail_blade_count` | int | `2..5` | 4 | sampled tail blade multiplicity; seed 0 remains source anchor | S1/S2 + reviewer-gated count extrapolation |
+| `main_blade_count` | int | `3..8` | 5 | sampled blade multiplicity; default is source-backed but seed-independent | S1/S2 + reviewer-gated count extrapolation |
+| `tail_blade_count` | int | `2..5` | 4 | sampled tail blade multiplicity; default is source-backed but seed-independent | S1/S2 + reviewer-gated count extrapolation |
 
 ## Multiplicity / Copy Logic
 
-- `main_blade_count`: `N_range=3..8`, sampling domain=`all integers`; seed 0 uses `N=5` to preserve the source-backed anchor.
+- `main_blade_count`: `N_range=3..8`, sampling domain=`all integers`; default / typical value is `N=5` from source-backed examples, but seed 0 is not special.
 - The copied object is main-rotor blade geometry inside the Slot B `main_rotor` part. Blades do not get per-blade pitch joints in the current source-backed domain.
 - Naming should use `main_blade_i` for named visuals when exposed. The single moving articulation remains `main_rotor_spin`.
 - Placement is radial around the mast/hub in the rotor disk: blade `i` uses phase `i * 360° / main_blade_count`, and every blade root must connect to a visible hub/root socket.
-- `tail_blade_count`: `N_range=2..5`, sampling domain=`all integers`; seed 0 uses `N=4`. The copied object is tail-rotor blade/cuff/link visual geometry inside the Slot C `tail_rotor` part. The single moving articulation remains `tail_rotor_spin`, with radial placement around the horizontal tail axis.
+- `tail_blade_count`: `N_range=2..5`, sampling domain=`all integers`; default / typical value is `N=4`. The copied object is tail-rotor blade/cuff/link visual geometry inside the Slot C `tail_rotor` part. The single moving articulation remains `tail_rotor_spin`, with radial placement around the horizontal tail axis.
 
 ## 拓扑多样性审计
 
-总组合数：`2 airframe × 2 main_rotor × 2 tail_rotor × 3 door_style × 6 main_blade_count × 4 tail_blade_count = 576`。预计 `module_topology_diversity` 门控（>=5 distinct）能过：probably yes because door slot changes REVOLUTE vs PRISMATIC sets and airframe/rotor modules change part counts; blade-count multiplicity also changes repeated visual topology while preserving one main rotor assembly and one tail rotor assembly.
+总组合数：`2 airframe × 2 main_rotor × 2 tail_rotor × 3 door_style × 6 main_blade_count × 4 tail_blade_count = 576`。预计 `module_topology_diversity` 门控（>=10 distinct）能过：probably yes because door slot changes REVOLUTE vs PRISMATIC sets and airframe/rotor modules change part counts; blade-count multiplicity also changes repeated visual topology while preserving one main rotor assembly and one tail rotor assembly.
 
 | slot | candidate_count | 是否 >=3 | 备注 |
 |---|---:|---|---|
@@ -134,33 +134,16 @@ pattern: `mixed`
 | tail_rotor | 2 | no | only two 5-star samples exist |
 | doors_service | 3 | yes | includes `none`, but only two source families |
 
-### Stage 1 / Stage 2 seed-domain plan
+### Procedural Sampling / Sweep Plan
 
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+seed_domain_policy：procedural_first。`config_from_seed(seed)` 对普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊，不作为 anchor 或 reference seed。Sampling 先选择上游结构槽，再从 compatible 下游 candidate 集合中选择 module / multiplicity / module-local variant。
 
-Stage 1 high-risk coverage seed plan：
+Compatibility matrix / gating：以「槽位图」「每槽位 Module Emits / Interfaces」「Validator」中定义的接口、joint 轴、支撑面、range 和互斥关系为准；不兼容组合必须在 sampler 或 `resolve_config` 中降级、重采样或拒绝，不能让 builder 后期失败。
 
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+Regression overrides：默认无。若未来 sweep 发现稳定失败组合，或 reviewer 指定固定回归样本，可以添加少量显式 regression seed，但必须写明 seed、组合和原因；不得用小型 curated / modulo 表作为主 seed domain。
 
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
+Random sweep / viewer plan：首次模板验收跑 `uv run articraft template sweep-pipeline <slug>`，依赖 0、0-4、0-19、0-49 的 cumulative random seeds 检查 build、MatingContract、joint origin / axis / range、support、collision 和 `module_topology_diversity`。机械通过后 viewer 目检一小批随机 seed，重点看类别身份、比例、closed pose、bulky module、optional moving child、max multiplicity、captured-pin / bearing / hinge / rail 接口。
 
-### Stage 1 / Stage 2 seed-domain plan
-
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
-
-Stage 1 high-risk coverage seed plan：
-
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
-
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
 
 ## Validator（author_run_tests 必须覆盖的点）
 - Exactly one main rotor assembly with vertical continuous spin.

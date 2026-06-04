@@ -49,37 +49,37 @@ Turntable is a record player deck: a plinth/base supports a circular platter spi
 ## 槽位 + 候选模块表
 
 ### Slot A：plinth_base
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `simple_rect_plinth` | `rec_turntable_0001` | L82-L121 | **yes** | low rectangular plinth with platter and tonearm mount areas |
-| `rugged_spindle_plinth` | `rec_turntable_0002` | L150-L328 | | reinforced plinth with separate spindle support |
-| `modular_bearing_plinth` | `rec_turntable_8c6555a016894ba88c1263423a289a54` | L34-L218 | | base plus tonearm modules and bearing chain |
-| `industrial_guarded_plinth` | `rec_turntable_5c12632efc294508a166929c600d1c9e` | L56-L270 | | plinth with guard and support modules |
+| `simple_rect_plinth` | `rec_turntable_0001` | L82-L121 | eligible if compatible | low rectangular plinth with platter and tonearm mount areas |
+| `rugged_spindle_plinth` | `rec_turntable_0002` | L150-L328 | eligible if compatible | reinforced plinth with separate spindle support |
+| `modular_bearing_plinth` | `rec_turntable_8c6555a016894ba88c1263423a289a54` | L34-L218 | eligible if compatible | base plus tonearm modules and bearing chain |
+| `industrial_guarded_plinth` | `rec_turntable_5c12632efc294508a166929c600d1c9e` | L56-L270 | eligible if compatible | plinth with guard and support modules |
 
 ### Slot B：platter_spindle
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `direct_platter` | `rec_turntable_0001` | L122-L144, L198-L206 | **yes** | platter directly continuous to plinth |
-| `spindle_supported_platter` | `rec_turntable_0002` | L310-L365, L495-L510 | | fixed spindle part plus continuous platter |
-| `guarded_platter` | `rec_turntable_5c12632efc294508a166929c600d1c9e` | L75-L151, L403-L418 | | platter carried by spindle_support with guard context |
-| `raised_support_platter` | `rec_turntable_751f57f2cace4f3d9752cd4960c0e846` | L27-L56 | | explicit platter_support fixed to plinth |
+| `direct_platter` | `rec_turntable_0001` | L122-L144, L198-L206 | eligible if compatible | platter directly continuous to plinth |
+| `spindle_supported_platter` | `rec_turntable_0002` | L310-L365, L495-L510 | eligible if compatible | fixed spindle part plus continuous platter |
+| `guarded_platter` | `rec_turntable_5c12632efc294508a166929c600d1c9e` | L75-L151, L403-L418 | eligible if compatible | platter carried by spindle_support with guard context |
+| `raised_support_platter` | `rec_turntable_751f57f2cace4f3d9752cd4960c0e846` | L27-L56 | eligible if compatible | explicit platter_support fixed to plinth |
 
 ### Slot C：tonearm_stage
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `simple_pivot_tonearm` | `rec_turntable_0001` | L145-L215 | **yes** | single tonearm part pivots on plinth |
-| `two_axis_carriage_arm` | `rec_turntable_0002` | L366-L538 | | carriage swings about Z, tube has second pitch REVOLUTE |
-| `modular_tonearm_head` | `rec_turntable_8c6555a016894ba88c1263423a289a54` | L114-L288 | | tonearm_base -> bearing_module -> head_module chain |
-| `retrofit_tonearm_stage` | `rec_turntable_73ab50aef9f2479990d263a654c00a50` | L246-L506 | | pedestal and stage for robust retrofit assembly |
+| `simple_pivot_tonearm` | `rec_turntable_0001` | L145-L215 | eligible if compatible | single tonearm part pivots on plinth |
+| `two_axis_carriage_arm` | `rec_turntable_0002` | L366-L538 | eligible if compatible | carriage swings about Z, tube has second pitch REVOLUTE |
+| `modular_tonearm_head` | `rec_turntable_8c6555a016894ba88c1263423a289a54` | L114-L288 | eligible if compatible | tonearm_base -> bearing_module -> head_module chain |
+| `retrofit_tonearm_stage` | `rec_turntable_73ab50aef9f2479990d263a654c00a50` | L246-L506 | eligible if compatible | pedestal and stage for robust retrofit assembly |
 
 ### Slot D：controls_accessories
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `none` | `rec_turntable_0001` | L82-L215 | **yes** | no extra controls beyond platter/tonearm |
-| `pitch_slider` | `rec_turntable_0002` | L470-L552 | | PRISMATIC pitch slider on plinth |
-| `speed_dial_power_button` | `rec_turntable_412ace408b7f48eeb54139da2940abae` | L245-L324 | | speed dial REVOLUTE plus power button PRISMATIC |
-| `service_hatches` | `rec_turntable_73ab50aef9f2479990d263a654c00a50` | L394-L520 | | motor/signal hatches as service features |
-| `guard_frame` | `rec_turntable_f39b633c366345ebb0eaa7867a4dc6b0` | L203-L238 | | fixed guard frame around deck |
+| `none` | `rec_turntable_0001` | L82-L215 | eligible if compatible | no extra controls beyond platter/tonearm |
+| `pitch_slider` | `rec_turntable_0002` | L470-L552 | eligible if compatible | PRISMATIC pitch slider on plinth |
+| `speed_dial_power_button` | `rec_turntable_412ace408b7f48eeb54139da2940abae` | L245-L324 | eligible if compatible | speed dial REVOLUTE plus power button PRISMATIC |
+| `service_hatches` | `rec_turntable_73ab50aef9f2479990d263a654c00a50` | L394-L520 | eligible if compatible | motor/signal hatches as service features |
+| `guard_frame` | `rec_turntable_f39b633c366345ebb0eaa7867a4dc6b0` | L203-L238 | eligible if compatible | fixed guard frame around deck |
 
 ## 槽位图（slot graph）
 
@@ -140,7 +140,7 @@ pattern: `mixed`
 
 ## 拓扑多样性审计
 
-总组合数：`4 plinth × 4 platter × 4 tonearm × 5 accessory = 320`。预计 `module_topology_diversity` 门控（>=5 distinct）能过：yes; spindle support, two-axis tonearm, modular tonearm, sliders/buttons/hatches/guards all alter topology.
+总组合数：`4 plinth × 4 platter × 4 tonearm × 5 accessory = 320`。预计 `module_topology_diversity` 门控（>=10 distinct）能过：yes; spindle support, two-axis tonearm, modular tonearm, sliders/buttons/hatches/guards all alter topology.
 
 | slot | candidate_count | 是否 >=3 | 备注 |
 |---|---:|---|---|
@@ -149,33 +149,16 @@ pattern: `mixed`
 | tonearm_stage | 4 | yes | |
 | controls_accessories | 5 | yes | includes `none` |
 
-### Stage 1 / Stage 2 seed-domain plan
+### Procedural Sampling / Sweep Plan
 
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+seed_domain_policy：procedural_first。`config_from_seed(seed)` 对普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊，不作为 anchor 或 reference seed。Sampling 先选择上游结构槽，再从 compatible 下游 candidate 集合中选择 module / multiplicity / module-local variant。
 
-Stage 1 high-risk coverage seed plan：
+Compatibility matrix / gating：以「槽位图」「每槽位 Module Emits / Interfaces」「Validator」中定义的接口、joint 轴、支撑面、range 和互斥关系为准；不兼容组合必须在 sampler 或 `resolve_config` 中降级、重采样或拒绝，不能让 builder 后期失败。
 
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+Regression overrides：默认无。若未来 sweep 发现稳定失败组合，或 reviewer 指定固定回归样本，可以添加少量显式 regression seed，但必须写明 seed、组合和原因；不得用小型 curated / modulo 表作为主 seed domain。
 
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
+Random sweep / viewer plan：首次模板验收跑 `uv run articraft template sweep-pipeline <slug>`，依赖 0、0-4、0-19、0-49 的 cumulative random seeds 检查 build、MatingContract、joint origin / axis / range、support、collision 和 `module_topology_diversity`。机械通过后 viewer 目检一小批随机 seed，重点看类别身份、比例、closed pose、bulky module、optional moving child、max multiplicity、captured-pin / bearing / hinge / rail 接口。
 
-### Stage 1 / Stage 2 seed-domain plan
-
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
-
-Stage 1 high-risk coverage seed plan：
-
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
-
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
 
 ## Validator（author_run_tests 必须覆盖的点）
 - Must include platter continuous spin about vertical Z.

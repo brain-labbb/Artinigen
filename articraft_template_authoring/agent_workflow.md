@@ -99,15 +99,15 @@ slot 成立条件：
 - 元信息：`slug`、template path、可选 test path、`__modular__ = True`、pattern、stage/status。
 - 5 星样本阅读摘要。
 - 核心身份和相邻类别边界。
-- 槽位 + 候选模块表：每个 module 有 source、`model.py:Lx-Ly`、seed=0 anchor 标记和结构特征。
+- 槽位 + 候选模块表：每个 module 有 source、`model.py:Lx-Ly`、sampling eligibility 和结构特征。
 - 槽位图：serial chain、parallel children、multiplicity 或 mixed。
 - 每槽位 module emits：按 module 说明会 emit 的 part、visual、internal articulation 和 interface。
 - 参数范围汇总：只包含公开语义参数、slot/module 选择、multiplicity 数量和必要尺寸。
 - Multiplicity / Copy Logic。
-- 拓扑多样性审计：必须写总合法组合数、`module_topology_diversity` 最低门槛是否可过、Stage-1 high-risk coverage seed plan 和 Stage-2 procedural seed migration target。
+- 拓扑多样性审计：必须写总合法组合数、`module_topology_diversity` 最低门槛是否可过、Procedural Sampling / Sweep Plan、compatibility matrix / gating、random sweep 范围和 optional regression override policy。
 - Validator、Reject cases、审核记录。
 
-不要使用单一 `primary_anchor` 作为 modular spec 的主来源。modular spec 用 per-module source table 和 seed=0 anchor module 组合表达来源。
+不要使用单一 `primary_anchor` 作为 modular spec 的主来源。modular spec 用 per-module source table、slot graph、InterfaceSpec / MatingContract 计划和 procedural sampling contract 表达来源与生成域。
 
 ### 2.6 完成 SPEC_ONLY
 
@@ -121,10 +121,11 @@ slot 成立条件：
 
 - reviewer status 为 approved，或用户明确说已审核通过。
 - 每个 slot candidate 都有真实 5 星样本 `model.py:Lx-Ly`。
-- 每个 slot 恰好一个 seed=0 anchor module。
+- 每个 candidate 都声明 sampling eligibility；默认 eligible if compatible，暂不采样时必须说明阻塞原因。
 - slot graph 能清楚描述 module 之间如何装配。
 - Multiplicity / Copy Logic 明确说明 N 的范围、采样域、复制对象、命名、placement 和 joint policy。
-- 拓扑多样性审计说明 `module_topology_diversity` 是否可过，并说明 Stage-1 high-risk coverage seed domain 覆盖计划和 Stage-2 procedural seed 扩展计划。
+- 拓扑多样性审计说明 `module_topology_diversity` 是否可过，并说明 deterministic procedural sampling、compatibility matrix / gating、optional regression overrides 和 random sweep 计划。
+- spec 有受控局部参数化计划：关键 scale 的范围、clamp / derived constraints、影响的 module 尺寸，以及不会破坏 InterfaceSpec / MatingContract / multiplicity 的理由。
 
 ### 3.2 回溯 module sources
 
@@ -135,6 +136,7 @@ slot 成立条件：
 - `slot.module -> upstream/downstream InterfaceSpec`。
 - `slot.module -> primitive choices and mesh helpers`。
 - `slot.module -> source dimensions promoted to Config / ResolvedConfig`。
+- `slot.module -> controlled local scale params and clamp / clearance constraints`。
 - `slot.module -> MatingContract / support invariant`。
 
 核心 module 没有 source mapping 时，不得实现对应 factory。
@@ -149,10 +151,12 @@ slot 成立条件：
 
 - 设置 `__modular__ = True`。
 - 定义 Config / ResolvedConfig。
-- `config_from_seed(0)` 返回 seed=0 anchor module 组合。
-- Stage 1 的 `config_from_seed(seed>0)` 可以使用有限 coverage / curated domain 覆盖关键合法组合，尤其是容易悬空、穿模、轴错、closed pose 失真、max multiplicity、bulky module、optional moving child 和 gate/fallback 的高风险组合；必须标注为临时稳定域，且不得采样未实现或未测试组合。
-- Stage 2 / final 再迁移到 slot 独立或条件独立的 unbounded procedural sampling。
+- `config_from_seed(seed)` 对普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊。
+- Sampling 必须只选择已实现、可装配、经 compatibility matrix / `resolve_config` 合法化的 module 组合。
+- 少量 regression overrides 只允许用于已知失败回归或审核指定样本，必须显式记录原因；不得用 curated / modulo 表作为主 seed domain。
 - `slot_choices_for_seed(seed)` 返回稳定的 `(slot_name, module_name)` 列表。
+- 初版实现应包含少量关键局部 scale，并在 `resolve_config` clamp / 派生；这些 scale 只能改变安全比例、clearance 或细节尺寸，不能改变未声明的拓扑、类别 multiplicity 或接口语义。
+- `slot_choices_for_seed(seed)` 默认不记录连续尺寸参数，除非该参数改变拓扑等价类。
 - 每个 module factory 只消费 resolved config、palette、assets 和 `ctx.rng`。
 - 每个跨 module 连接用 InterfaceSpec 和 MatingContract 表达真实接触。
 - 活动件必须有真实 articulation；不动的装饰作为 parent visual。
@@ -186,7 +190,7 @@ sweep-pipeline verdict=pass
 - spec 没有使用 `SPEC_TEMPLATE.md` 的 modular schema。
 - slot candidate 缺少真实 `model.py:Lx-Ly` 来源。
 - slot 只有 1 个 candidate 且没有明确降级理由。
-- seed=0 anchor module 未标注或每 slot 多于一个。
+- candidate 缺少 sampling eligibility，或暂不采样但没有阻塞原因。
 - slot graph 无法解释 module 如何装配。
 - Multiplicity 存在但未写 N_range、sampling domain、copied object、placement、joint policy。
 - 拓扑多样性审计缺失。

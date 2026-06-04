@@ -14,7 +14,7 @@ from typing import Any, Mapping, Sequence
 
 from agent.template_sweep import SeedOutcome
 
-MODULE_TOPOLOGY_MIN_DISTINCT = 5
+MODULE_TOPOLOGY_MIN_DISTINCT = 10
 MODULE_TOPOLOGY_MIN_SWEEP_SIZE = 20
 
 

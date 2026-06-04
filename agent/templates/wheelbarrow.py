@@ -2355,6 +2355,7 @@ def build_wheelbarrow(
         palette=r.palette,
         config=r,
         seed=0,
+        selection_mode="anchor_choices",
     )
     _apply_body_axis(model, r)
     return model

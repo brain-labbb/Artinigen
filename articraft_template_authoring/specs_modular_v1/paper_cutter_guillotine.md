@@ -71,44 +71,44 @@
 ### Slot 1：base（裁纸台底座，root part）
 落地的平板裁纸台。承载 cutting bed/mat、印刷网格刻度、rear/side fence、cutting strip 砧条、rubber feet——这些全是 ornament visual（Rule 1），不拆 part。是 root，blade_arm 与所有 gated 件最终都接地于它。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `prim_box_bed` | S1 (002e25) | `model.py:L51-L108` | ✅ seed=0 | 纯 Box 拼接：bed 板 + rear_fence + front_lip + cutting_strip + 5+5 条 measure_mark/grid_line + hinge_cheek×2 + hinge_foot 全 visual，最稳健 |
-| `mesh_rrect_bed` | S4 / S10 (0001 / 97d04) | `0001:L45-L53,L91-L147` / `97d04:L33-L117` | | `ExtrudeGeometry.from_z0(rounded_rect_profile)` 或 `ExtrudeGeometry(rounded_rect_profile)` 圆角台面 mesh + cutting_mat + ruler strip + 印刷标记 + 角铰几何 |
-| `cadquery_fillet_bed` | S7 (c6d987) | `model.py:L35-L43,L58-L97` | | cadquery `box.edges("|Z").fillet` 软角 bed board + cut_strip + rear/side fence + 印刷 grid_tick/ruler_tick visual |
-| `plinth_plus_plate_bed` | S8 / S12 (5a20 / 02609) | `5a20:L66-L99` / `02609:L31-L62` | | 双层：dark plinth Box + 上 bed_plate + 对角 cut_line_strip + front scale + 印刷 mat，重型办公量级 |
+| `prim_box_bed` | S1 (002e25) | `model.py:L51-L108` | eligible if compatible | 纯 Box 拼接：bed 板 + rear_fence + front_lip + cutting_strip + 5+5 条 measure_mark/grid_line + hinge_cheek×2 + hinge_foot 全 visual，最稳健 |
+| `mesh_rrect_bed` | S4 / S10 (0001 / 97d04) | `0001:L45-L53,L91-L147` / `97d04:L33-L117` | eligible if compatible | `ExtrudeGeometry.from_z0(rounded_rect_profile)` 或 `ExtrudeGeometry(rounded_rect_profile)` 圆角台面 mesh + cutting_mat + ruler strip + 印刷标记 + 角铰几何 |
+| `cadquery_fillet_bed` | S7 (c6d987) | `model.py:L35-L43,L58-L97` | eligible if compatible | cadquery `box.edges(" | Z").fillet` 软角 bed board + cut_strip + rear/side fence + 印刷 grid_tick/ruler_tick visual |
+| `plinth_plus_plate_bed` | S8 / S12 (5a20 / 02609) | `5a20:L66-L99` / `02609:L31-L62` | eligible if compatible | 双层：dark plinth Box + 上 bed_plate + 对角 cut_line_strip + front scale + 印刷 mat，重型办公量级 |
 
 ### Slot 2：blade_arm（闸刀臂，主 REVOLUTE child）
 绕后角铰链上下摆动的长刀臂：根部 hub/barrel/eyelet + arm spine/beam + 刃条（sharp_edge/blade_strip）+ 末端握把。是身份的 wow 件。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `prim_box_arm` | S1 / S3 (002e25 / e1d730) | `002e25:L110-L152` / `e1d730:L141-L178` | ✅ seed=0 | hinge_barrel/hub Cylinder + blade_plate Box + sharp_edge Box + upper_spine + grip Cylinder，全 primitive，最稳健 |
-| `extrude_profile_arm` | S4 / S10 (0001 / 97d04) | `0001:L56-L75,L180-L223` / `97d04:L120-L174` | | `ExtrudeGeometry`/`ExtrudeGeometry.centered` 雕出锥形 arm beam/panel + steel blade backing + handle grip + end cap，工业感外形 |
-| `cadquery_sloped_arm` | S11 (5013) | `model.py:L120-L163` | | cadquery `Workplane.polyline().close().extrude()` 斜刃 + red arm_bar + pivot_hub + front_grip，斜面刃 |
-| `lofted_eyelet_arm` | S5 / S9feb (0003 / 9feb69) | `0003:L144-L194` / `9feb69:L210-L267` | | `section_loft`/`_eyelet_mesh` 派生锥形 arm beam + pivot eyelet/sleeve + blade_edge + handle grip，对角 yaw 锚定 |
+| `prim_box_arm` | S1 / S3 (002e25 / e1d730) | `002e25:L110-L152` / `e1d730:L141-L178` | eligible if compatible | hinge_barrel/hub Cylinder + blade_plate Box + sharp_edge Box + upper_spine + grip Cylinder，全 primitive，最稳健 |
+| `extrude_profile_arm` | S4 / S10 (0001 / 97d04) | `0001:L56-L75,L180-L223` / `97d04:L120-L174` | eligible if compatible | `ExtrudeGeometry`/`ExtrudeGeometry.centered` 雕出锥形 arm beam/panel + steel blade backing + handle grip + end cap，工业感外形 |
+| `cadquery_sloped_arm` | S11 (5013) | `model.py:L120-L163` | eligible if compatible | cadquery `Workplane.polyline().close().extrude()` 斜刃 + red arm_bar + pivot_hub + front_grip，斜面刃 |
+| `lofted_eyelet_arm` | S5 / S9feb (0003 / 9feb69) | `0003:L144-L194` / `9feb69:L210-L267` | eligible if compatible | `section_loft`/`_eyelet_mesh` 派生锥形 arm beam + pivot eyelet/sleeve + blade_edge + handle grip，对角 yaw 锚定 |
 
 ### Slot 3：pivot_mount（后角铰链支座拓扑）
 刀臂铰链的承力支座如何表达 + part 数（是否独立 pivot_bracket part）。decide blade_arm 的 parent 是 base 还是独立 bracket。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `baked_clevis_in_base` | S3 / S12 (e1d730 / 02609) | `e1d730:L103-L139` / `02609:L63-L92` | ✅ seed=0 | pivot pad + 两 cheek + bridge + pin_cap + pivot_pin 全是 **base 的 visual**，blade_arm 直接 `base→blade_arm` REVOLUTE，captured-pin 用 allow_overlap |
-| `baked_pin_in_base` | S2 (0002) | `model.py:L86-L130` | | hinge_block + hinge_cap + hinge_cheek_left/right + 一根 `hinge_pin` Cylinder 全 base visual，blade_arm hinge_barrel 抱住销，`base→blade_arm` REVOLUTE |
-| `separate_pivot_bracket` | S5 / S6 (0003 / a4d9236) | `0003:L107-L142,L203-L223` / `a4d9236:L145-L180,L278-L293` | | 独立 FIXED `pivot_bracket` part(seat/backbone/cheek×2 + `bracket_axle` Cylinder)，`base→pivot_bracket` FIXED + `pivot_bracket→blade_arm` REVOLUTE，多一个 part |
+| `baked_clevis_in_base` | S3 / S12 (e1d730 / 02609) | `e1d730:L103-L139` / `02609:L63-L92` | eligible if compatible | pivot pad + 两 cheek + bridge + pin_cap + pivot_pin 全是 **base 的 visual**，blade_arm 直接 `base→blade_arm` REVOLUTE，captured-pin 用 allow_overlap |
+| `baked_pin_in_base` | S2 (0002) | `model.py:L86-L130` | eligible if compatible | hinge_block + hinge_cap + hinge_cheek_left/right + 一根 `hinge_pin` Cylinder 全 base visual，blade_arm hinge_barrel 抱住销，`base→blade_arm` REVOLUTE |
+| `separate_pivot_bracket` | S5 / S6 (0003 / a4d9236) | `0003:L107-L142,L203-L223` / `a4d9236:L145-L180,L278-L293` | eligible if compatible | 独立 FIXED `pivot_bracket` part(seat/backbone/cheek×2 + `bracket_axle` Cylinder)，`base→pivot_bracket` FIXED + `pivot_bracket→blade_arm` REVOLUTE，多一个 part |
 
 说明：`baked_clevis_in_base` 与 `baked_pin_in_base` 都是"销/支座嵌进 base visual、2-part 主干"，但前者是双 cheek + 外露 pin cap 的开放 clevis、后者是 block+cap 半包式带独立 pin 视觉，part 树相同(2)但 base 上 hinge-hardware visual 子树明确不同；`separate_pivot_bracket` 是唯一引入第 3 个 part 并把 blade_arm 改 parent 的拓扑分支。三者结构上分明。
 
 ### Slot 4：second_dof（gated 第二自由度 / 可选件）
 裁纸台常见的第二把动作件。`none` 为默认主干（只有刀臂）；其余各引入恰好一个额外 part + 一个额外关节。每个候选都把自己的承力 visual（guide post/rod、rail、lock boss、guard knuckle）嵌进 base，按 Rule 2 真锚定。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `none` | S1 / S3 (002e25 / e1d730) | `002e25:L154-L162` / `e1d730:L180-L188` | ✅ seed=0 | 无第二件，只有 base + blade_arm + 1 REVOLUTE（占 5 星多数：5/13 纯 2-part） |
-| `hold_down_bar_prismatic` | S7 / S8 (c6d987 / 5a20) | `c6d987:L176-L214` / `5a20:L185-L252` | | 独立 `hold_down`/`hold_down_bar` part(clamp_bar+slider sleeve/block+pad)，PRISMATIC 垂直夹紧 `(0,0,±1)`，slider 骑 base-visual guide post/rod |
-| `finger_guard_revolute` | S11 / S12 (5013 / 02609) | `5013:L165-L203,L195-L203` / `02609:L177-L189,L209-L217` | | 独立透明 `finger_guard` part(clear panel + clip loop/frame)，绕切割线轴 REVOLUTE `(±1,0,0)` 上翻，骑 base-visual guard knuckle/rod |
-| `lock_handle_revolute` | S9 / S10 (9f7cbe / 97d04) | `9f7cbe:L185-L222` / `97d04:L176-L246` | | 独立 `lock_handle` part(shaft + round_handle/lock_wheel + pointer/grip)，旋转安全锁 REVOLUTE `(0,0,1)`/`(1,0,0)`，骑 base-visual lock boss/mount |
-| `side_gauge_prismatic` | S6 / S12 (a4d9236 / 02609) | `a4d9236:L114-L143,L269-L277` / `02609:L151-L175,L200-L208` | | 独立 `side_gauge` part(carriage/saddle + fence + thumb knob)，沿 rail PRISMATIC `(1,0,0)` 平移定位纸张；rail 可是 base-visual(02609) 或独立 FIXED `gauge_rail` part(a4d9236) |
+| `none` | S1 / S3 (002e25 / e1d730) | `002e25:L154-L162` / `e1d730:L180-L188` | eligible if compatible | 无第二件，只有 base + blade_arm + 1 REVOLUTE（占 5 星多数：5/13 纯 2-part） |
+| `hold_down_bar_prismatic` | S7 / S8 (c6d987 / 5a20) | `c6d987:L176-L214` / `5a20:L185-L252` | eligible if compatible | 独立 `hold_down`/`hold_down_bar` part(clamp_bar+slider sleeve/block+pad)，PRISMATIC 垂直夹紧 `(0,0,±1)`，slider 骑 base-visual guide post/rod |
+| `finger_guard_revolute` | S11 / S12 (5013 / 02609) | `5013:L165-L203,L195-L203` / `02609:L177-L189,L209-L217` | eligible if compatible | 独立透明 `finger_guard` part(clear panel + clip loop/frame)，绕切割线轴 REVOLUTE `(±1,0,0)` 上翻，骑 base-visual guard knuckle/rod |
+| `lock_handle_revolute` | S9 / S10 (9f7cbe / 97d04) | `9f7cbe:L185-L222` / `97d04:L176-L246` | eligible if compatible | 独立 `lock_handle` part(shaft + round_handle/lock_wheel + pointer/grip)，旋转安全锁 REVOLUTE `(0,0,1)`/`(1,0,0)`，骑 base-visual lock boss/mount |
+| `side_gauge_prismatic` | S6 / S12 (a4d9236 / 02609) | `a4d9236:L114-L143,L269-L277` / `02609:L151-L175,L200-L208` | eligible if compatible | 独立 `side_gauge` part(carriage/saddle + fence + thumb knob)，沿 rail PRISMATIC `(1,0,0)` 平移定位纸张；rail 可是 base-visual(02609) 或独立 FIXED `gauge_rail` part(a4d9236) |
 
 ## 槽位图（slot graph）
 ```
@@ -207,19 +207,19 @@ pattern = mixed
 
 - 无模板级复制数量逻辑：核心结构由固定 named slots 和 gated module-local fixed copies 表达，不暴露全局 `*_count` 作为主拓扑采样轴。
 - 若某个 module source 内部包含固定成对、环形阵列或若干重复 visual/part，模板实现应把它保留为 module-local construction，并使用稳定命名；不得把未审核的可变复制数量加入 seed domain。
-- 未来若要把固定重复结构升级为可变 multiplicity，必须补充来源、N_range、placement、joint policy、coverage seeds 和 reviewer 审核记录。
+- 未来若要把固定重复结构升级为可变 multiplicity，必须补充来源、N_range、placement、joint policy、regression seeds 和 reviewer 审核记录。
 
 ## 拓扑多样性审计
 
 总组合数（笛卡尔积，未加相容约束）：
 Slot1 base_style(4) × Slot2 arm_style(4) × Slot3 pivot_mount(3) × Slot4 second_dof(5) = **240**。
 
-预计 `module_topology_diversity` 门控（≥5 distinct）能否过：**yes**。
+预计 `module_topology_diversity` 门控（≥10 distinct）能否过：**yes**。
 
 理由：只看会改变 part 数 / joint 数 / joint 拓扑的结构骨架（base/arm 的构造 enum 不改拓扑，仅换 mesh/primitive，不计入）：
 - Slot3 `pivot_mount`：`separate_pivot_bracket` 引入一个额外 FIXED part（part 数 +1，多一个 FIXED joint 且 blade_arm 改 parent）；两个 baked 变体则维持 2-part 主干 → **2 个结构骨架**（baked / separate）。
 - Slot4 `second_dof`：5 个取值 → `none`(纯 2-part) / `hold_down`(+1 part,+1 PRISMATIC) / `finger_guard`(+1 part,+1 REVOLUTE) / `lock_handle`(+1 part,+1 REVOLUTE,轴族不同) / `side_gauge`(+1 part,+1 PRISMATIC,且可再 +1 FIXED gauge_rail part) → **5+ 个结构骨架**。
-- Slot3 × Slot4 = 2 × 5 = **10 种 part/joint-拓扑骨架**（part 数从 2 到 5、关节数从 1 到 3、含/不含第二 REVOLUTE/PRISMATIC），远超 5。叠加 4 base_style × 4 arm_style 的几何换装后离散组合达 240。
+- Slot3 × Slot4 = 2 × 5 = **10 种 part/joint-拓扑骨架**（part 数从 2 到 5、关节数从 1 到 3、含/不含第二 REVOLUTE/PRISMATIC），达到 10 distinct 最低门槛。叠加 4 base_style × 4 arm_style 的几何换装后离散组合达 240。
 
 每槽位候选数：
 | slot | candidate_count | 是否 ≥3 | 备注 |
@@ -229,33 +229,16 @@ Slot1 base_style(4) × Slot2 arm_style(4) × Slot3 pivot_mount(3) × Slot4 secon
 | Slot3 pivot_mount | 3 | yes | baked_clevis / baked_pin / separate_bracket 三结构家族 |
 | Slot4 second_dof | 5 | yes | 含 `none` 默认 + 4 种 gated 件，每种结构骨架不同 |
 
-### Stage 1 / Stage 2 seed-domain plan
+### Procedural Sampling / Sweep Plan
 
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+seed_domain_policy：procedural_first。`config_from_seed(seed)` 对普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊，不作为 anchor 或 reference seed。Sampling 先选择上游结构槽，再从 compatible 下游 candidate 集合中选择 module / multiplicity / module-local variant。
 
-Stage 1 high-risk coverage seed plan：
+Compatibility matrix / gating：以「槽位图」「每槽位 Module Emits / Interfaces」「Validator」中定义的接口、joint 轴、支撑面、range 和互斥关系为准；不兼容组合必须在 sampler 或 `resolve_config` 中降级、重采样或拒绝，不能让 builder 后期失败。
 
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+Regression overrides：默认无。若未来 sweep 发现稳定失败组合，或 reviewer 指定固定回归样本，可以添加少量显式 regression seed，但必须写明 seed、组合和原因；不得用小型 curated / modulo 表作为主 seed domain。
 
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
+Random sweep / viewer plan：首次模板验收跑 `uv run articraft template sweep-pipeline <slug>`，依赖 0、0-4、0-19、0-49 的 cumulative random seeds 检查 build、MatingContract、joint origin / axis / range、support、collision 和 `module_topology_diversity`。机械通过后 viewer 目检一小批随机 seed，重点看类别身份、比例、closed pose、bulky module、optional moving child、max multiplicity、captured-pin / bearing / hinge / rail 接口。
 
-### Stage 1 / Stage 2 seed-domain plan
-
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
-
-Stage 1 high-risk coverage seed plan：
-
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
-
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
 
 ## Validator（author_run_tests 必须覆盖的点）
 - identity：存在 base + blade_arm；存在恰好一个把 blade_arm 连到 base（或 pivot_bracket）的 REVOLUTE 主关节。

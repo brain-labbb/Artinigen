@@ -218,7 +218,7 @@ like a <category>." Always do it.
 | `articraft_template_authoring/agent_workflow.md` | **SPEC_ONLY** modular spec workflow and reviewed-spec handoff | Applies before implementation |
 | `articraft_template_authoring/SPEC_TEMPLATE.md` | Required modular slot/module spec schema | Applies to new category specs |
 | `MODULAR_TEMPLATE_AUTHORING.md` | Slot/module implementation contract, `__modular__`, InterfaceSpec, `module_topology_diversity` | Applies to new category templates |
-| `articraft_template_authoring/MATURE_TEMPLATE_METHOD.md` | Modular maturity notes for source adaptation, interfaces, seed domain, and sweep repair | Applies during implementation |
+| `articraft_template_authoring/MATURE_TEMPLATE_METHOD.md` | Modular maturity notes for source adaptation, interfaces, procedural sampling, and sweep repair | Applies during implementation |
 | `articraft template sweep-pipeline <slug>` | Per-iteration ground-truth signal | **You read this every iteration** |
 | `articraft template compile-sweep <slug> --seeds X` | Manual fallback / targeted diagnosis | Use only when pipeline output asks for focused follow-up |
 | `articraft template batch <slug> --seeds X` | Promote template into real records | Run only after this doc's stop conditions are met |

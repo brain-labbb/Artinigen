@@ -79,18 +79,18 @@ def test_module_topology_diversity_fails_when_slot_report_missing(monkeypatch) -
     assert "slot_choices_for_seed" in gate.reason
 
 
-def test_module_topology_diversity_passes_with_five_distinct_passing_tuples(
+def test_module_topology_diversity_passes_with_ten_distinct_passing_tuples(
     monkeypatch,
 ) -> None:
     choices = {
-        seed: [("base", f"base_{seed % 5}"), ("head", f"head_{seed % 2}")] for seed in range(20)
+        seed: [("base", f"base_{seed % 10}"), ("head", f"head_{seed % 2}")] for seed in range(20)
     }
     _patch_modular_choices(monkeypatch, choices)
 
     gate = check_module_topology_diversity("demo", [_outcome(seed) for seed in range(20)])
 
     assert gate.status == "pass"
-    assert gate.details["distinct_count"] >= 5
+    assert gate.details["distinct_count"] >= 10
     assert gate.details["passing_seed_count"] == 20
 
 
@@ -104,7 +104,7 @@ def test_module_topology_diversity_fails_when_distinct_count_is_too_low(
 
     assert gate.status == "fail"
     assert gate.details["distinct_count"] == 2
-    assert "at least 5" in gate.reason
+    assert "at least 10" in gate.reason
 
 
 def test_module_topology_diversity_counts_only_passing_seeds(monkeypatch) -> None:
@@ -137,7 +137,7 @@ def test_evaluate_gates_returns_only_module_topology(monkeypatch, tmp_path: Path
         lambda slug, outcomes: CoverageGateResult(
             name="module_topology_diversity",
             status="pass",
-            details={"distinct_count": 5},
+            details={"distinct_count": 10},
         ),
     )
 

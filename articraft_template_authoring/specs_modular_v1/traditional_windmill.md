@@ -49,36 +49,36 @@ Traditional windmill 是带建筑性塔身或磨坊体的历史风车：静态 t
 ## 槽位 + 候选模块表
 
 ### Slot A：support_tower
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `low_body_tower` | `rec_traditional_windmill_00b3e45fa2e04aeaa5fb363f96b2115e` | L59-L90 | **yes** | low mill body with direct cap seat; compact and simple |
-| `rugged_tower_with_door` | `rec_traditional_windmill_0002` | L249-L392 | | tower body plus articulated access door source geometry |
-| `industrial_guarded_tower` | `rec_traditional_windmill_018591ff916a428aa0d7b7fa8ad24d1d` | L222-L368 | | heavy-duty tower with reinforced shell, hardware, guard language |
-| `split_bearing_tower` | `rec_traditional_windmill_0c9ef136b78d4612a74250d77c632b08` | L264-L344 | | tower_base and bearing_module are separate structural stages |
+| `low_body_tower` | `rec_traditional_windmill_00b3e45fa2e04aeaa5fb363f96b2115e` | L59-L90 | eligible if compatible | low mill body with direct cap seat; compact and simple |
+| `rugged_tower_with_door` | `rec_traditional_windmill_0002` | L249-L392 | eligible if compatible | tower body plus articulated access door source geometry |
+| `industrial_guarded_tower` | `rec_traditional_windmill_018591ff916a428aa0d7b7fa8ad24d1d` | L222-L368 | eligible if compatible | heavy-duty tower with reinforced shell, hardware, guard language |
+| `split_bearing_tower` | `rec_traditional_windmill_0c9ef136b78d4612a74250d77c632b08` | L264-L344 | eligible if compatible | tower_base and bearing_module are separate structural stages |
 
 ### Slot B：yaw_cap_head
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `continuous_roof_cap` | `rec_traditional_windmill_00b3e45fa2e04aeaa5fb363f96b2115e` | L91-L115, L164-L172 | **yes** | simple cap part, continuous yaw about tower Z |
-| `bounded_service_cap` | `rec_traditional_windmill_b7e9f597b4914a899df82c98be4f2429` | L223-L324, L412-L420 | | heavier cap with REVOLUTE yaw limit |
-| `split_head_frame` | `rec_traditional_windmill_0c9ef136b78d4612a74250d77c632b08` | L302-L377, L515-L530 | | bearing_module -> cap_shell continuous, then fixed head_frame |
-| `weatherproof_shell_cap` | `rec_traditional_windmill_17c28308c5f04e3288c5cf19f9bee2c1` | L285-L526, L553-L561 | | sealed outdoor cap with dense roof/collar detailing |
+| `continuous_roof_cap` | `rec_traditional_windmill_00b3e45fa2e04aeaa5fb363f96b2115e` | L91-L115, L164-L172 | eligible if compatible | simple cap part, continuous yaw about tower Z |
+| `bounded_service_cap` | `rec_traditional_windmill_b7e9f597b4914a899df82c98be4f2429` | L223-L324, L412-L420 | eligible if compatible | heavier cap with REVOLUTE yaw limit |
+| `split_head_frame` | `rec_traditional_windmill_0c9ef136b78d4612a74250d77c632b08` | L302-L377, L515-L530 | eligible if compatible | bearing_module -> cap_shell continuous, then fixed head_frame |
+| `weatherproof_shell_cap` | `rec_traditional_windmill_17c28308c5f04e3288c5cf19f9bee2c1` | L285-L526, L553-L561 | eligible if compatible | sealed outdoor cap with dense roof/collar detailing |
 
 ### Slot C：sail_rotor
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `classic_lattice_sails` | `rec_traditional_windmill_00b3e45fa2e04aeaa5fb363f96b2115e` | L116-L163, L173-L181 | **yes** | hub plus multiple lattice blades as rotor visuals; continuous shaft spin |
-| `retrofit_dense_rotor` | `rec_traditional_windmill_973bf1df6bd245218dccfc8699935e81` | L594-L691 | | denser retrofit rotor with reinforced hub and sail lattice |
-| `compact_stow_rotor` | `rec_traditional_windmill_04d6d1109cf74ed194c5e7e9134c8272` | L238-L301 | | compact rotor_hub with per-blade fold/stow hint plus spin |
-| `weatherproof_rotor` | `rec_traditional_windmill_17c28308c5f04e3288c5cf19f9bee2c1` | L527-L570 | | sealed rotor with outdoor hardware language |
+| `classic_lattice_sails` | `rec_traditional_windmill_00b3e45fa2e04aeaa5fb363f96b2115e` | L116-L163, L173-L181 | eligible if compatible | hub plus multiple lattice blades as rotor visuals; continuous shaft spin |
+| `retrofit_dense_rotor` | `rec_traditional_windmill_973bf1df6bd245218dccfc8699935e81` | L594-L691 | eligible if compatible | denser retrofit rotor with reinforced hub and sail lattice |
+| `compact_stow_rotor` | `rec_traditional_windmill_04d6d1109cf74ed194c5e7e9134c8272` | L238-L301 | eligible if compatible | compact rotor_hub with per-blade fold/stow hint plus spin |
+| `weatherproof_rotor` | `rec_traditional_windmill_17c28308c5f04e3288c5cf19f9bee2c1` | L527-L570 | eligible if compatible | sealed rotor with outdoor hardware language |
 
 ### Slot D：service_accessory
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `access_door` | `rec_traditional_windmill_0002` | L346-L607 | **yes** | tower door REVOLUTE hinged to tower |
-| `brake_lever` | `rec_traditional_windmill_0002` | L558-L639 | | cap-mounted brake lever REVOLUTE about local horizontal axis |
-| `lockout_lever` | `rec_traditional_windmill_72ad9025d8ee45aaa3843d5e6b549132` | L426-L450 | | industrial lockout lever on cap |
-| `side_hatch` | `rec_traditional_windmill_dba2ae8710824ba9bd7267c95d3b9d29` | L262-L392 | | side hatch REVOLUTE on cap for service access |
+| `access_door` | `rec_traditional_windmill_0002` | L346-L607 | eligible if compatible | tower door REVOLUTE hinged to tower |
+| `brake_lever` | `rec_traditional_windmill_0002` | L558-L639 | eligible if compatible | cap-mounted brake lever REVOLUTE about local horizontal axis |
+| `lockout_lever` | `rec_traditional_windmill_72ad9025d8ee45aaa3843d5e6b549132` | L426-L450 | eligible if compatible | industrial lockout lever on cap |
+| `side_hatch` | `rec_traditional_windmill_dba2ae8710824ba9bd7267c95d3b9d29` | L262-L392 | eligible if compatible | side hatch REVOLUTE on cap for service access |
 
 ## 槽位图（slot graph）
 
@@ -143,7 +143,7 @@ pattern: `mixed`
 
 ## 拓扑多样性审计
 
-总组合数：`4 support × 4 cap × 4 rotor × 5 accessory = 320`。预计 `module_topology_diversity` 门控（>=5 distinct）能过：yes，主链、joint type、split bearing stage、optional accessory part set 都改变拓扑。
+总组合数：`4 support × 4 cap × 4 rotor × 5 accessory = 320`。预计 `module_topology_diversity` 门控（>=10 distinct）能过：yes，主链、joint type、split bearing stage、optional accessory part set 都改变拓扑。
 
 | slot | candidate_count | 是否 >=3 | 备注 |
 |---|---:|---|---|
@@ -152,33 +152,16 @@ pattern: `mixed`
 | sail_rotor | 4 | yes | |
 | service_accessory | 5 | yes | includes `none` |
 
-### Stage 1 / Stage 2 seed-domain plan
+### Procedural Sampling / Sweep Plan
 
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+seed_domain_policy：procedural_first。`config_from_seed(seed)` 对普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊，不作为 anchor 或 reference seed。Sampling 先选择上游结构槽，再从 compatible 下游 candidate 集合中选择 module / multiplicity / module-local variant。
 
-Stage 1 high-risk coverage seed plan：
+Compatibility matrix / gating：以「槽位图」「每槽位 Module Emits / Interfaces」「Validator」中定义的接口、joint 轴、支撑面、range 和互斥关系为准；不兼容组合必须在 sampler 或 `resolve_config` 中降级、重采样或拒绝，不能让 builder 后期失败。
 
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+Regression overrides：默认无。若未来 sweep 发现稳定失败组合，或 reviewer 指定固定回归样本，可以添加少量显式 regression seed，但必须写明 seed、组合和原因；不得用小型 curated / modulo 表作为主 seed domain。
 
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
+Random sweep / viewer plan：首次模板验收跑 `uv run articraft template sweep-pipeline <slug>`，依赖 0、0-4、0-19、0-49 的 cumulative random seeds 检查 build、MatingContract、joint origin / axis / range、support、collision 和 `module_topology_diversity`。机械通过后 viewer 目检一小批随机 seed，重点看类别身份、比例、closed pose、bulky module、optional moving child、max multiplicity、captured-pin / bearing / hinge / rail 接口。
 
-### Stage 1 / Stage 2 seed-domain plan
-
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
-
-Stage 1 high-risk coverage seed plan：
-
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
-
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
 
 ## Validator（author_run_tests 必须覆盖的点）
 - 必须有 tower/body、cap/head、rotor/sail 三个核心语义。

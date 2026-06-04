@@ -57,7 +57,7 @@ def _stub_coverage_gate(monkeypatch, *, status: str = "pass") -> None:
             module_topology_diversity=CoverageGateResult(
                 name="module_topology_diversity",
                 status=status,
-                details={"distinct_count": 5 if status == "pass" else 1},
+                details={"distinct_count": 10 if status == "pass" else 1},
                 reason="" if status == "pass" else "not enough distinct modular topology",
             )
         ),

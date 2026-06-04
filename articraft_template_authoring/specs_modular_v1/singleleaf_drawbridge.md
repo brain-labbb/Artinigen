@@ -93,58 +93,58 @@
 
 铰链接地侧，承载销线一侧的 bearing/pedestal/cheek 与岸基安装几何，是 root part。命名样本里为 `abutment` / `shore_frame` / `support_frame` / `base`。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `masonry_abutment` | S9 (303cdd7f) / S1 (0003) | 303cdd7f:L28-L81 / 0003:L71-L131 | **✅ seed=0** | 实心混凝土 abutment core/foundation + 切水面（cutwater）+ 路面/service cover + 双侧 bearing pedestal + side cheek + 圆柱/box bearing housing + bearing cap，全 Box+Cylinder，最经典稳健 |
-| `twin_tower_machinery` | S6 (c5bac345) / S2 (0004) | c5bac345:L31-L139 / 0004:L121-L322 | | foundation + approach slab + drive/power cabinet + **双侧机房塔**（inner/outer web + front/back cheek + saddle pad + bearing cap + tower crown + diagonal brace）+ baked hinge pin/cap，机房卷扬观感，最重 |
-| `torus_ring_road_abutment` | S8 (f04c79fe) / S7 (b800c64e) | f04c79fe:L57-L97 / b800c64e:L29-L84 | | helper 驱动（`_add_box`/`_add_y_cylinder`）approach slab + side pier + bearing plinth/saddle/web + **`TorusGeometry` bearing ring**（mesh_from_geometry）+ cap pin / backplate，道路 bascule 观感 |
-| `cadquery_bored_shore` | S5 (eec982cb) | eec982cb:L28-L129 | | foundation slab + side wall + rear abutment + cross tie + **`mesh_from_cadquery` 镗孔 bearing block**（`box().faces(">Y").circle().cutThruAll().edges("|Y").fillet()`）+ bracket + pad，唯一 cadquery 源（见说明） |
+| `masonry_abutment` | S9 (303cdd7f) / S1 (0003) | 303cdd7f:L28-L81 / 0003:L71-L131 | eligible if compatible | 实心混凝土 abutment core/foundation + 切水面（cutwater）+ 路面/service cover + 双侧 bearing pedestal + side cheek + 圆柱/box bearing housing + bearing cap，全 Box+Cylinder，最经典稳健 |
+| `twin_tower_machinery` | S6 (c5bac345) / S2 (0004) | c5bac345:L31-L139 / 0004:L121-L322 | eligible if compatible | foundation + approach slab + drive/power cabinet + **双侧机房塔**（inner/outer web + front/back cheek + saddle pad + bearing cap + tower crown + diagonal brace）+ baked hinge pin/cap，机房卷扬观感，最重 |
+| `torus_ring_road_abutment` | S8 (f04c79fe) / S7 (b800c64e) | f04c79fe:L57-L97 / b800c64e:L29-L84 | eligible if compatible | helper 驱动（`_add_box`/`_add_y_cylinder`）approach slab + side pier + bearing plinth/saddle/web + **`TorusGeometry` bearing ring**（mesh_from_geometry）+ cap pin / backplate，道路 bascule 观感 |
+| `cadquery_bored_shore` | S5 (eec982cb) | eec982cb:L28-L129 | eligible if compatible | foundation slab + side wall + rear abutment + cross tie + **`mesh_from_cadquery` 镗孔 bearing block**（`box().faces(">Y").circle().cutThruAll().edges(" | Y").fillet()`）+ bracket + pad，唯一 cadquery 源（见说明） |
 
-说明：`cadquery_bored_shore` 有 **3 个 cadquery 5 星源**（eec982cb 已精读采纳；7eeaf5a2、8864cd20 经实测确认同用 `mesh_from_cadquery` 镗孔块；另 1489d0c0 是 bore 但非 cadquery），bearing 表达（实心块镗通孔捕获 through-trunnion）与其余三者（实心 pedestal+housing / torus ring）拓扑/primitive 明确不同，源支撑充分。anchor 选 `masonry_abutment`（占 5 星多数：shore_frame/abutment 名族）。
+说明：`cadquery_bored_shore` 有 **3 个 cadquery 5 星源**（eec982cb 已精读采纳；7eeaf5a2、8864cd20 经实测确认同用 `mesh_from_cadquery` 镗孔块；另 1489d0c0 是 bore 但非 cadquery），bearing 表达（实心块镗通孔捕获 through-trunnion）与其余三者（实心 pedestal+housing / torus ring）拓扑/primitive 明确不同，源支撑充分。常见 reference example 可选 `masonry_abutment`（占 5 星多数：shore_frame/abutment 名族）。
 
 ### Slot B：bridge_leaf（运动桥叶，child part）
 
 绕销线上翻的活动桥面。结构必含 deck plate + 沿跨向两条 side girder + 近岸 trunnion/hinge 接口几何。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `box_deck_girder` | S9 (303cdd7f) / S2 (0004) / S6 (c5bac345) | 303cdd7f:L83-L138 / 0004:L324-L493 / c5bac345:L141-L220 | **✅ seed=0** | deck plate/surface + 双深 side girder + heel/hinge cross girder + N 条 floorbeam/cross rib + tip nose + trunnion tube/arm/hub，全 Box+Cylinder 拼装，最稳健 |
-| `railed_road_leaf` | S8 (f04c79fe) / S3 (5da09783) / S7 (b800c64e) | f04c79fe:L99-L162 / 5da09783:L116-L223 / b800c64e:L86-L138 | | deck slab + road surface + side girder + **栏杆柱 + top rail/guard rail** + curb cap + through trunnion shaft + trunnion hub/sleeve + hinge transom + lane marking/tread bar，道路桥观感（含护栏 baked） |
-| `mesh_girder_leaf` | S1 (0003) / S2(0004 diagonal) | 0003:L37-L48,L178-L290 | | deck plate + **`ExtrudeGeometry.centered` 锥形 side girder mesh**（`leaf_side_girder.obj`）+ center/cross stiffener + curb beam + nose beam + trunnion shaft/collar/hinge gusset，挤出梁断面观感 |
-| `bascule_counterweight_leaf` | S4 (a9f8a88) / S9(303cdd7f heel) | a9f8a88:L63-L91 | | trunnion + 双 girder + N 条 cross brace + **pivot 后方 counterweight baked box**（配重尾）+ deck + sidewalk + railing + road line，真 bascule 配重平衡观感（counterweight 仍是 leaf 的死 visual，不另起 part；另有 9840a6d6/d3e17d18/f484d3d8 三个 counterweight 旁证记录） |
+| `box_deck_girder` | S9 (303cdd7f) / S2 (0004) / S6 (c5bac345) | 303cdd7f:L83-L138 / 0004:L324-L493 / c5bac345:L141-L220 | eligible if compatible | deck plate/surface + 双深 side girder + heel/hinge cross girder + N 条 floorbeam/cross rib + tip nose + trunnion tube/arm/hub，全 Box+Cylinder 拼装，最稳健 |
+| `railed_road_leaf` | S8 (f04c79fe) / S3 (5da09783) / S7 (b800c64e) | f04c79fe:L99-L162 / 5da09783:L116-L223 / b800c64e:L86-L138 | eligible if compatible | deck slab + road surface + side girder + **栏杆柱 + top rail/guard rail** + curb cap + through trunnion shaft + trunnion hub/sleeve + hinge transom + lane marking/tread bar，道路桥观感（含护栏 baked） |
+| `mesh_girder_leaf` | S1 (0003) / S2(0004 diagonal) | 0003:L37-L48,L178-L290 | eligible if compatible | deck plate + **`ExtrudeGeometry.centered` 锥形 side girder mesh**（`leaf_side_girder.obj`）+ center/cross stiffener + curb beam + nose beam + trunnion shaft/collar/hinge gusset，挤出梁断面观感 |
+| `bascule_counterweight_leaf` | S4 (a9f8a88) / S9(303cdd7f heel) | a9f8a88:L63-L91 | eligible if compatible | trunnion + 双 girder + N 条 cross brace + **pivot 后方 counterweight baked box**（配重尾）+ deck + sidewalk + railing + road line，真 bascule 配重平衡观感（counterweight 仍是 leaf 的死 visual，不另起 part；另有 9840a6d6/d3e17d18/f484d3d8 三个 counterweight 旁证记录） |
 
 ### Slot C：hinge_bearing_interface（铰链销线机构 / 是否独立 bearing part，决定 part 数与 captured-pin 重叠声明）
 
 销线上 trunnion 与 bearing 的咬合方式 + 铰轴方向。**唯一改变 part/joint 数的槽位**：`separate_bearing_parts` 引入 2 个独立 FIXED bearing part（4 part / 1 REVOLUTE + 2 FIXED），其余三者均为 2 part / 1 REVOLUTE（bearing 是 support 的 visual，trunnion 是 leaf 的 visual）。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `trunnion_tube_in_cylinder_housing` | S9 (303cdd7f) / S5 (eec982cb) | 303cdd7f:L61-L75,L102-L107 / eec982cb:L28-L43,L131-L137 | **✅ seed=0** | leaf 上一根全跨 `trunnion_tube`（Cylinder，rpy 沿 Y）插入 support 的圆柱 bearing housing / 镗孔 block，`expect_within`+`expect_overlap` 捕获，2 part |
-| `trunnion_shaft_through_torus_ring` | S7 (b800c64e) / S3 (5da09783) | b800c64e:L29-L84,L86-L131 / 5da09783:L59-L76,L189-L202 | | support 上 `TorusGeometry` bearing ring（+ pedestal/plinth），leaf 上 through `trunnion_shaft` + `shaft_collar` 穿过 ring，collar/shaft-in-ring `allow_overlap`，2 part |
-| `leaf_sleeve_over_support_pin` | S2 (0004) / S8 (f04c79fe) | 0004:L250-L281,L398-L413,L552-L565 / f04c79fe:L80-L87,L136-L144 | | support 上 baked `hinge_pin`/`cap_pin` Cylinder（或 ring），leaf 上 `hinge_sleeve`/`bearing_sleeve` 套住它，sleeve-over-pin `allow_overlap`，2 part |
-| `separate_bearing_parts` | S1 (0003) | 0003:L133-L176,L240-L263,L292-L305 | | **唯一 4-part 骨架**：两侧 `left_bearing`/`right_bearing` 作独立 part 经 2 个 FIXED joint 固定到 support，leaf 上 trunnion shaft/collar 坐入 bearing shell（`expect_contact`），REVOLUTE 仍 support→leaf（见说明） |
+| `trunnion_tube_in_cylinder_housing` | S9 (303cdd7f) / S5 (eec982cb) | 303cdd7f:L61-L75,L102-L107 / eec982cb:L28-L43,L131-L137 | eligible if compatible | leaf 上一根全跨 `trunnion_tube`（Cylinder，rpy 沿 Y）插入 support 的圆柱 bearing housing / 镗孔 block，`expect_within`+`expect_overlap` 捕获，2 part |
+| `trunnion_shaft_through_torus_ring` | S7 (b800c64e) / S3 (5da09783) | b800c64e:L29-L84,L86-L131 / 5da09783:L59-L76,L189-L202 | eligible if compatible | support 上 `TorusGeometry` bearing ring（+ pedestal/plinth），leaf 上 through `trunnion_shaft` + `shaft_collar` 穿过 ring，collar/shaft-in-ring `allow_overlap`，2 part |
+| `leaf_sleeve_over_support_pin` | S2 (0004) / S8 (f04c79fe) | 0004:L250-L281,L398-L413,L552-L565 / f04c79fe:L80-L87,L136-L144 | eligible if compatible | support 上 baked `hinge_pin`/`cap_pin` Cylinder（或 ring），leaf 上 `hinge_sleeve`/`bearing_sleeve` 套住它，sleeve-over-pin `allow_overlap`，2 part |
+| `separate_bearing_parts` | S1 (0003) | 0003:L133-L176,L240-L263,L292-L305 | eligible if compatible | **唯一 4-part 骨架**：两侧 `left_bearing`/`right_bearing` 作独立 part 经 2 个 FIXED joint 固定到 support，leaf 上 trunnion shaft/collar 坐入 bearing shell（`expect_contact`），REVOLUTE 仍 support→leaf（见说明） |
 
-说明：`separate_bearing_parts` 仅 1 个直接源（0003），但它是真实世界分体铸造/螺栓轴承的标准设计、并在 5 星样本里实证（实测 0003 = support + 2 独立 bearing + leaf = **4 part**，joint = 1 REVOLUTE + 2 FIXED），拓扑骨架与其余三者（均 2-part）本质不同——保留它是为这一真实结构模式而非凑拓扑计数。最终去留以 compile-sweep + viewer 目检为准：若 0003 式 4-part 在多 seed 上 bearing 漂浮 / trunnion 坐不进 shell，则按经验证据折叠。该候选的 anchor 不选它（默认走最稳健的 2-part `trunnion_tube_in_cylinder_housing`）。`hinge_axis` 作派生参数（见参数表），不单列槽位。
+说明：`separate_bearing_parts` 仅 1 个直接源（0003），但它是真实世界分体铸造/螺栓轴承的标准设计、并在 5 星样本里实证（实测 0003 = support + 2 独立 bearing + leaf = **4 part**，joint = 1 REVOLUTE + 2 FIXED），拓扑骨架与其余三者（均 2-part）本质不同——保留它是为这一真实结构模式而非凑拓扑计数。最终去留以 compile-sweep + viewer 目检为准：若 0003 式 4-part 在多 seed 上 bearing 漂浮 / trunnion 坐不进 shell，则按经验证据折叠。默认/常见 procedural 权重可偏向最稳健的 2-part `trunnion_tube_in_cylinder_housing`。`hinge_axis` 作派生参数（见参数表），不单列槽位。
 
 ### Slot D：leaf_topside_extras（桥面附件，gated baked visuals，无附加 DOF）
 
 leaf 顶面/侧面的可选静态扩展，全部 baked 进 leaf 的 visual，**不引入任何新 DOF / part**。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `curb_guard` | S1 (0003) / S6 (c5bac345) | 0003:L222-L233 / c5bac345:L115-L120 | **✅ seed=0** | 仅双侧 curb beam / safety stripe（低路缘 + 警示色），最简扩展（默认） |
-| `rail_balustrade` | S8 (f04c79fe) / S3 (5da09783) / S4 (a9f8a88) | f04c79fe:L119-L133 / 5da09783:L145-L157 / a9f8a88:L82-L90 | | 双侧 N 根栏杆柱 + top rail + sidewalk + lane/road line，完整人行护栏栏杆 |
-| `tread_underside_ribs` | S3 (5da09783) / S5 (eec982cb) | 5da09783:L166-L187 / eec982cb:L168-L192 | | 顶面 N 条 tread bar/wearing panel + 底面 N 条 longitudinal/cross rib（结构加劲），工程化裸面观感 |
+| `curb_guard` | S1 (0003) / S6 (c5bac345) | 0003:L222-L233 / c5bac345:L115-L120 | eligible if compatible | 仅双侧 curb beam / safety stripe（低路缘 + 警示色），最简扩展（默认） |
+| `rail_balustrade` | S8 (f04c79fe) / S3 (5da09783) / S4 (a9f8a88) | f04c79fe:L119-L133 / 5da09783:L145-L157 / a9f8a88:L82-L90 | eligible if compatible | 双侧 N 根栏杆柱 + top rail + sidewalk + lane/road line，完整人行护栏栏杆 |
+| `tread_underside_ribs` | S3 (5da09783) / S5 (eec982cb) | 5da09783:L166-L187 / eec982cb:L168-L192 | eligible if compatible | 顶面 N 条 tread bar/wearing panel + 底面 N 条 longitudinal/cross rib（结构加劲），工程化裸面观感 |
 
 ### Slot E：shore_context（岸基环境，gated baked visuals，无附加 DOF）
 
 support 的可选环境扩展，全部 baked 进 support 的 visual，**不引入任何新 DOF / part**。决定模型是“孤立铰链支座”还是“嵌在岸基/水道里的成桥”。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `bare_abutment` | S9 (303cdd7f) / S5 (eec982cb) | 303cdd7f:L28-L46 / eec982cb:L45-L93 | **✅ seed=0** | 仅 abutment core + 路面 apron + hinge sill，无引桥/水道，最简（默认） |
-| `approach_receiving_span` | S8 (f04c79fe) / S2(0004) | f04c79fe:L58-L97 / 0004:L121-L163 | | 近岸 approach slab/curb + 远岸 far landing/receiving sill（+ 路面）baked，成对引桥/受桥跨 |
-| `channel_water_context` | S4 (a9f8a88) / S7 (b800c64e) | a9f8a88:L25-L61 / b800c64e:L34-L65 | | water plane + pier/cutwater + 引桥 + 受桥 +（可选）控制塔，完整水道成桥场景（最重 baked，几何抢眼但全静态） |
+| `bare_abutment` | S9 (303cdd7f) / S5 (eec982cb) | 303cdd7f:L28-L46 / eec982cb:L45-L93 | eligible if compatible | 仅 abutment core + 路面 apron + hinge sill，无引桥/水道，最简（默认） |
+| `approach_receiving_span` | S8 (f04c79fe) / S2(0004) | f04c79fe:L58-L97 / 0004:L121-L163 | eligible if compatible | 近岸 approach slab/curb + 远岸 far landing/receiving sill（+ 路面）baked，成对引桥/受桥跨 |
+| `channel_water_context` | S4 (a9f8a88) / S7 (b800c64e) | a9f8a88:L25-L61 / b800c64e:L34-L65 | eligible if compatible | water plane + pier/cutwater + 引桥 + 受桥 +（可选）控制塔，完整水道成桥场景（最重 baked，几何抢眼但全静态） |
 
 ## 槽位图（slot graph）
 ```
@@ -230,15 +230,15 @@ pattern = mixed
 
 - 无模板级复制数量逻辑：核心结构由固定 named slots 和 gated module-local fixed copies 表达，不暴露全局 `*_count` 作为主拓扑采样轴。
 - 若某个 module source 内部包含固定成对、环形阵列或若干重复 visual/part，模板实现应把它保留为 module-local construction，并使用稳定命名；不得把未审核的可变复制数量加入 seed domain。
-- 未来若要把固定重复结构升级为可变 multiplicity，必须补充来源、N_range、placement、joint policy、coverage seeds 和 reviewer 审核记录。
+- 未来若要把固定重复结构升级为可变 multiplicity，必须补充来源、N_range、placement、joint policy、regression seeds 和 reviewer 审核记录。
 
 ## 拓扑多样性审计
 
 总组合数（笛卡尔积）：A(4) × B(4) × C(4) × D(3) × E(3) = **576**。
 
-预计 `module_topology_diversity` 门控（≥5 distinct）能否过：**yes**。
+预计 `module_topology_diversity` 门控（≥10 distinct）能否过：**yes**。
 
-理由：仅看**改变 part/joint 拓扑骨架**的维度就足够。Slot C 直接劈出两类骨架——`separate_bearing_parts`（4 part = support + leaf + 2 bearing，joint = 1 REVOLUTE + 2 FIXED）vs 其余三者（2 part，1 REVOLUTE）。再叠加：(1) Slot A 四种支座（box 实心 / 双塔机房 / torus-ring / cadquery 镗孔块——不同 primitive 家族与 visual 数量级），(2) Slot B 四种桥叶（box girder / 护栏路桥 / extrude-mesh 梁 / counterweight bascule——其中 `bascule_counterweight_leaf` 多一组 cross-brace + 配重几何块，`mesh_girder_leaf` 用 ExtrudeGeometry mesh 而非 Box），（注：`hinge_axis` 的 alongshore 变体 v1 暂缓采样，不计入此处多样性——见参数表与实现备注）。仅 C(4) 的“2-part vs 4-part”× A 的四种支座家族就给出 ≥8 个可区分的 part/visual-tree 骨架，远超 5；叠加 B/D/E 的 baked-skeleton 变化后离散组合达 576。每个槽位候选数均 ≥3。
+理由：仅看**改变 part/joint 拓扑骨架**的维度就足够。Slot C 直接劈出两类骨架——`separate_bearing_parts`（4 part = support + leaf + 2 bearing，joint = 1 REVOLUTE + 2 FIXED）vs 其余三者（2 part，1 REVOLUTE）。再叠加：(1) Slot A 四种支座（box 实心 / 双塔机房 / torus-ring / cadquery 镗孔块——不同 primitive 家族与 visual 数量级），(2) Slot B 四种桥叶（box girder / 护栏路桥 / extrude-mesh 梁 / counterweight bascule——其中 `bascule_counterweight_leaf` 多一组 cross-brace + 配重几何块，`mesh_girder_leaf` 用 ExtrudeGeometry mesh 而非 Box），（注：`hinge_axis` 的 alongshore 变体 v1 暂缓采样，不计入此处多样性——见参数表与实现备注）。仅 C(4) 的“2-part vs 4-part”× A 的四种支座家族约给出 ≥8 个可区分的 part/visual-tree 骨架；叠加 B/D/E 的 baked-skeleton 变化后离散组合达 576，远超 10。每个槽位候选数均 ≥3。
 
 每槽位候选数：
 | slot | candidate_count | 是否 ≥3 | 备注 |
@@ -249,33 +249,16 @@ pattern = mixed
 | Slot D leaf_topside_extras | 3 | yes | baked，无新 DOF |
 | Slot E shore_context | 3 | yes | baked，无新 DOF |
 
-### Stage 1 / Stage 2 seed-domain plan
+### Procedural Sampling / Sweep Plan
 
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+seed_domain_policy：procedural_first。`config_from_seed(seed)` 对普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊，不作为 anchor 或 reference seed。Sampling 先选择上游结构槽，再从 compatible 下游 candidate 集合中选择 module / multiplicity / module-local variant。
 
-Stage 1 high-risk coverage seed plan：
+Compatibility matrix / gating：以「槽位图」「每槽位 Module Emits / Interfaces」「Validator」中定义的接口、joint 轴、支撑面、range 和互斥关系为准；不兼容组合必须在 sampler 或 `resolve_config` 中降级、重采样或拒绝，不能让 builder 后期失败。
 
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+Regression overrides：默认无。若未来 sweep 发现稳定失败组合，或 reviewer 指定固定回归样本，可以添加少量显式 regression seed，但必须写明 seed、组合和原因；不得用小型 curated / modulo 表作为主 seed domain。
 
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
+Random sweep / viewer plan：首次模板验收跑 `uv run articraft template sweep-pipeline <slug>`，依赖 0、0-4、0-19、0-49 的 cumulative random seeds 检查 build、MatingContract、joint origin / axis / range、support、collision 和 `module_topology_diversity`。机械通过后 viewer 目检一小批随机 seed，重点看类别身份、比例、closed pose、bulky module、optional moving child、max multiplicity、captured-pin / bearing / hinge / rail 接口。
 
-### Stage 1 / Stage 2 seed-domain plan
-
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
-
-Stage 1 high-risk coverage seed plan：
-
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
-
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
 
 ## Validator（author_run_tests 必须覆盖的点）
 | 检查项 | 标准 |

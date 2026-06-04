@@ -4,27 +4,29 @@
 
 核心目标：**先用 slot graph 控制拓扑，再用 module factory 改编 5 星源码，最后用 InterfaceSpec / MatingContract / sweep gate 保证装配和运动语义。**
 
-## 1. 两阶段 modular 模板标准
+## 1. Procedural-first modular 模板标准
 
-Stage 1 初版模板至少满足：
+初版模板至少满足：
 
 - `__modular__ = True`。
 - spec 中每个 slot candidate 都有真实 5 星样本 `model.py:Lx-Ly` 来源。
 - 每个主要 module factory 都能追溯到对应 source，保留其 part tree、joint 语义、primitive 复杂度和接口关系。
-- `config_from_seed(0)` 选择 spec 标注的 anchor module 组合。
 - `slot_choices_for_seed(seed)` 稳定返回每个 seed 的 module 组合。
-- `config_from_seed` 只采样已实现、已测试、可装配的 module 组合。Stage 1 允许有限 coverage / curated seed domain 来覆盖代表组合和高风险组合，先稳定 sweep 和 viewer 目检。
+- `config_from_seed(seed)` 对普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊。
+- `config_from_seed` 只采样已实现、已测试、可装配的 module 组合，并通过 compatibility matrix / `resolve_config` 显式处理互斥、降级或拒绝。
 - `resolve_config` 是唯一合法化和派生入口，负责 enum 校验、范围夹紧、互斥组合降级、尺寸链、接口点位和 joint range 派生。
+- 初版模板包含少量关键局部 scale，如 spacing、reach、hub/socket、branch/link thickness、terminal/detail size；这些参数在 `resolve_config` 中 clamp / 派生，并受接口、clearance、joint origin 和类别 multiplicity 约束。
 - Module factory 只消费 resolved config、assets、palette 和 `ctx.rng`；不重新决定高层 slot graph。
 - 每个跨 module 连接都有真实 InterfaceSpec；每个 separate moving child 有 joint metadata 和 MatingContract。
 - 不动的装饰、封条、螺丝、刻度和面板细节优先作为 parent visual。
-- `module_topology_diversity` gate 通过，high-risk coverage seed domain 覆盖计划已记录，且 sweep-pipeline 返回 `verdict=pass`。
+- `module_topology_diversity` gate 通过，sweep failure 能通过 seed/config/slot/module/interface 信息归因，且 sweep-pipeline 返回 `verdict=pass`。
 
-Stage 2 / final mature 模板额外满足：
+成熟模板额外满足：
 
-- 主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling。
-- 除 anchor、coverage 和 regression overrides 外，不再用有限 curated / modulo table 作为主 seed domain。
+- 主体 seed 逻辑保持 unbounded deterministic procedural sampling。
+- Regression overrides 只用于已知失败回归或审核指定样本；不得用有限 curated / modulo table 作为主 seed domain。
 - 1000-seed topology distinct target 达标，或有类别合法拓扑空间确实较小的审核理由。
+- 在 sweep 稳定后，可增加更细的 module-local polish 扰动，如 fastener count、rib spacing、small pad offset、decorative plate size；这些扰动不得改变未声明拓扑或绕过 compatibility matrix。
 
 ## 2. High-quality modular reference map
 
@@ -32,7 +34,7 @@ Stage 2 / final mature 模板额外满足：
 
 | 参考类型 | 优先参考模板 | 适合学习 |
 |---|---|---|
-| `_modular.py` 架构样板 | `twojoint_prismatic_chain`, `twojoint_revolute_chain`, `usb_drive_with_swivel_cover`, `wheelbarrow`, `threestage_telescoping_slide` | `SlotSpec` / `ModuleBuild` / `InterfaceSpec` / `MatingContract`、seed=0 anchor、`slot_choices_for_seed`、module source adaptation |
+| `_modular.py` 架构样板 | `twojoint_prismatic_chain`, `twojoint_revolute_chain`, `usb_drive_with_swivel_cover`, `wheelbarrow`, `threestage_telescoping_slide` | `SlotSpec` / `ModuleBuild` / `InterfaceSpec` / `MatingContract`、`slot_choices_for_seed`、procedural sampling、module source adaptation |
 | 串联 revolute / 机械臂 | `twojoint_revolute_chain`, `robotic_arms`, `robotic_leg`, `articulated_task_lamp` | 多关节链、axis family、base/link/end-effector slot、joint range 派生 |
 | 串联 prismatic / telescoping / slide | `twojoint_prismatic_chain`, `threestage_telescoping_slide` | nested overlap、rail/socket 接口、prismatic range、coaxial stage seed domain |
 | 单铰链 / 翻盖 / 门 | `single_revolute_hinge`, `zippo_lighter`, `singleleaf_drawbridge`, `wheelie_bin_with_hinged_lid`, `paper_cutter_guillotine` | hinge line、pin/barrel、closed pose、gated second DOF、captured-pin overlap |
@@ -58,7 +60,7 @@ Stage 2 / final mature 模板额外满足：
 - 某些 module 组合无法通过 MatingContract 或 visible support graph 合法装配。
 - `resolve_config` 需要大量互斥降级才能避免无效组合。
 
-如果继续保留单 slug，必须明确当前实现的稳定子域，并让 `config_from_seed` 不采样未成熟组合。
+如果继续保留单 slug，必须通过 compatibility matrix / `resolve_config` 明确合法子域，并让 `config_from_seed` 不采样未成熟组合。
 
 ## 4. Module source 改编步骤
 
@@ -96,24 +98,24 @@ Stage 2 / final mature 模板额外满足：
 | support / caster / leg | ground contact plane | 接地点共面，轮轴穿过 fork/yoke |
 | linkage | pivot pairs | 先解 pivot 几何，再放杆件和 joint |
 
-## 6. Seed domain 和拓扑多样性
+## 6. Procedural sampling 和拓扑多样性
 
-- `config_from_seed(0)` 是 anchor 组合。
-- Stage 1 其他 seeds 可以使用有限 coverage / curated domain，但只能采样已实现、已测试、可装配的组合，并必须覆盖主要 module、multiplicity、稀有合法组合和 viewer 目检需求。
-- Stage 1 coverage seeds 应优先收敛 failure-prone 组合：悬空/漂浮风险、穿模/clearance 风险、joint 轴或 range 风险、closed pose 风险、max multiplicity、bulky module、可选 moving child、长链/多子件装配、互斥 gate 或 fallback 降级路径。
-- Stage 1 收敛出的 InterfaceSpec、尺寸派生、compatibility gates 和 validator 应作为 Stage 2 扩展 seed domain 的基础，避免第二阶段放开组合后失败率过高。
-- Stage 1 使用 `seed % len(table)` 或 curated table 时，必须明确标注为临时 coverage seed domain，不得宣称为最终 dataset-scale 生成逻辑。
-- Stage 2 默认策略是 slot-independent 或 conditionally-independent sampling：先采样上游结构槽，再按显式 gate 采样兼容下游槽。只有少量 anchor / coverage / visual regression seed 可以保留 curated preset。
+- `config_from_seed(seed)` 对所有普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊。
+- 默认策略是 slot-independent 或 conditionally-independent sampling：先采样上游结构槽，再按显式 gate 采样兼容下游槽。
+- Compatibility matrix / `resolve_config` 必须优先排除 failure-prone 组合：悬空/漂浮风险、穿模/clearance 风险、joint 轴或 range 风险、closed pose 风险、max multiplicity、bulky module、可选 moving child、长链/多子件装配、互斥 gate 或 fallback 降级路径。
+- Regression overrides 只允许保留少量曾经失败或审核指定的 seed/config，必须记录原因，并且不得替代主 sampling 逻辑。
 - 如果某些 module 组合互斥，`resolve_config` 必须显式降级或拒绝；不要让 builder 才失败。
 - `slot_choices_for_seed` 必须和实际 build 使用的 choices 一致。
-- `module_topology_diversity` 需要至少 5 个通过 seed 的 distinct slot choice tuple；这是 sweep 的最低机械门槛，不是成熟数据生成目标。
-- Stage 2 / final 模板应在 1000 个 seed 下达到至少 100 个 topology distinct slot choice tuple。低于 100 时，必须记录原因：样本池确实小、slot 兼容约束强，或 reviewer 明确接受。
+- 关键连续 scale 应从一开始纳入 `config_from_seed` / `resolve_config`，但它们不是主拓扑多样性来源；`slot_choices_for_seed` 默认只记录结构/module/multiplicity choice。
+- `module_topology_diversity` 需要至少 10 个通过 seed 的 distinct slot choice tuple；这是 sweep 的最低机械门槛，不是成熟数据生成目标。
+- 成熟模板应在 1000 个 seed 下达到至少 100 个 topology distinct slot choice tuple。低于 100 时，必须记录原因：样本池确实小、slot 兼容约束强，或 reviewer 明确接受。
 
 ## 7. Builder 和 factory 规则
 
 - 顶层 builder 只创建 model、materials、resolved config，并调用 modular assembler 或等价的 slot dispatch。
 - Module factory 负责本 module 的 geometry、internal joints、interfaces 和 source adaptation。
-- Factory 内可以用 `ctx.rng` 做 module-local 小扰动，但不能改变 slot choice 或高层 topology。
+- Factory 内可以用 `ctx.rng` 做 module-local 小扰动，但不能改变 slot choice、高层 topology、接口语义或类别 multiplicity。
+- 连续局部参数优先由 ResolvedConfig 统一派生；只有 fasteners、ribs、decorative offsets 这类不影响接口的细节才适合在 factory 内用 `ctx.rng` 做轻量变化。
 - Repeated objects 用稳定命名：`blade_i`、`link_i`、`rail_pad_i`。
 - Mesh / lathe / cadquery helpers 必须参数化、可复现，并继承 source 的 primitive 语义。
 - Palette 使用命名材质，不在 factory 里随机裸 RGB。

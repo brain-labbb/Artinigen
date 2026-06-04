@@ -29,38 +29,38 @@
 
 ### Slot A：support_frame
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `compact_a_frame_crossbeam` | rec_playground_swing_0001 | L89-L129 | yes | 单座 A-frame：圆柱顶梁、两端 splayed legs、侧向 cross brace、顶端小吊点块；frame 是根 part，向下游提供一条中心 pivot line。 |
-| `tube_a_frame_with_clevises` | rec_playground_swing_0002 | L61-L179 | | 更完整的双侧 A-frame：四根斜腿、两侧 spreader、beam 下左右 clevis plate 和 pivot pin；接口显式是左右成对 pin sockets。 |
-| `long_gantry_tire_frame` | rec_playground_swing_0003 | L114-L200 | | 横向长 gantry：长 top beam、左右端 A-frame 支腿、ground skids、侧 brace、三个顶端 pivot bracket；适配 tire / multi-hanger payload。 |
-| `multi_station_wide_frame` | rec_playground_swing_b6df00eb27ba4e568ae9d11497f67153 | L21-L88 | | 从长 beam 双座 swing set 泛化的多站点 frame：同一加宽顶梁下可布置 1-5 个独立 station bay，每 bay 有自己的 pivot bracket；beam length、station spacing、端部/中部支撑随 `station_count` 派生。 |
-| `minimal_top_beam_mount` | rec_playground_swing_ff0333498fcd4d118eee0c8ae613297d | L18-L54 | | 非完整地面架的 timber / overhead beam mount：木梁、mount plate、fixed bearing、bolts；仅用于 strap swivel / disc 类单点悬挂。 |
+| `compact_a_frame_crossbeam` | rec_playground_swing_0001 | L89-L129 | eligible if compatible | 单座 A-frame：圆柱顶梁、两端 splayed legs、侧向 cross brace、顶端小吊点块；frame 是根 part，向下游提供一条中心 pivot line。 |
+| `tube_a_frame_with_clevises` | rec_playground_swing_0002 | L61-L179 | eligible if compatible | 更完整的双侧 A-frame：四根斜腿、两侧 spreader、beam 下左右 clevis plate 和 pivot pin；接口显式是左右成对 pin sockets。 |
+| `long_gantry_tire_frame` | rec_playground_swing_0003 | L114-L200 | eligible if compatible | 横向长 gantry：长 top beam、左右端 A-frame 支腿、ground skids、侧 brace、三个顶端 pivot bracket；适配 tire / multi-hanger payload。 |
+| `multi_station_wide_frame` | rec_playground_swing_b6df00eb27ba4e568ae9d11497f67153 | L21-L88 | eligible if compatible | 从长 beam 双座 swing set 泛化的多站点 frame：同一加宽顶梁下可布置 1-5 个独立 station bay，每 bay 有自己的 pivot bracket；beam length、station spacing、端部/中部支撑随 `station_count` 派生。 |
+| `minimal_top_beam_mount` | rec_playground_swing_ff0333498fcd4d118eee0c8ae613297d | L18-L54 | eligible if compatible | 非完整地面架的 timber / overhead beam mount：木梁、mount plate、fixed bearing、bolts；仅用于 strap swivel / disc 类单点悬挂。 |
 
 ### Slot B：suspension_spine
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `single_rigid_or_chain_pair` | rec_playground_swing_0001 | L131-L212 | yes | 单个 `swing_assembly` child，从 frame 中心 revolute joint 悬挂；两侧链/杆和座板同属一个活动 part。 |
-| `dual_clevis_pair` | rec_playground_swing_0002 | L154-L237 | | frame 下左右 clevis plate + pivot pins，活动座具携带左右 pivot hubs 和 hanger rods；一个等效 revolute joint 表达双侧同轴摆动。 |
-| `captured_sleeve_yoke` | rec_playground_swing_af976fdb588e4553ad346d96e15d3d27 | L66-L112 | | 顶梁下固定 clevis plate + 长 pivot pin，child 有 pivot sleeve；适配 tire/yoke payload，单 revolute 关节沿 beam span。 |
-| `vertical_swivel_plus_swing` | rec_playground_swing_ff0333498fcd4d118eee0c8ae613297d | L55-L162 | | 两级运动：beam 到 swivel block 是 vertical continuous joint，swivel 到 hanger 是 lateral revolute joint；适配 strap / disc 单点悬挂。 |
-| `parallelogram_glider_links` | rec_playground_swing_726ef995e5394cb2ad65d7d56636dd2a | L162-L186, L351-L395 | | 四个上 pivot、drive link + three mimic parallel links，lower pivot mimic 让 bench carriage 近似保持水平；拓扑是多 part 多 joint。 |
-| `two_side_link_rocker` | rec_playground_swing_c07add3805624996978d20766f67657c | L109-L154, L253-L270 | | 宽 bench 的 hanger_yoke：左右上/下 pivot bushings、两根 side arms、上下 tie bars；frame_to_hanger 和 hanger_to_bench 两级 revolute。 |
+| `single_rigid_or_chain_pair` | rec_playground_swing_0001 | L131-L212 | eligible if compatible | 单个 `swing_assembly` child，从 frame 中心 revolute joint 悬挂；两侧链/杆和座板同属一个活动 part。 |
+| `dual_clevis_pair` | rec_playground_swing_0002 | L154-L237 | eligible if compatible | frame 下左右 clevis plate + pivot pins，活动座具携带左右 pivot hubs 和 hanger rods；一个等效 revolute joint 表达双侧同轴摆动。 |
+| `captured_sleeve_yoke` | rec_playground_swing_af976fdb588e4553ad346d96e15d3d27 | L66-L112 | eligible if compatible | 顶梁下固定 clevis plate + 长 pivot pin，child 有 pivot sleeve；适配 tire/yoke payload，单 revolute 关节沿 beam span。 |
+| `vertical_swivel_plus_swing` | rec_playground_swing_ff0333498fcd4d118eee0c8ae613297d | L55-L162 | eligible if compatible | 两级运动：beam 到 swivel block 是 vertical continuous joint，swivel 到 hanger 是 lateral revolute joint；适配 strap / disc 单点悬挂。 |
+| `parallelogram_glider_links` | rec_playground_swing_726ef995e5394cb2ad65d7d56636dd2a | L162-L186, L351-L395 | eligible if compatible | 四个上 pivot、drive link + three mimic parallel links，lower pivot mimic 让 bench carriage 近似保持水平；拓扑是多 part 多 joint。 |
+| `two_side_link_rocker` | rec_playground_swing_c07add3805624996978d20766f67657c | L109-L154, L253-L270 | eligible if compatible | 宽 bench 的 hanger_yoke：左右上/下 pivot bushings、两根 side arms、上下 tie bars；frame_to_hanger 和 hanger_to_bench 两级 revolute。 |
 
 ### Slot C：seat_payload
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `belt_or_plank_seat` | rec_playground_swing_ea0bb7e594f74ca2b95ad5093abba458 | L115-L221 | yes | 软 belt / flat plank 单座：四段 chain runs、左右 seat brackets、lofted belt seat mesh；payload 与 pair hanger 同 part。 |
-| `toddler_bucket_seat` | rec_playground_swing_1ccb2e94810e44459d9c5c20a103f514 | L19-L53, L130-L184 | | 深 bucket shell，有圆形腿孔、front/rear rims、side straps、pivot barrels；单活动 part，强调 molded safety seat。 |
-| `tire_seat_three_hanger` | rec_playground_swing_0003 | L95-L111, L201-L283 | | Lathe tire shell、三个下锚点和三根 hanger links；视觉三 pivot，等效单 revolute 摆动。 |
-| `slatted_seat_with_lap_bar` | rec_playground_swing_4354e6c4695d4e2f809faf99a9952185 | L95-L248 | | slatted seat_assembly + 独立 `lap_bar` part；主 swing revolute 外另有 `seat_to_lap_bar` revolute。 |
-| `standing_platform_deck` | rec_playground_swing_631316662fa34b00bd5b9dad9707feb4 | L80-L202 | | side_links + platform 两 part：平台 tread deck、rails、hand bar、上下 clevis pins；lower pivot mimic top pivot 反向保持平台姿态。 |
-| `bench_with_lower_pivots` | rec_playground_swing_c07add3805624996978d20766f67657c | L155-L270 | | 宽 bench part：lower pivots、side frames、seat/back slats；通过 hanger_to_bench 小角度 revolute 与 yoke 相连。 |
-| `face_to_face_glider_bench` | rec_playground_swing_726ef995e5394cb2ad65d7d56636dd2a | L187-L350 | | rectangular bench cradle、两套 face-to-face seats、backs、center footwell、四个 lower clip brackets；适配 parallelogram_glider_links。 |
-| `disc_seat_with_folding_footrest` | rec_playground_swing_799839ac6c084c288ccc508d42c1d5ec | L54-L244 | | 单点 disc seat + separate `footrest_ring` part；主 beam_to_seat revolute，seat_to_footrest revolute 控制折叠脚环。 |
-| `nest_basket_seat` | rec_playground_swing_f117b975f8d54a95b642d00a4c44a425 | L141-L214 | | 圆形 padded basket ring、inner rope ring、网格绳、lower clips；两个上 pivot mimic + lower basket rocking pivot。 |
+| `belt_or_plank_seat` | rec_playground_swing_ea0bb7e594f74ca2b95ad5093abba458 | L115-L221 | eligible if compatible | 软 belt / flat plank 单座：四段 chain runs、左右 seat brackets、lofted belt seat mesh；payload 与 pair hanger 同 part。 |
+| `toddler_bucket_seat` | rec_playground_swing_1ccb2e94810e44459d9c5c20a103f514 | L19-L53, L130-L184 | eligible if compatible | 深 bucket shell，有圆形腿孔、front/rear rims、side straps、pivot barrels；单活动 part，强调 molded safety seat。 |
+| `tire_seat_three_hanger` | rec_playground_swing_0003 | L95-L111, L201-L283 | eligible if compatible | Lathe tire shell、三个下锚点和三根 hanger links；视觉三 pivot，等效单 revolute 摆动。 |
+| `slatted_seat_with_lap_bar` | rec_playground_swing_4354e6c4695d4e2f809faf99a9952185 | L95-L248 | eligible if compatible | slatted seat_assembly + 独立 `lap_bar` part；主 swing revolute 外另有 `seat_to_lap_bar` revolute。 |
+| `standing_platform_deck` | rec_playground_swing_631316662fa34b00bd5b9dad9707feb4 | L80-L202 | eligible if compatible | side_links + platform 两 part：平台 tread deck、rails、hand bar、上下 clevis pins；lower pivot mimic top pivot 反向保持平台姿态。 |
+| `bench_with_lower_pivots` | rec_playground_swing_c07add3805624996978d20766f67657c | L155-L270 | eligible if compatible | 宽 bench part：lower pivots、side frames、seat/back slats；通过 hanger_to_bench 小角度 revolute 与 yoke 相连。 |
+| `face_to_face_glider_bench` | rec_playground_swing_726ef995e5394cb2ad65d7d56636dd2a | L187-L350 | eligible if compatible | rectangular bench cradle、两套 face-to-face seats、backs、center footwell、四个 lower clip brackets；适配 parallelogram_glider_links。 |
+| `disc_seat_with_folding_footrest` | rec_playground_swing_799839ac6c084c288ccc508d42c1d5ec | L54-L244 | eligible if compatible | 单点 disc seat + separate `footrest_ring` part；主 beam_to_seat revolute，seat_to_footrest revolute 控制折叠脚环。 |
+| `nest_basket_seat` | rec_playground_swing_f117b975f8d54a95b642d00a4c44a425 | L141-L214 | eligible if compatible | 圆形 padded basket ring、inner rope ring、网格绳、lower clips；两个上 pivot mimic + lower basket rocking pivot。 |
 
 ## 槽位图（slot graph）
 
@@ -78,7 +78,7 @@ seat_payload
 
 兼容性 gate：
 
-- `compact_a_frame_crossbeam` + `single_rigid_or_chain_pair` + `belt_or_plank_seat` 是 seed=0 anchor 组合。
+- `compact_a_frame_crossbeam` + `single_rigid_or_chain_pair` + `belt_or_plank_seat` 是 procedural sampling marker 组合。
 - `tube_a_frame_with_clevises` 可接 `dual_clevis_pair`，再接 `belt_or_plank_seat`、`toddler_bucket_seat`、`slatted_seat_with_lap_bar`。
 - `long_gantry_tire_frame` 可接 `captured_sleeve_yoke`，再接 `tire_seat_three_hanger`；也可接 `two_side_link_rocker` + `bench_with_lower_pivots`，但需同轴 pivot spacing 适配。
 - `multi_station_wide_frame` 是 multiplicity 承载 frame：`station_count=1..5`，每个 station 独立选择一个 compatible `station_recipe`，可以重复同一 recipe，也可以混合 belt、bucket、tire、lap-bar、platform、bench、glider、disc、nest 等不同秋千类型。frame 必须按 station 的 footprint 和数量加宽顶梁、生成 station pivot hardware，`station_count>=4` 时必须增加中部支撑或加强 brace。
@@ -326,7 +326,7 @@ station_i = support_frame.station_bay_i
 - nest basket mimic + lower rocking topology.
 - disc seat + folding footrest accessory topology.
 
-预计 `module_topology_diversity` 门控（≥5 distinct）能否过：yes
+预计 `module_topology_diversity` 门控（≥10 distinct）能否过：yes
 
 理由：候选不仅改变尺寸，还改变 part count、joint count、joint type、mimic policy、station count、station recipe sequence、lower accessory articulation 和 payload primitive family。`station_count=1..5` 与可重复/可混合的 station recipes 会产生真实 station-level topology diversity，而不是只改变 beam 长度。
 
@@ -338,27 +338,23 @@ station_i = support_frame.station_bay_i
 | station_count | 5 | yes | yes | multi-station frame 下有效；1-5 个完整 station，可重复或混合不同 recipe。 |
 | station_recipe | 9 | yes | yes | 每个 station 独立选择 compatible recipe，recipe 内部保留对应 joint / mimic / accessory topology。 |
 
-### Stage 1 / Stage 2 seed-domain plan
+### Procedural Sampling / Sweep Plan
 
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+seed_domain_policy：procedural_first。`config_from_seed(seed)` 对普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊，不作为 anchor 或 reference seed。Sampling 先选择上游结构槽，再从 compatible 下游 candidate 集合中选择 module / multiplicity / module-local variant。
 
-Stage 1 high-risk coverage seed plan：
+Compatibility matrix / gating：以「槽位图」「每槽位 Module Emits / Interfaces」「Validator」中定义的接口、joint 轴、支撑面、range 和互斥关系为准；不兼容组合必须在 sampler 或 `resolve_config` 中降级、重采样或拒绝，不能让 builder 后期失败。
 
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+Regression overrides：默认无。若未来 sweep 发现稳定失败组合，或 reviewer 指定固定回归样本，可以添加少量显式 regression seed，但必须写明 seed、组合和原因；不得用小型 curated / modulo 表作为主 seed domain。
 
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
+Random sweep / viewer plan：首次模板验收跑 `uv run articraft template sweep-pipeline <slug>`，依赖 0、0-4、0-19、0-49 的 cumulative random seeds 检查 build、MatingContract、joint origin / axis / range、support、collision 和 `module_topology_diversity`。机械通过后 viewer 目检一小批随机 seed，重点看类别身份、比例、closed pose、bulky module、optional moving child、max multiplicity、captured-pin / bearing / hinge / rail 接口。
+
 
 ## Validator
 
-- seed=0 equals anchor module combination: `compact_a_frame_crossbeam` + `single_rigid_or_chain_pair` + `belt_or_plank_seat` + `station_count=1`.
 - `slot_choices_for_seed(seed)` returns implemented module names and never returns an ungated incompatible combination.
 - `station_count` is in `1..5`; `len(station_recipe_sequence) == station_count`.
 - station recipe sequence may contain repeated recipes and mixed recipes; both paths must be covered by tests.
-- `module_topology_diversity` expected to pass with at least 5 distinct compatible topologies.
+- `module_topology_diversity` expected to pass with at least 10 distinct compatible topologies.
 - every support module emits a visible root support path from ground or overhead beam to top pivot.
 - `multi_station_wide_frame` widens beam and emits one station bay / pivot hardware set per station; `station_count>=4` also emits a center support or equivalent brace.
 - every suspension module creates the expected joint type / axis / range: revolute for normal swing, continuous+revolute for swivel, mimic revolutes for glider/nest/platform where specified.

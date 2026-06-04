@@ -1,0 +1,56 @@
+{
+  "schema_version": 3,
+  "record_id": "rec_seeded-branching-tree-with-three-independent-rot_20260604_161842_640235_39a1dbf1",
+  "created_at": "2026-06-04T16:18:42Z",
+  "updated_at": "2026-06-04T16:18:47Z",
+  "rating": null,
+  "secondary_rating": null,
+  "author": "brian",
+  "rated_by": "brian",
+  "secondary_rated_by": null,
+  "kind": "external_model",
+  "prompt_kind": "single_prompt",
+  "category_slug": "branching_tree_with_three_independent_rotary_branches",
+  "source": {
+    "run_id": null,
+    "prompt_batch_id": null,
+    "batch_spec_id": null,
+    "row_id": null,
+    "prompt_index": null
+  },
+  "sdk_package": "sdk",
+  "provider": "openai",
+  "model_id": null,
+  "display": {
+    "title": "branching_tree_with_three_independent_rotary_branches_seed_7",
+    "prompt_preview": "seeded branching_tree_with_three_independent_rotary_branches 7"
+  },
+  "artifacts": {
+    "prompt_txt": "revisions/rev_000001/prompt.txt",
+    "prompt_series_json": null,
+    "model_py": "revisions/rev_000001/model.py",
+    "provenance_json": "revisions/rev_000001/provenance.json",
+    "cost_json": null,
+    "inputs_dir": "revisions/rev_000001/inputs",
+    "traces_dir": "revisions/rev_000001/traces"
+  },
+  "hashes": {
+    "prompt_sha256": "e01d45c64da44623bb12fb712da06f1d0a6cb94b5113aae4998ed90353b24bde",
+    "model_py_sha256": "1bd5ed6ec727fe5cbe30db52a68f8b22d7901fd2afb8ae5629e4c1fbe1912adb"
+  },
+  "collections": [
+    "dataset"
+  ],
+  "active_revision_id": "rev_000001",
+  "lineage": {
+    "origin_record_id": "rec_seeded-branching-tree-with-three-independent-rot_20260604_161842_640235_39a1dbf1",
+    "parent_record_id": null,
+    "parent_revision_id": null,
+    "edit_mode": "root"
+  },
+  "creator": {
+    "mode": "external_agent",
+    "agent": "codex",
+    "trace_available": false
+  }
+}

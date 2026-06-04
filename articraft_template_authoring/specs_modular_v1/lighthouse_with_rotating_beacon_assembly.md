@@ -103,45 +103,45 @@
 ## 槽位 + 候选模块表
 
 ### Slot A：tower_body（落地静态塔身构造方式）
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `lathe_masonry_shell` | S1 (0001) | `model.py:L130-L266` | **yes** | `LatheGeometry` 旋转锥形砖石塔壳 + 堆叠 Cylinder plinth/cornice ring + 径向窗 + entry block，全 baked visual，最稳健 |
-| `mesh_prism_polygonal` | S11 (9157e1) | `model.py:L21-L228` | | 手写 `MeshGeometry`：`_prism_mesh`/`_frustum_mesh` 多边棱柱塔身 + 八角灯室棱柱 + Cone roof_cap，无 Lathe/cadquery 依赖 |
-| `cadquery_union_shell` | S12 (5f19a5) | `model.py:L21-L243` | | cadquery `_cylinder`/`_frustum`/`_annular_cylinder` union 成 stone_body + gallery + lantern_frame（`mesh_from_cadquery`），实心石工 union 观感 |
-| `skeletal_lattice_truss` | S7 (469e7a) | `model.py:L66-L226` | | `_cylinder_between` 框架杆：tapered_leg + 各层 ring + X-brace 开放钢桁架塔（非实心柱），顶部 box 灯室框 + Cone roof |
+| `lathe_masonry_shell` | S1 (0001) | `model.py:L130-L266` | eligible if compatible | `LatheGeometry` 旋转锥形砖石塔壳 + 堆叠 Cylinder plinth/cornice ring + 径向窗 + entry block，全 baked visual，最稳健 |
+| `mesh_prism_polygonal` | S11 (9157e1) | `model.py:L21-L228` | eligible if compatible | 手写 `MeshGeometry`：`_prism_mesh`/`_frustum_mesh` 多边棱柱塔身 + 八角灯室棱柱 + Cone roof_cap，无 Lathe/cadquery 依赖 |
+| `cadquery_union_shell` | S12 (5f19a5) | `model.py:L21-L243` | eligible if compatible | cadquery `_cylinder`/`_frustum`/`_annular_cylinder` union 成 stone_body + gallery + lantern_frame（`mesh_from_cadquery`），实心石工 union 观感 |
+| `skeletal_lattice_truss` | S7 (469e7a) | `model.py:L66-L226` | eligible if compatible | `_cylinder_between` 框架杆：tapered_leg + 各层 ring + X-brace 开放钢桁架塔（非实心柱），顶部 box 灯室框 + Cone roof |
 
 ### Slot B：lantern_housing（画廊+灯室+顶盖的 part 解构方式，结构骨架驱动）
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `baked_into_body` | S9 (0cd65f) | `model.py:L95-L286` | **yes** | gallery deck/rail、lantern panel/mullion、roof、beacon 承载 shaft 全部作 `tower` 的 named visual（不动→不是 part，Rule 1）；0 个额外 FIXED 件 |
-| `separate_lantern_stack` | S5 (0003) | `model.py:L107-L195,L258-L278` | | 独立 `lantern_room`(八角 Extrude ring + glazing) + `roof_cap`(section_loft) 两件 FIXED 串在 body 上（+1~+2 part / +1~+2 FIXED 关节）|
-| `full_fixed_stack` | S6 (638131) | `model.py:L127-L300,L375-L409` | | `caisson_base`(可选)→`tower`→`gallery`(独立栏杆件)→`lantern_room`→`roof` 多件全 FIXED 堆叠（+3~+4 part / +3~+4 FIXED 关节），最深骨架 |
+| `baked_into_body` | S9 (0cd65f) | `model.py:L95-L286` | eligible if compatible | gallery deck/rail、lantern panel/mullion、roof、beacon 承载 shaft 全部作 `tower` 的 named visual（不动→不是 part，Rule 1）；0 个额外 FIXED 件 |
+| `separate_lantern_stack` | S5 (0003) | `model.py:L107-L195,L258-L278` | eligible if compatible | 独立 `lantern_room`(八角 Extrude ring + glazing) + `roof_cap`(section_loft) 两件 FIXED 串在 body 上（+1~+2 part / +1~+2 FIXED 关节） |
+| `full_fixed_stack` | S6 (638131) | `model.py:L127-L300,L375-L409` | eligible if compatible | `caisson_base`(可选)→`tower`→`gallery`(独立栏杆件)→`lantern_room`→`roof` 多件全 FIXED 堆叠（+3~+4 part / +3~+4 FIXED 关节），最深骨架 |
 
 ### Slot C：beacon_optic（旋转 optic 件构造方式 = wow 件）
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `stacked_optic_ring_cage` | S2 (0001) | `model.py:L388-L456` | **yes** | turntable + lower/upper optic ring + 环列 optic_post(8) + 4 片 optic_panel(glass) + 中央 lamp_column + Sphere lamp_core，对称环笼，无明显朝向 |
-| `searchlight_reflector_armlamp` | S4 (0002) + 582b41 | `model.py:L221-L292`（0002）；`582b41 model.py:L162-L262` | | 侧射单束：bearing collar + frame rail/arm + lathe `reflector_shell` 抛物反射镜 + lamp_housing/bulb 朝 +X，旋转时光束扫一圈（带 counterweight 配重的见 4767dd `L405-L432`）|
-| `drum_fresnel_omni` | S13 (023d0f) | `model.py:L281-L336` | | 高 `carriage_sleeve`(ring_shell) + `lens_crown_ring` + 360° `_lens_shell` Fresnel 环带，整圈发光鼓，omni 旋转 |
-| `bivalve_birdcage` | S7 (469e7a) + S11 (9157e1) | `model.py:L228-L287`（469e7a）；`9157e1 model.py:L238-L287` | | 双瓣对射：中央 hub + 两侧对称 Fresnel 透镜板/lens drum + 杆架 birdcage（469e7a 用 Torus clip/hub + Box lens；9157e1 用 cross_arm + 双 lens drum）|
+| `stacked_optic_ring_cage` | S2 (0001) | `model.py:L388-L456` | eligible if compatible | turntable + lower/upper optic ring + 环列 optic_post(8) + 4 片 optic_panel(glass) + 中央 lamp_column + Sphere lamp_core，对称环笼，无明显朝向 |
+| `searchlight_reflector_armlamp` | S4 (0002) + 582b41 | `model.py:L221-L292`（0002）；`582b41 model.py:L162-L262` | eligible if compatible | 侧射单束：bearing collar + frame rail/arm + lathe `reflector_shell` 抛物反射镜 + lamp_housing/bulb 朝 +X，旋转时光束扫一圈（带 counterweight 配重的见 4767dd `L405-L432`） |
+| `drum_fresnel_omni` | S13 (023d0f) | `model.py:L281-L336` | eligible if compatible | 高 `carriage_sleeve`(ring_shell) + `lens_crown_ring` + 360° `_lens_shell` Fresnel 环带，整圈发光鼓，omni 旋转 |
+| `bivalve_birdcage` | S7 (469e7a) + S11 (9157e1) | `model.py:L228-L287`（469e7a）；`9157e1 model.py:L238-L287` | eligible if compatible | 双瓣对射：中央 hub + 两侧对称 Fresnel 透镜板/lens drum + 杆架 birdcage（469e7a 用 Torus clip/hub + Box lens；9157e1 用 cross_arm + 双 lens drum） |
 
 ### Slot D：beacon_bearing_topology（beacon 的轴承/承载 part 拓扑）
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `direct_to_body` | S9 (0cd65f) | `model.py:L276-L281,L474-L482` | **yes** | beacon 直接 parent=body（或 lantern 件）；承载 spindle/pedestal/shaft 是 body 的 baked Cylinder visual；beacon 轴承环/roller 骑住它（469e7a/9157e1/5f19a5 同型）|
-| `separate_fixed_pedestal_part` | S5 (0003) + 4767dd | `model.py:L166-L195,L272-L287`（0003）；`4767dd model.py:L361-L484` | | 独立 `pedestal` 件(base_flange + column + bearing cap)经 `*_to_pedestal` FIXED 串到 body/roof，beacon parent=pedestal（25675b/638131 同型）|
-| `separate_fixed_shaft_part` | S3+S4 (0002) + S13 (023d0f) | `model.py:L202-L309`（0002）；`023d0f model.py:L250-L280` | | 独立细 `central_shaft` 件(shaft_base + shaft_main)经 `tower_to_shaft` FIXED 串到 body，beacon carriage 的 sleeve/collar 抱住 shaft 旋转（279fff/63fc7f 同型）|
+| `direct_to_body` | S9 (0cd65f) | `model.py:L276-L281,L474-L482` | eligible if compatible | beacon 直接 parent=body（或 lantern 件）；承载 spindle/pedestal/shaft 是 body 的 baked Cylinder visual；beacon 轴承环/roller 骑住它（469e7a/9157e1/5f19a5 同型） |
+| `separate_fixed_pedestal_part` | S5 (0003) + 4767dd | `model.py:L166-L195,L272-L287`（0003）；`4767dd model.py:L361-L484` | eligible if compatible | 独立 `pedestal` 件(base_flange + column + bearing cap)经 `*_to_pedestal` FIXED 串到 body/roof，beacon parent=pedestal（25675b/638131 同型） |
+| `separate_fixed_shaft_part` | S3+S4 (0002) + S13 (023d0f) | `model.py:L202-L309`（0002）；`023d0f model.py:L250-L280` | eligible if compatible | 独立细 `central_shaft` 件(shaft_base + shaft_main)经 `tower_to_shaft` FIXED 串到 body，beacon carriage 的 sleeve/collar 抱住 shaft 旋转（279fff/63fc7f 同型） |
 
 ### Slot E：access_opening（可选 gated 第二 REVOLUTE DOF）
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `none` | S1 (0001) / S6 (638131) | `model.py:L457-L473`（0001，仅 beacon 关节）| **yes** | 无开口件，纯 body+beacon（±lantern stack），2-part 极简或多件 FIXED stack；7 个 `(2,0,0,1)` + 数个 stack 样本属此 |
-| `lantern_wall_door` | S12 (5f19a5) + S13 (023d0f) | `model.py:L275-L306`（5f19a5）；`023d0f model.py:L337-L380` | | 灯室壁/塔壁上一扇 REVOLUTE 检修门，axis `(0,0,±1)`，0→~1.35 rad；5f19a5 用弧形 annular_sector 门 + 捕获 FIXED hinge_pin，023d0f 用全高 Box 门 |
-| `gallery_rail_gate` | S10 (0cd65f) + a02180 | `model.py:L434-L497`（0cd65f）；`a02180 model.py:L274-L320` | | 画廊栏杆缺口处一扇 REVOLUTE 栏杆门(skeletal 杆框)，绕竖直轴外/内开，0→~1.35 rad（12f0c4/3ebd11/eea009 同型）|
-| `tower_hatch` | S8 (469e7a) | `model.py:L299-L339` | | 塔壁/灯室壁上一块 REVOLUTE hatch 盖板(panel + window + hinge barrel 捕获 jamb 上 FIXED pin)，0→~1.65 rad（1725c0/b7466f 同型）|
-| `gallery_trap_door` | 4767dd | `4767dd model.py:L434-L491` | | 画廊甲板上一片 REVOLUTE trap door(gate_leaf + 双 hinge + latch)，绕竖直轴掀开，0→~1.35 rad（fdfab4 同型）|
+| `none` | S1 (0001) / S6 (638131) | `model.py:L457-L473`（0001，仅 beacon 关节） | eligible if compatible | 无开口件，纯 body+beacon（±lantern stack），2-part 极简或多件 FIXED stack；7 个 `(2,0,0,1)` + 数个 stack 样本属此 |
+| `lantern_wall_door` | S12 (5f19a5) + S13 (023d0f) | `model.py:L275-L306`（5f19a5）；`023d0f model.py:L337-L380` | eligible if compatible | 灯室壁/塔壁上一扇 REVOLUTE 检修门，axis `(0,0,±1)`，0→~1.35 rad；5f19a5 用弧形 annular_sector 门 + 捕获 FIXED hinge_pin，023d0f 用全高 Box 门 |
+| `gallery_rail_gate` | S10 (0cd65f) + a02180 | `model.py:L434-L497`（0cd65f）；`a02180 model.py:L274-L320` | eligible if compatible | 画廊栏杆缺口处一扇 REVOLUTE 栏杆门(skeletal 杆框)，绕竖直轴外/内开，0→~1.35 rad（12f0c4/3ebd11/eea009 同型） |
+| `tower_hatch` | S8 (469e7a) | `model.py:L299-L339` | eligible if compatible | 塔壁/灯室壁上一块 REVOLUTE hatch 盖板(panel + window + hinge barrel 捕获 jamb 上 FIXED pin)，0→~1.65 rad（1725c0/b7466f 同型） |
+| `gallery_trap_door` | 4767dd | `4767dd model.py:L434-L491` | eligible if compatible | 画廊甲板上一片 REVOLUTE trap door(gate_leaf + 双 hinge + latch)，绕竖直轴掀开，0→~1.35 rad（fdfab4 同型） |
 
-> Slot E 候选 = 5，互斥单选；seed=0 取 `none`（最稳健的纯身份骨架）。`none` 与四种开口件分别对应「不增/增一个 REVOLUTE 件」的结构骨架分叉，全部有独立 5 星来源、结构互不相同（无门 / 弧形壁门 / 栏杆门 / hatch 盖 / 甲板掀门），不存在退到更少候选的情况。
+> Slot E 候选 = 5，互斥单选；procedural sampler 可在兼容条件下采样 `none`（最稳健的纯身份骨架）。`none` 与四种开口件分别对应「不增/增一个 REVOLUTE 件」的结构骨架分叉，全部有独立 5 星来源、结构互不相同（无门 / 弧形壁门 / 栏杆门 / hatch 盖 / 甲板掀门），不存在退到更少候选的情况。
 
 ## 槽位图（slot graph）
 pattern = **mixed**（静态 body 身份链 + 1 个 CONTINUOUS beacon 子件 + lantern 0..N 个 FIXED 解构件 + 可选 1 个 gated REVOLUTE 开口件）
@@ -250,7 +250,7 @@ pattern = **mixed**（静态 body 身份链 + 1 个 CONTINUOUS beacon 子件 + l
 
 - 无模板级复制数量逻辑：核心结构由固定 named slots 和 gated module-local fixed copies 表达，不暴露全局 `*_count` 作为主拓扑采样轴。
 - 若某个 module source 内部包含固定成对、环形阵列或若干重复 visual/part，模板实现应把它保留为 module-local construction，并使用稳定命名；不得把未审核的可变复制数量加入 seed domain。
-- 未来若要把固定重复结构升级为可变 multiplicity，必须补充来源、N_range、placement、joint policy、coverage seeds 和 reviewer 审核记录。
+- 未来若要把固定重复结构升级为可变 multiplicity，必须补充来源、N_range、placement、joint policy、regression seeds 和 reviewer 审核记录。
 
 ## 拓扑多样性审计
 
@@ -258,14 +258,14 @@ pattern = **mixed**（静态 body 身份链 + 1 个 CONTINUOUS beacon 子件 + l
 = `4 × 3 × 4 × 3 × 5` = **720**。
 （`has_caisson_base` 仅在 full_fixed_stack 下二值再分叉，未计入下界。）
 
-预计 `module_topology_diversity` 门控（≥5 distinct）能否过：**yes**，720 ≫ 5。
+预计 `module_topology_diversity` 门控（≥10 distinct）能否过：**yes**，720 ≫ 10。
 
 仅看「增/减 part 或 joint」的结构骨架（不看几何风格）就已远超门控：
 - Slot B：`baked`(+0 part/+0 FIXED) / `separate_lantern_stack`(+2 part/+2 FIXED) / `full_fixed_stack`(+3~4 part/+3~4 FIXED) = 3 种骨架
 - Slot D：`direct`(+0 part) / `pedestal`(+1 part/+1 FIXED) / `shaft`(+1 part/+1 FIXED，但 parent 关系不同) = 3 种骨架
 - Slot E：`none`(+0 REVOLUTE) / 4 种开口件(+1 part/+1 REVOLUTE) = 至少 2 种骨架（含 vs 不含第二 DOF）
 
-仅 B×D×(E 二值) = 3 × 3 × 2 = **18 种 part/joint 拓扑骨架**（part 数从 1（baked+direct+none）到 ~8（full_fixed_stack+caisson+pedestal+door），关节数从 1（仅 beacon CONTINUOUS）到 ~7），远超 5；叠加 Slot A 塔身构造与 Slot C optic 构造两个几何槽后离散组合达 720。
+仅 B×D×(E 二值) = 3 × 3 × 2 = **18 种 part/joint 拓扑骨架**（part 数从 1（baked+direct+none）到 ~8（full_fixed_stack+caisson+pedestal+door），关节数从 1（仅 beacon CONTINUOUS）到 ~7），远超 10；叠加 Slot A 塔身构造与 Slot C optic 构造两个几何槽后离散组合达 720。
 
 每槽位候选数：
 | slot | candidate_count | 是否 ≥3 | 备注 |
@@ -276,33 +276,16 @@ pattern = **mixed**（静态 body 身份链 + 1 个 CONTINUOUS beacon 子件 + l
 | Slot D beacon_bearing_topology | 3 | yes | direct / pedestal / shaft |
 | Slot E access_opening | 5 | yes | none / 壁门 / 栏杆门 / hatch / 甲板掀门 |
 
-### Stage 1 / Stage 2 seed-domain plan
+### Procedural Sampling / Sweep Plan
 
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+seed_domain_policy：procedural_first。`config_from_seed(seed)` 对普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊，不作为 anchor 或 reference seed。Sampling 先选择上游结构槽，再从 compatible 下游 candidate 集合中选择 module / multiplicity / module-local variant。
 
-Stage 1 high-risk coverage seed plan：
+Compatibility matrix / gating：以「槽位图」「每槽位 Module Emits / Interfaces」「Validator」中定义的接口、joint 轴、支撑面、range 和互斥关系为准；不兼容组合必须在 sampler 或 `resolve_config` 中降级、重采样或拒绝，不能让 builder 后期失败。
 
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+Regression overrides：默认无。若未来 sweep 发现稳定失败组合，或 reviewer 指定固定回归样本，可以添加少量显式 regression seed，但必须写明 seed、组合和原因；不得用小型 curated / modulo 表作为主 seed domain。
 
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
+Random sweep / viewer plan：首次模板验收跑 `uv run articraft template sweep-pipeline <slug>`，依赖 0、0-4、0-19、0-49 的 cumulative random seeds 检查 build、MatingContract、joint origin / axis / range、support、collision 和 `module_topology_diversity`。机械通过后 viewer 目检一小批随机 seed，重点看类别身份、比例、closed pose、bulky module、optional moving child、max multiplicity、captured-pin / bearing / hinge / rail 接口。
 
-### Stage 1 / Stage 2 seed-domain plan
-
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
-
-Stage 1 high-risk coverage seed plan：
-
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
-
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
 
 ## Validator（author_run_tests 必须覆盖的点）
 - identity：存在 1 个落地 body + 恰好 1 个 beacon；存在恰好 1 个 `*_to_beacon` CONTINUOUS 关节，axis = `(0,0,±1)`，无 lower/upper（无限位）。

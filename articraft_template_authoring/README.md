@@ -10,7 +10,7 @@
 -> sweep-pipeline + viewer 目检
 ```
 
-本目录不维护非模块化 authoring 路线。新类别模板不要使用单一部件清单作为主设计；必须用 slot graph、candidate module、InterfaceSpec、MatingContract、seed=0 anchor module 和 `module_topology_diversity` 表达结构级变化。
+本目录不维护非模块化 authoring 路线。新类别模板不要使用单一部件清单作为主设计；必须用 slot graph、candidate module、InterfaceSpec、MatingContract、compatibility matrix、procedural sampling 和 `module_topology_diversity` 表达结构级变化。
 
 ## 文件
 
@@ -36,9 +36,9 @@
 
 - 每个 slot 表示一个可替换的结构/功能层，必须能与相邻 slot 通过点位或共同 parent 装配。
 - 每个 candidate module 必须来自真实 5 星样本 `model.py:Lx-Ly`，并且结构上不同；只换尺寸、颜色或装饰不是新 module。
-- 每个 slot 必须标出 `seed=0 anchor` module；`config_from_seed(0)` 后续要复现这个 anchor 组合。
 - spec 必须包含 slot graph、每 module 的 source、接口点位、内部/跨 slot joint 语义、Multiplicity / Copy Logic、拓扑多样性审计、Validator 和 Reject cases。
-- 拓扑多样性审计必须区分 Stage 1 和 Stage 2：Stage 1 允许有限 coverage seed domain 先把模板质量做稳；coverage seeds 应优先覆盖最容易出现悬空、穿模、joint 轴错、closed pose 不合理、max multiplicity 或 bulky module 接口失败的组合。Stage 2 / final 才迁移到 unbounded deterministic procedural seed domain。
+- 拓扑多样性审计必须说明 deterministic procedural sampling 如何选择 slot/module、compatibility matrix / gating 如何避免非法组合、可选 regression overrides 是否存在，以及 random sweep 应覆盖的 seed 范围和预计 distinct 拓扑数。
+- spec 应从一开始规划少量受控局部参数化，如 spacing / reach / hub radius / branch thickness / terminal size scale。局部尺寸扰动只能辅助丰富比例和装配细节，不能替代 slot/module/multiplicity 拓扑多样性。
 - 已阅读但未采用的 5 星样本不要写入 module source 表。
 
 ## 模板阶段关键规则
@@ -48,8 +48,10 @@
 - 新 modular 模板不使用单一 `primary_anchor`；per-module source table 是来源 contract。
 - Module factory 必须改编 spec 中对应的 5 星样本片段，不能凭空发明结构。
 - InterfaceSpec 的 `anchor_local`、MatingContract、visible support path 必须能支撑真实装配，不能用隐藏小件或浮空点位糊弄。
-- `config_from_seed` 只采样已实现、已测试、可通过 sweep 的 module 组合。
-- 当前 Stage 1 允许 `config_from_seed(seed>0)` 使用有限 coverage / curated domain 来覆盖代表组合、高风险组合、稳定 sweep 和 viewer 目检；必须标注为临时覆盖域。
-- Stage 2 / final 要求主体 seed 逻辑升级为 unbounded deterministic procedural sampling；到最终态时，不得无限轮换少数 curated / modulo 组合表来冒充随机 seed domain。
+- `config_from_seed(seed)` 默认对所有 seed 使用 deterministic procedural sampling；`seed=0` 不特殊。
+- `config_from_seed` 只能采样已实现、可装配、由 compatibility matrix / `resolve_config` 合法化的 module 组合。
+- 初版模板应包含少量关键局部 scale，并在 `resolve_config` 中 clamp / 派生，确保不会破坏 InterfaceSpec、MatingContract、clearance、joint origin 或类别 multiplicity。
+- `slot_choices_for_seed(seed)` 只记录结构/module/multiplicity choice；连续尺寸参数不需要逐项写入 slot choices，除非它们改变拓扑等价类。
+- 少量 regression overrides 只允许用于已知失败回归或审核指定样本，必须显式记录原因；不得用 curated / modulo 表作为主 seed domain。
 - 唯一机械初步完成规则：`uv run articraft template sweep-pipeline <slug>` 返回 `verdict=pass`。
 - 机械通过后仍要按根协议 preview / viewer 目检，确认类别身份、比例、闭合姿态和运动语义。

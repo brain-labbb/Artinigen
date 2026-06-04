@@ -211,8 +211,8 @@ action** must be:
 2. For each slot, read the declared 5-star module sources. Identify each
    helper, each `part.visual(...)` call, each `model.articulation(...)`, and
    the intended `InterfaceSpec`/`MatingContract` surfaces.
-3. Sketch the slot graph and module factory outputs, including seed=0 anchor
-   modules and all topology variants.
+3. Sketch the slot graph, module factory outputs, compatibility matrix, and
+   all topology variants.
 4. Implement helpers that adapt source geometry. Replace literal coordinates
    with `config.<field>` / `r.<field>`; keep primitive types (Box stays Box,
    Cylinder stays Cylinder, Mesh stays Mesh).

@@ -1635,6 +1635,7 @@ def build_threestage_telescoping_slide(
         palette=r.palette,
         config=r,
         seed=0,
+        selection_mode="anchor_choices",
     )
     return model
 

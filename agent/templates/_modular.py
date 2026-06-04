@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from typing import Callable, Optional, Sequence
+from typing import Callable, Literal, Optional, Sequence
 
 from sdk import (
     ArticulatedObject,
@@ -122,10 +122,10 @@ class SlotSpec:
     """One slot in the assembly graph.
 
     ``candidates`` maps a module's public name to its factory. ``anchor_choice``
-    must be one of those keys; for ``seed == 0`` the assembler always picks
-    it (so seed=0 reproduces a canonical reference combination — useful for
-    smoke testing and for keeping at least one variant aligned with a known
-    5-star sample).
+    is a backward-compatible name for a default/pinned choice; it must be one
+    of those keys when ``assemble(..., selection_mode="anchor_choices")`` is
+    used. In the default procedural mode, every seed, including seed 0, is
+    sampled from ``candidates`` by the caller-provided RNG.
 
     Slots are traversed in declaration order; each slot's downstream interface
     becomes the next slot's upstream input. The first slot is the root (no
@@ -160,12 +160,15 @@ def assemble(
     palette: dict[str, tuple[float, float, float, float]],
     config: object,
     seed: int,
+    selection_mode: Literal["procedural", "anchor_choices"] = "procedural",
 ) -> AssemblyResult:
     """Build the model by running each slot's chosen module factory.
 
-    For ``seed == 0`` every slot uses its ``anchor_choice`` (canonical
-    combination). For other seeds, the slot's RNG picks uniformly from
-    ``candidates``.
+    Default selection is procedural-first: every seed, including seed 0, uses
+    ``rng.choice`` over each slot's candidates. Older templates that already
+    resolved/pinned their modules before calling the assembler may pass
+    ``selection_mode="anchor_choices"`` to consume each slot's explicit
+    ``anchor_choice`` without re-sampling.
 
     The assembler emits one ``Articulation`` per pair of adjacent slots
     (parent = previous module's downstream part, child = current module's
@@ -181,7 +184,7 @@ def assemble(
     prev_slot_name = ""
 
     for slot in slots:
-        choice = _pick_module(slot, rng=rng, seed=seed)
+        choice = _pick_module(slot, rng=rng, seed=seed, selection_mode=selection_mode)
         slot_choices.append((slot.slot_name, choice))
         factory = slot.candidates[choice]
 
@@ -220,15 +223,23 @@ def assemble(
     )
 
 
-def _pick_module(slot: SlotSpec, *, rng: random.Random, seed: int) -> str:
-    """Pick the anchor for seed=0, else uniform random from candidates."""
-    if seed == 0:
+def _pick_module(
+    slot: SlotSpec,
+    *,
+    rng: random.Random,
+    seed: int,
+    selection_mode: Literal["procedural", "anchor_choices"],
+) -> str:
+    """Pick a module according to the assembler's explicit selection mode."""
+    if selection_mode == "anchor_choices":
         if slot.anchor_choice not in slot.candidates:
             raise ValueError(
                 f"slot {slot.slot_name!r} anchor_choice {slot.anchor_choice!r} "
                 f"missing from candidates {list(slot.candidates)!r}"
             )
         return slot.anchor_choice
+    if selection_mode != "procedural":
+        raise ValueError(f"Unsupported modular selection_mode: {selection_mode!r}")
     names = list(slot.candidates.keys())
     return rng.choice(names)
 

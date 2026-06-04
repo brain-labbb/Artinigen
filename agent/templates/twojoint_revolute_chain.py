@@ -2127,6 +2127,7 @@ def build_twojoint_revolute_chain(
         palette=r.palette,
         config=r,
         seed=0,
+        selection_mode="anchor_choices",
     )
     return model
 

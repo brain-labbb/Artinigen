@@ -14,7 +14,7 @@ These are NOT freely combinable — a clevis fork only mates a single tab, a
 cabinet carcass only mates a cabinet door, etc. ``config_from_seed`` samples
 along a compatibility matrix so every seed yields a physically legal hinge.
 That matrix collapses the 5×4×4 raw grid to ~12 legal topologies, well past
-the ``module_topology_diversity`` gate (≥5).
+the ``module_topology_diversity`` gate (≥10).
 
 Geometry convention: the pin-line runs along +z (x=0, y=0, z∈[0, H]). Knuckle
 cylinders are coaxial with z and stacked in alternating bands — the fixed half

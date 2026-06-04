@@ -62,29 +62,29 @@
 ## 槽位 + 候选模块表
 
 ### Slot A：cabinet_body
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `upright_reel_cabinet` | S1 | `model.py:L54-L257` | **yes** | tall front cabinet with reel window, upper display, lower controls |
-| `bar_top_video_poker` | S2 | `model.py:L27-L143` | | shallow bar-top cabinet, screen and short control shelf |
-| `slant_top_terminal` | S6 | `model.py:L95-L288` | | angled screen/control deck and belly service area |
-| `classic_lever_slot` | S4 | `model.py:L114-L270` | | upright slot with side lever mount and coin tray area |
+| `upright_reel_cabinet` | S1 | `model.py:L54-L257` | eligible if compatible | tall front cabinet with reel window, upper display, lower controls |
+| `bar_top_video_poker` | S2 | `model.py:L27-L143` | eligible if compatible | shallow bar-top cabinet, screen and short control shelf |
+| `slant_top_terminal` | S6 | `model.py:L95-L288` | eligible if compatible | angled screen/control deck and belly service area |
+| `classic_lever_slot` | S4 | `model.py:L114-L270` | eligible if compatible | upright slot with side lever mount and coin tray area |
 
 ### Slot B：game_display_or_reels
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `five_reel_window` | S1 | `model.py:L269-L302` | **yes** | separate reel_window + upper display fixed modules; reel joint exists under cabinet |
-| `three_independent_reels` | S3 | `model.py:L92-L126,L382-L406` | | left/center/right reel parts, each CONTINUOUS |
-| `single_window_glass_reel` | S5 | `model.py:L39-L71,L262-L278` | | fixed window glass over internal reel helper |
-| `screen_only_video_poker` | S2 | `model.py:L111-L143` | | screen/control-panel visual, no exposed spinning reel |
+| `five_reel_window` | S1 | `model.py:L269-L302` | eligible if compatible | separate reel_window + upper display fixed modules; reel joint exists under cabinet |
+| `three_independent_reels` | S3 | `model.py:L92-L126,L382-L406` | eligible if compatible | left/center/right reel parts, each CONTINUOUS |
+| `single_window_glass_reel` | S5 | `model.py:L39-L71,L262-L278` | eligible if compatible | fixed window glass over internal reel helper |
+| `screen_only_video_poker` | S2 | `model.py:L111-L143` | eligible if compatible | screen/control-panel visual, no exposed spinning reel |
 
 ### Slot C：controls_and_openings
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `spin_button_and_service_panel` | S1 | `model.py:L360-L423` | **yes** | prismatic spin_button + rear/side maintenance_panel REVOLUTE |
-| `tray_flap_and_button` | S2 | `model.py:L143-L156` | | payout tray flap REVOLUTE plus prismatic button family |
-| `side_lever_and_coin_door` | S4 | `model.py:L307-L415` | | pull lever REVOLUTE and coin tray door REVOLUTE |
-| `belly_door_button_knob` | S6 | `model.py:L288-L414` | | belly_door REVOLUTE + spin_button PRISMATIC + volume_knob CONTINUOUS |
-| `payout_tray_side_lever` | S5 | `model.py:L305-L382` | | side lever + payout tray flap, both REVOLUTE |
+| `spin_button_and_service_panel` | S1 | `model.py:L360-L423` | eligible if compatible | prismatic spin_button + rear/side maintenance_panel REVOLUTE |
+| `tray_flap_and_button` | S2 | `model.py:L143-L156` | eligible if compatible | payout tray flap REVOLUTE plus prismatic button family |
+| `side_lever_and_coin_door` | S4 | `model.py:L307-L415` | eligible if compatible | pull lever REVOLUTE and coin tray door REVOLUTE |
+| `belly_door_button_knob` | S6 | `model.py:L288-L414` | eligible if compatible | belly_door REVOLUTE + spin_button PRISMATIC + volume_knob CONTINUOUS |
+| `payout_tray_side_lever` | S5 | `model.py:L305-L382` | eligible if compatible | side lever + payout tray flap, both REVOLUTE |
 
 ## 槽位图（slot graph）
 pattern = `mixed`
@@ -170,7 +170,7 @@ pattern = `mixed`
 
 总组合数：4 cabinet modules x 4 game-face modules x 5 control modules x reel_count/button_count branches = >80 legal combinations after gating.
 
-预计 `module_topology_diversity` 门控（>=5 distinct）能否过：yes。理由：reel part count, button count, door/lever/knob joint types, and cabinet style alter part/joint topology.
+预计 `module_topology_diversity` 门控（>=10 distinct）能否过：yes。理由：reel part count, button count, door/lever/knob joint types, and cabinet style alter part/joint topology.
 
 | slot | candidate_count | 是否 >=3 | 备注 |
 |---|---:|---|---|
@@ -205,19 +205,16 @@ pattern = `mixed`
 - side lever 不能出现在纯 screen-only video poker 的正面中央；应挂侧面。
 - door/tray hinge 必须贴 panel edge，不得漂浮在 cabinet 前方。
 
-### Stage 1 / Stage 2 seed-domain plan
+### Procedural Sampling / Sweep Plan
 
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+seed_domain_policy：procedural_first。`config_from_seed(seed)` 对普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊，不作为 anchor 或 reference seed。Sampling 先选择上游结构槽，再从 compatible 下游 candidate 集合中选择 module / multiplicity / module-local variant。
 
-Stage 1 high-risk coverage seed plan：
+Compatibility matrix / gating：以「槽位图」「每槽位 Module Emits / Interfaces」「Validator」中定义的接口、joint 轴、支撑面、range 和互斥关系为准；不兼容组合必须在 sampler 或 `resolve_config` 中降级、重采样或拒绝，不能让 builder 后期失败。
 
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+Regression overrides：默认无。若未来 sweep 发现稳定失败组合，或 reviewer 指定固定回归样本，可以添加少量显式 regression seed，但必须写明 seed、组合和原因；不得用小型 curated / modulo 表作为主 seed domain。
 
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
+Random sweep / viewer plan：首次模板验收跑 `uv run articraft template sweep-pipeline <slug>`，依赖 0、0-4、0-19、0-49 的 cumulative random seeds 检查 build、MatingContract、joint origin / axis / range、support、collision 和 `module_topology_diversity`。机械通过后 viewer 目检一小批随机 seed，重点看类别身份、比例、closed pose、bulky module、optional moving child、max multiplicity、captured-pin / bearing / hinge / rail 接口。
+
 
 ## Validator
 | 检查项 | 标准 |

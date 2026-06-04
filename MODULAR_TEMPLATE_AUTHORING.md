@@ -48,7 +48,7 @@ impactful design call.
    | Slot count | Trade-off |
    |---|---|
    | 1 | No topology variation — single slot collapses to a fixed structure (use a different decomposition) |
-   | 2 | Combo count = a × b; struggles to hit `module_topology_diversity` ≥ 5 unless each slot has ≥3 candidates |
+   | 2 | Combo count = a × b; struggles to hit `module_topology_diversity` ≥ 10 unless each slot has ≥4 candidates |
    | **3** | Sweet spot — a × b × c easily exceeds the diversity floor, each module has tractable scope |
    | 4 | Each module has narrower responsibility, more inter-part mating seams, allow_overlap declarations multiply |
    | ≥5 | Code size explodes; one or more "slots" usually folds cleanly into **slot-level multiplicity** instead |
@@ -66,7 +66,7 @@ sample pool doesn't yield enough structurally distinct sources.**
 
 | Candidates | Effect |
 |---|---|
-| 2 (last-resort fallback) | Minimum viable; combo count `2×2×2=8` works if all slots have ≥2 and the `module_topology_diversity` gate threshold (5) is barely met |
+| 2 (last-resort fallback) | Minimum viable for source-scarce categories, but `2×2×2=8` no longer clears the default `module_topology_diversity` gate; document a reviewer-approved narrow-domain exception or add another structural axis |
 | **3-6 (target)** | Each slot's RNG genuinely samples a wide structural space; combo count `4×4×4 = 64` is comfortable |
 | 7+ | Marginal returns; module factory code volume balloons; 5-star sample pool usually can't sustain that many *distinct* candidates without re-skinning the same structure |
 
@@ -139,12 +139,12 @@ interfaces it exposes (typically `"upstream"` and `"downstream"`).
 
 ### `SlotSpec`
 One slot in the assembly graph. Owns `candidates: dict[name, factory]`
-and an `anchor_choice` (the module name picked for `seed == 0`, which
-should reproduce a canonical 5-star sample).
+and exposes module names that the slug-specific procedural sampler may choose
+when compatibility rules allow them.
 
 ### `assemble(...)`
-The driver. For each slot in order: pick a module (seed=0 → anchor, else
-uniform random), run its factory, emit a chain joint between the previous
+The driver. For each slot in order: consume the already-resolved procedural
+module choice, run its factory, emit a chain joint between the previous
 module's downstream interface and this module's upstream interface.
 
 ---
@@ -212,15 +212,20 @@ This only silences the old WARN. It does not affect the final visual support
 graph. `allow_floating=True` is rejected by final profile; do not use it to
 paper over an accidental seed-driven split.
 
-### Contract 4 — seed=0 is the anchor
+### Contract 4 — procedural sampling is the seed domain
 
-`config_from_seed(0)` must return the canonical 5-star sample's
-configuration (anchor module per slot + anchor's nominal dimensions).
-Other seeds RNG-pick uniformly from each slot's candidates.
+`config_from_seed(seed)` must use deterministic procedural sampling for all
+ordinary seeds, including seed 0. Use compatibility matrices and
+`resolve_config` to avoid illegal module combinations; do not rely on a small
+curated or modulo table as the main seed domain.
+
+Sparse regression overrides are allowed only for known failure regressions or
+reviewer-selected cases, and must be documented in the spec or template
+comments.
 
 The `slot_choices_for_seed(seed) -> list[tuple[str, str]]` function
-exports the per-seed module picks; it's consumed by the
-`module_topology_diversity` coverage gate.
+exports the actual per-seed module picks used by the build; it's consumed by
+the `module_topology_diversity` coverage gate and by failure attribution.
 
 ### Contract 5 — `__modular__ = True`
 
@@ -228,7 +233,7 @@ Set `__modular__ = True` at module scope. The sweep coverage gate uses
 this flag to:
 - Confirm the template is on the modular slot/module route.
 - Run `module_topology_diversity` (counts distinct slot_choice tuples across
-  passing seeds; needs ≥5 once the cumulative sweep reaches 20 seeds).
+  passing seeds; needs ≥10 once the cumulative sweep reaches 20 seeds).
 
 ---
 
@@ -239,7 +244,7 @@ When adding a new modular template `<slug>`, produce:
 1. **`agent/templates/<slug>.py`** — the template module. Must export:
    - `<Slug>Config` (frozen dataclass, public API)
    - `Resolved<Slug>Config` (clamped, internal)
-   - `config_from_seed(seed: int) -> <Slug>Config` — seed=0 = anchor
+   - `config_from_seed(seed: int) -> <Slug>Config` — deterministic procedural sampling
    - `resolve_config(config) -> Resolved<Slug>Config`
    - `build_<slug>(config, *, assets=None) -> ArticulatedObject`
    - `build_seeded_<slug>(seed) -> ArticulatedObject`
@@ -251,13 +256,13 @@ When adding a new modular template `<slug>`, produce:
    auto-tagged `template_asset` and excluded from the default pytest run (see
    `tests/agent/conftest.py`). Skip it while batch-authoring. Write one only
    when a finished template must be locked against future regressions, and
-   then only for the two things the sweep's sampling cannot cover:
+   then only for the things the sweep's sampling cannot cover:
    - All-combinations-build test (loop the entire slot×module grid — the
      sweep only samples seeds, so a rare combo may never be hit)
-   - Seed=0 equals anchor combination test (the sweep does not assert this)
+   - Specific regression seeds that previously failed or were reviewer-selected
 3. **`articraft_template_authoring/specs_modular_v1/<slug>.md`** — spec doc.
-   Replace the single `primary_anchor` field with a `topology_variants`
-   table listing each module and its source record.
+   Replace the single `primary_anchor` field with per-module source tables,
+   compatibility rules, and a procedural sampling / sweep plan.
 
 ---
 
@@ -278,7 +283,7 @@ The sweep JSON must satisfy:
 - `quality_summary.failed_gates == {}` and the totals for
   `unsupported_visual_islands`, `broad_overlap_allowances`,
   `floating_allowances`, and `sampled_pose_failures` are all zero
-- `coverage_gates.module_topology_diversity.status == "pass"` (≥5 distinct
+- `coverage_gates.module_topology_diversity.status == "pass"` (≥10 distinct
   observed combinations)
 
 Then visually verify:

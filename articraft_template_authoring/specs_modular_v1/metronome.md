@@ -81,66 +81,66 @@ source_index_policy：只索引被采纳的可复用片段；squat-pyramid / flo
 ### Slot 1：housing（外壳 / case，root part）
 节拍器的接地外壳，承载摆轴 pivot cheek、上弦 key boss、tempo scale。是 root part。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `squat_pyramid_shell` | S1 (0307c136) | `model.py:L29-L98,L115-L188` | ✅ seed=0 | cadquery `rect→loft→cut` 方锥/楔形中空壳 + 前 tempo-window 大圆角切口 + top-slot 摆杆出口，最经典节拍器外形 |
-| `tapered_mesh_shell` | S5 (1136c31b) / S14 (0d66) | `1136…:L57-L320` / `0d66…:L28-L175` | | MeshGeometry 四 `_panel_from_quad` / `_build_tapered_housing_shell` 上小下大梯形壳 + 前门框 stile/lintel + tempo scale strip |
-| `box_case` | S8 (448b77a5) | `model.py:L40-L139` | | primitive Box 拼方盒壳(plinth + floor + 四壁 + front sill/header)，内置 pendulum journal/pivot support，最轻量 |
-| `floor_cabinet` | S3 (2b18c190) | `model.py:L44-L156` | | 落地柜式高壳(plinth + floor + 四壁 + roof + 前 opening 框 + 内部 left/right bearing pedestal + side bushing)，配长摆杆，落地钟量级 |
+| `squat_pyramid_shell` | S1 (0307c136) | `model.py:L29-L98,L115-L188` | eligible if compatible | cadquery `rect→loft→cut` 方锥/楔形中空壳 + 前 tempo-window 大圆角切口 + top-slot 摆杆出口，最经典节拍器外形 |
+| `tapered_mesh_shell` | S5 (1136c31b) / S14 (0d66) | `1136…:L57-L320` / `0d66…:L28-L175` | eligible if compatible | MeshGeometry 四 `_panel_from_quad` / `_build_tapered_housing_shell` 上小下大梯形壳 + 前门框 stile/lintel + tempo scale strip |
+| `box_case` | S8 (448b77a5) | `model.py:L40-L139` | eligible if compatible | primitive Box 拼方盒壳(plinth + floor + 四壁 + front sill/header)，内置 pendulum journal/pivot support，最轻量 |
+| `floor_cabinet` | S3 (2b18c190) | `model.py:L44-L156` | eligible if compatible | 落地柜式高壳(plinth + floor + 四壁 + roof + 前 opening 框 + 内部 left/right bearing pedestal + side bushing)，配长摆杆，落地钟量级 |
 
 ### Slot 2：pendulum（摆杆，REVOLUTE child）
 绕 housing 顶部前缘水平轴摆动的摆杆，必为单 REVOLUTE。结构必带 pivot barrel/boss + rod + 顶/底 tip。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `rod_with_top_cap` | S2 (0307c136) | `model.py:L190-L214` | ✅ seed=0 | rod_shaft Cylinder + pivot_boss Sphere + 横向 pivot_pin + 顶 top_cap，杆顶露出壳外，bob 在杆上半段 |
-| `rod_with_bob_tip` | S7 (1136c31b) | `model.py:L443-L472` | | rod Cylinder + pivot_sleeve + 底 lower_counterweight + tempo_pointer，下端配重式(欧式机芯倒挂) |
-| `long_cabinet_rod` | S4 (2b18c190) | `model.py:L158-L188` | | pivot_hub Cylinder + 横 arm + rod_collar + 极长 rod(~1.5m) + sphere rod_tip，落地柜专用长摆 |
-| `slim_rod_with_lower_bob` | S6 (7af0c6f9) | `model.py:L132-L161` | | pivot_barrel + 极细方 rod + lower_bob + lower_tip Cylinder，便携小型摆 |
+| `rod_with_top_cap` | S2 (0307c136) | `model.py:L190-L214` | eligible if compatible | rod_shaft Cylinder + pivot_boss Sphere + 横向 pivot_pin + 顶 top_cap，杆顶露出壳外，bob 在杆上半段 |
+| `rod_with_bob_tip` | S7 (1136c31b) | `model.py:L443-L472` | eligible if compatible | rod Cylinder + pivot_sleeve + 底 lower_counterweight + tempo_pointer，下端配重式(欧式机芯倒挂) |
+| `long_cabinet_rod` | S4 (2b18c190) | `model.py:L158-L188` | eligible if compatible | pivot_hub Cylinder + 横 arm + rod_collar + 极长 rod(~1.5m) + sphere rod_tip，落地柜专用长摆 |
+| `slim_rod_with_lower_bob` | S6 (7af0c6f9) | `model.py:L132-L161` | eligible if compatible | pivot_barrel + 极细方 rod + lower_bob + lower_tip Cylinder，便携小型摆 |
 
 ### Slot 3：sliding_weight（配速滑块 / bob，PRISMATIC child，强制第二 DOF）
 套在摆杆上沿杆滑动调速的 tempo weight，恒为 PRISMATIC，是 23/23 全部具备的真实第二自由度。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `cadquery_bore_collar` | S1 (0307c136) | `model.py:L84-L98,L216-L233` | ✅ seed=0 | cadquery 圆柱 + 真实 clearance bore 套在 rod 上 + index line + friction pad(声明 allow_overlap 压在 rod 上) |
-| `cheek_clamp_weight` | S7 (1136c31b) | `model.py:L488-L538` | | left/right cheek + front/back bridge + wedge body，从两侧抱住方 rod(适配方截面摆杆) |
-| `lathe_shell_collar` | S10 (c8917520) | `model.py:L36-L45,L142-L162` | | `_collar_mesh` LatheGeometry 中空环 collar(coaxial 套 rod)，可单件或 coarse+fine 双件(见 Slot 5 dual gate) |
-| `extrude_ring_weight` | S12 (7af0c6f9) | `model.py:L163-L184` | | `ExtrudeWithHolesGeometry` superellipse 外轮廓 + 内孔环 + 侧 grip，套圆 rod |
+| `cadquery_bore_collar` | S1 (0307c136) | `model.py:L84-L98,L216-L233` | eligible if compatible | cadquery 圆柱 + 真实 clearance bore 套在 rod 上 + index line + friction pad(声明 allow_overlap 压在 rod 上) |
+| `cheek_clamp_weight` | S7 (1136c31b) | `model.py:L488-L538` | eligible if compatible | left/right cheek + front/back bridge + wedge body，从两侧抱住方 rod(适配方截面摆杆) |
+| `lathe_shell_collar` | S10 (c8917520) | `model.py:L36-L45,L142-L162` | eligible if compatible | `_collar_mesh` LatheGeometry 中空环 collar(coaxial 套 rod)，可单件或 coarse+fine 双件(见 Slot 5 dual gate) |
+| `extrude_ring_weight` | S12 (7af0c6f9) | `model.py:L163-L184` | eligible if compatible | `ExtrudeWithHolesGeometry` superellipse 外轮廓 + 内孔环 + 侧 grip，套圆 rod |
 
 ### Slot 4：winding_key（上弦钥匙 / 旋钮，CONTINUOUS child）
 case 侧/后/顶面板上绕自身轴连续旋转的上弦件，恒为 CONTINUOUS。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `winged_side_key` | S2 (0307c136) | `model.py:L235-L254` | ✅ seed=0 | key_collar + 两 key_wing Box + 端 lobe，侧面板 `(±1,0,0)` 轴蝶形上弦钥匙 |
-| `crossbar_rear_key` | S7 (1136c31b) | `model.py:L554-L592` | | key_shaft + hub + stem + crossbar，后面板 `(0,-1,0)` 轴，靠 rear_key_boss seat |
-| `stem_handle_key` | S4 (2b18c190) | `model.py:L204-L240` | | escutcheon + 长 stem + boss + 横 bar + 两端 grip ball，侧面板长杆手柄式 |
-| `top_face_knob` | S9 (448b77a5) | `model.py:L237-L278` | | key_shaft + hub + arm + grip_knob，顶/盖面 `(0,0,-1)` 轴小旋钮(挂 lid 时随 Slot 6 而定) |
+| `winged_side_key` | S2 (0307c136) | `model.py:L235-L254` | eligible if compatible | key_collar + 两 key_wing Box + 端 lobe，侧面板 `(±1,0,0)` 轴蝶形上弦钥匙 |
+| `crossbar_rear_key` | S7 (1136c31b) | `model.py:L554-L592` | eligible if compatible | key_shaft + hub + stem + crossbar，后面板 `(0,-1,0)` 轴，靠 rear_key_boss seat |
+| `stem_handle_key` | S4 (2b18c190) | `model.py:L204-L240` | eligible if compatible | escutcheon + 长 stem + boss + 横 bar + 两端 grip ball，侧面板长杆手柄式 |
+| `top_face_knob` | S9 (448b77a5) | `model.py:L237-L278` | eligible if compatible | key_shaft + hub + arm + grip_knob，顶/盖面 `(0,0,-1)` 轴小旋钮(挂 lid 时随 Slot 6 而定) |
 
 ### Slot 5：weight_dof（滑块自由度个数 / multiplicity）
 sliding weight 是 1 件还是 coarse+fine 2 件(各自独立 PRISMATIC)。决定 PRISMATIC 关节数与 part 数。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `single_weight` | S1 (0307c136) | `model.py:L216-L273` | ✅ seed=0 | 1 个 sliding_weight + 1 个 `weight_slide` PRISMATIC，默认主干 |
-| `coarse_plus_fine` | S10+S11 (c8917520) | `model.py:L142-L162,L204-L232` | | coarse_weight + fine_weight 两 collar part，`pendulum_to_coarse_weight`+`pendulum_to_fine_weight` 两 PRISMATIC，区间不重叠 |
-| `weight_plus_index` | S7 (1136c31b) | `model.py:L488-L538` | | 仍是 1 PRISMATIC 滑块，但 weight 含 index/pointer 细节随 tempo scale 读数(单 DOF，与 single_weight 同骨架的细节变体) |
+| `single_weight` | S1 (0307c136) | `model.py:L216-L273` | eligible if compatible | 1 个 sliding_weight + 1 个 `weight_slide` PRISMATIC，默认主干 |
+| `coarse_plus_fine` | S10+S11 (c8917520) | `model.py:L142-L162,L204-L232` | eligible if compatible | coarse_weight + fine_weight 两 collar part，`pendulum_to_coarse_weight`+`pendulum_to_fine_weight` 两 PRISMATIC，区间不重叠 |
+| `weight_plus_index` | S7 (1136c31b) | `model.py:L488-L538` | eligible if compatible | 仍是 1 PRISMATIC 滑块，但 weight 含 index/pointer 细节随 tempo scale 读数(单 DOF，与 single_weight 同骨架的细节变体) |
 
-说明：Slot 5 实质是「PRISMATIC 个数 ∈ {1,2}」的 multiplicity 开关。`weight_plus_index` 与 `single_weight` 都是单 PRISMATIC，仅 weight 细节不同；保留它是为了让 anchor 之外仍有一个单 DOF 候选承载 index/pointer 细节家族。`coarse_plus_fine` 是唯一引入第二 PRISMATIC 的候选——这是结构上明确不同的拓扑骨架(part +1、PRISMATIC joint +1)。三候选中 2 个共享单-DOF 骨架，故此槽有效结构骨架 = 2(单滑块 / 双滑块)，已注明。
+说明：Slot 5 实质是「PRISMATIC 个数 ∈ {1,2}」的 multiplicity 开关。`weight_plus_index` 与 `single_weight` 都是单 PRISMATIC，仅 weight 细节不同；保留它是为了让 其他 procedural samples仍有一个单 DOF 候选承载 index/pointer 细节家族。`coarse_plus_fine` 是唯一引入第二 PRISMATIC 的候选——这是结构上明确不同的拓扑骨架(part +1、PRISMATIC joint +1)。三候选中 2 个共享单-DOF 骨架，故此槽有效结构骨架 = 2(单滑块 / 双滑块)，已注明。
 
 ### Slot 6：case_extras（外壳附件 / 可选 gated DOF）
 挂在 housing 上的可选件：内部机芯/擒纵(FIXED)、前门或顶盖(REVOLUTE)、独立 base(FIXED)、后撑 stand(REVOLUTE)、fold-out stabilizer legs(REVOLUTE × N)、clip 臂(REVOLUTE)。决定附加 part/joint。
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `plain_no_extra` | S1 (0307c136) | `model.py:L115-L188` | ✅ seed=0 | 仅 housing 自带 pivot cheek/bridge/bushing visual，无附加 part、无附加 DOF（默认主干，4 part） |
-| `hinged_door` | S6 (1136c31b) / S9 (448b77a5) / S15 (cd45) | `1136…:L396-L441` / `448b…:L177-L235` / `cd45…:L118-L159,L301-L313` | | 一个 `front_door`/`lid`/`front_panel` part 经第二 REVOLUTE 挂 housing(前缘下翻 `(±1,0,0)` 或顶后缘上翻 `(±1,0,0)`)，gated 二级 DOF |
-| `internal_mechanism` | S6 (1136c31b) / S15 (cd45) | `1136…:L322-L394` / `cd45…:L161-L195,L315-L321` | | 一个 `mechanism`/`escapement_gear` part(spring barrel/gears/escapement/anchor，FIXED `housing_to_*`)，机芯细节件，无附加 DOF |
-| `separate_base` | S14 (0d66) | `model.py:L77-L183` | | 独立 `base` part(plinth + cap) 经 FIXED `base_to_housing` 承托 housing，root 改为 base，case 抬高 |
-| `fold_out_legs` | S12 (7af0c6f9) / S13 (31c1) | `7af0…:L186-L316` / `31c1…:L232-L260` | | N 个 `*_stabilizer_leg`/`rear_leg_{i}`(hinge_barrel + leg_arm + foot_pad) 经 REVOLUTE `(0,0,±1)` 绕底角外摆，multiplicity 1..2 件，gated 折叠脚 DOF |
+| `plain_no_extra` | S1 (0307c136) | `model.py:L115-L188` | eligible if compatible | 仅 housing 自带 pivot cheek/bridge/bushing visual，无附加 part、无附加 DOF（默认主干，4 part） |
+| `hinged_door` | S6 (1136c31b) / S9 (448b77a5) / S15 (cd45) | `1136…:L396-L441` / `448b…:L177-L235` / `cd45…:L118-L159,L301-L313` | eligible if compatible | 一个 `front_door`/`lid`/`front_panel` part 经第二 REVOLUTE 挂 housing(前缘下翻 `(±1,0,0)` 或顶后缘上翻 `(±1,0,0)`)，gated 二级 DOF |
+| `internal_mechanism` | S6 (1136c31b) / S15 (cd45) | `1136…:L322-L394` / `cd45…:L161-L195,L315-L321` | eligible if compatible | 一个 `mechanism`/`escapement_gear` part(spring barrel/gears/escapement/anchor，FIXED `housing_to_*`)，机芯细节件，无附加 DOF |
+| `separate_base` | S14 (0d66) | `model.py:L77-L183` | eligible if compatible | 独立 `base` part(plinth + cap) 经 FIXED `base_to_housing` 承托 housing，root 改为 base，case 抬高 |
+| `fold_out_legs` | S12 (7af0c6f9) / S13 (31c1) | `7af0…:L186-L316` / `31c1…:L232-L260` | eligible if compatible | N 个 `*_stabilizer_leg`/`rear_leg_{i}`(hinge_barrel + leg_arm + foot_pad) 经 REVOLUTE `(0,0,±1)` 绕底角外摆，multiplicity 1..2 件，gated 折叠脚 DOF |
 
-说明：`fold_out_legs` 同时是 gated 附件与 leg multiplicity(N=1..2，S13 用 `for leg_index` 循环)。`hinged_door` 合并了 front-door(下翻)、lid(上翻)、glass front_panel 三种同骨架(单 part + 单 REVOLUTE)子样式，axis 与 hinge 位置随子样式定。`a5b4` 的 `clip_arm`(housing 上第二 REVOLUTE `(-1,0,0)` 摆臂) 与 `dff9` 的 `stand`(housing 后第二 REVOLUTE `(1,0,0)` 撑架)结构上同属「housing + 单 part + 第二 REVOLUTE」，归入 `hinged_door` 候选的 axis/位置变体(rear-stand / side-clip)，不单列以避免每槽候选膨胀；若 reviewer 要求拆细可升为独立候选 `rear_stand` / `clip_arm`。anchor 选 `plain_no_extra`(占 5 星多数：23 个中 13 个是纯 4-part 主干)。
+说明：`fold_out_legs` 同时是 gated 附件与 leg multiplicity(N=1..2，S13 用 `for leg_index` 循环)。`hinged_door` 合并了 front-door(下翻)、lid(上翻)、glass front_panel 三种同骨架(单 part + 单 REVOLUTE)子样式，axis 与 hinge 位置随子样式定。`a5b4` 的 `clip_arm`(housing 上第二 REVOLUTE `(-1,0,0)` 摆臂) 与 `dff9` 的 `stand`(housing 后第二 REVOLUTE `(1,0,0)` 撑架)结构上同属「housing + 单 part + 第二 REVOLUTE」，归入 `hinged_door` 候选的 axis/位置变体(rear-stand / side-clip)，不单列以避免每槽候选膨胀；若 reviewer 要求拆细可升为独立候选 `rear_stand` / `clip_arm`。常见 reference example 可选 `plain_no_extra`(占 5 星多数：23 个中 13 个是纯 4-part 主干)。
 
 ## 槽位图（slot graph）
 ```
@@ -247,13 +247,13 @@ pattern = mixed
 
 - 无模板级复制数量逻辑：核心结构由固定 named slots 和 gated module-local fixed copies 表达，不暴露全局 `*_count` 作为主拓扑采样轴。
 - 若某个 module source 内部包含固定成对、环形阵列或若干重复 visual/part，模板实现应把它保留为 module-local construction，并使用稳定命名；不得把未审核的可变复制数量加入 seed domain。
-- 未来若要把固定重复结构升级为可变 multiplicity，必须补充来源、N_range、placement、joint policy、coverage seeds 和 reviewer 审核记录。
+- 未来若要把固定重复结构升级为可变 multiplicity，必须补充来源、N_range、placement、joint policy、regression seeds 和 reviewer 审核记录。
 
 ## 拓扑多样性审计
 - 每槽候选数：Slot1=4，Slot2=4，Slot3=4，Slot4=4，Slot5=3，Slot6=5。
 - total_combinations（未加相容约束）= 4 × 4 × 4 × 4 × 3 × 5 = **3840**。
 - 加合理相容约束(`long_cabinet_rod` 配 `floor_cabinet`、`cheek_clamp_weight` 配方截面 rod)后仍有数百种合法组合。
-- 是否清过 `module_topology_diversity (>=5 distinct)`：**是**。仅看引入/移除可选件的结构骨架就远超 5：
+- 是否清过 `module_topology_diversity (>=10 distinct)`：**是**。仅看引入/移除可选件的结构骨架就远超 10：
 
 | 结构骨架（part/joint 拓扑，按 Slot5 × Slot6 计） | part 数 | 主要 joint |
 |---|---|---|
@@ -278,33 +278,16 @@ pattern = mixed
 | Slot5 weight_dof | 3 | yes | 但有效结构骨架仅 2(单/双滑块)，3 个候选中 2 个共享单-DOF 骨架，已注明 |
 | Slot6 case_extras | 5 | yes | |
 
-### Stage 1 / Stage 2 seed-domain plan
+### Procedural Sampling / Sweep Plan
 
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+seed_domain_policy：procedural_first。`config_from_seed(seed)` 对普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊，不作为 anchor 或 reference seed。Sampling 先选择上游结构槽，再从 compatible 下游 candidate 集合中选择 module / multiplicity / module-local variant。
 
-Stage 1 high-risk coverage seed plan：
+Compatibility matrix / gating：以「槽位图」「每槽位 Module Emits / Interfaces」「Validator」中定义的接口、joint 轴、支撑面、range 和互斥关系为准；不兼容组合必须在 sampler 或 `resolve_config` 中降级、重采样或拒绝，不能让 builder 后期失败。
 
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+Regression overrides：默认无。若未来 sweep 发现稳定失败组合，或 reviewer 指定固定回归样本，可以添加少量显式 regression seed，但必须写明 seed、组合和原因；不得用小型 curated / modulo 表作为主 seed domain。
 
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
+Random sweep / viewer plan：首次模板验收跑 `uv run articraft template sweep-pipeline <slug>`，依赖 0、0-4、0-19、0-49 的 cumulative random seeds 检查 build、MatingContract、joint origin / axis / range、support、collision 和 `module_topology_diversity`。机械通过后 viewer 目检一小批随机 seed，重点看类别身份、比例、closed pose、bulky module、optional moving child、max multiplicity、captured-pin / bearing / hinge / rail 接口。
 
-### Stage 1 / Stage 2 seed-domain plan
-
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
-
-Stage 1 high-risk coverage seed plan：
-
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
-
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
 
 ## Validator（author_run_tests 必须覆盖的点）
 - identity：存在 housing/body(root 或 base 的 child) + 恰好 1 个 pendulum + ≥1 个 sliding_weight + 1 个 winding_key。

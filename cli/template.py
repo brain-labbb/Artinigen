@@ -44,6 +44,9 @@ DEFAULT_PROVIDER_BY_AGENT = {
 # `run_<stem>_tests`.
 TEMPLATE_REGISTRY: dict[str, str] = {
     "articulated_task_lamp": "articulated_task_lamp",
+    "branching_tree_with_three_independent_rotary_branches": (
+        "branching_tree_with_three_independent_rotary_branches"
+    ),
     "barrier_gate_boom": "barrier_gate",
     "barrier_gate_leaf_gate": "barrier_gate",
     "bell_tower_with_swinging_bell": "bell_tower_with_swinging_bell",

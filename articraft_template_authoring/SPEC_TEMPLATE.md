@@ -2,7 +2,7 @@
 
 `articraft_template_authoring/specs_modular_v1/<category_slug>.md` 的唯一字段规范。SPEC_ONLY 阶段必须按本格式产出 spec。
 
-Modular spec 不使用单一 `primary_anchor` 作为主来源。它使用 per-module source table、每 slot 的 `seed=0 anchor` module，以及 slot graph 来描述模板结构。
+Modular spec 不使用单一 `primary_anchor` 作为主来源，也不要求 `seed=0` 复现固定 anchor 组合。它使用 per-module source table、slot graph、InterfaceSpec / MatingContract 计划和 procedural sampling contract 来描述模板结构。
 
 ## 强制字段
 
@@ -57,10 +57,10 @@ Modular spec 不使用单一 `primary_anchor` 作为主来源。它使用 per-mo
 
 ### Slot A：<slot_name_a>
 
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| <module_alpha> | rec_<slug>_xxx | L25-L120 | yes | part tree / joint / primitive / interface 特征 |
-| <module_beta> | rec_<slug>_yyy | L40-L155 | | ... |
+| <module_alpha> | rec_<slug>_xxx | L25-L120 | eligible if compatible | part tree / joint / primitive / interface 特征 |
+| <module_beta> | rec_<slug>_yyy | L40-L155 | eligible if compatible | ... |
 
 ### Slot B：<slot_name_b>
 
@@ -72,7 +72,7 @@ Modular spec 不使用单一 `primary_anchor` 作为主来源。它使用 per-mo
 - 每个 slot 目标 3-6 个 candidate；样本池不足时可降到 2，但必须说明理由。
 - 禁止只有 1 个 candidate 的 slot，除非该 slot 折入相邻 module 或改成 module-local fixed structure。
 - 每个 candidate 必须有 `model.py:Lx-Ly` 来源。
-- 每个 slot 恰好一个 `seed=0 anchor`。
+- `sampling eligibility` 说明 candidate 是否进入 deterministic procedural sampler；默认是 `eligible if compatible`。若暂不采样，必须说明阻塞原因和 reviewer 状态。
 - Candidate 之间必须有结构差异；只换尺寸、颜色、材质或装饰不是新 candidate。
 
 ### 5. 槽位图（slot graph）
@@ -118,7 +118,7 @@ pattern: <linear_chain / parallel_children / multiplicity / mixed>
 ## 参数范围汇总
 | 参数 | 类型 | 取值范围 / 候选值 | 默认 | 派生关系 | 来源 |
 |---|---|---|---|---|---|
-| <slot_choice> | enum | <module names> | <seed0 module> | 由 seed 或 override 选择 | module table |
+| <slot_choice> | enum | <module names> | sampled | 由 deterministic procedural sampler 或显式 regression override 选择 | module table |
 | <dimension> | float | [min, max] | value | 从接口或父基准派生 | Sx / model.py:Lx-Ly |
 ```
 
@@ -155,18 +155,22 @@ pattern: <linear_chain / parallel_children / multiplicity / mixed>
 总组合数：A × B × C = X
 （如有 multiplicity，把 N 的采样数量算进去）
 
-预计 `module_topology_diversity` 门控（≥5 distinct）能否过：yes / no
+预计 `module_topology_diversity` 门控（≥10 distinct）能否过：yes / no
 理由：...
 
-seed_domain_stage：stage1_coverage / stage2_procedural / final
-Stage 1 high-risk coverage seed plan：列出 seed 范围、覆盖的 slot/module/multiplicity 组合、风险类型、viewer 目检重点和预计 distinct 数。
-Stage 2 procedural target：所有 Stage-1 模板完成后升级；目标为 unbounded deterministic sampling，1000-seed topology distinct 建议 >=100，低于 100 需说明类别/兼容约束原因。
-若使用 curated / modulo coverage seeds：说明这是 Stage 1 临时稳定域，不是最终 dataset-scale seed domain。
+seed_domain_policy：procedural_first
+Procedural Sampling / Sweep Plan：说明 deterministic procedural sampling 如何选择 slot/module/multiplicity，compatibility matrix / gating 如何避免非法组合，是否存在少量 regression overrides，以及 random sweep / viewer 目检范围。
+Topology target：1000-seed topology distinct 建议 >=100，低于 100 需说明类别/兼容约束原因。
+若使用 regression overrides：说明具体 seed、失败回归或审核理由；不得用小型 curated / modulo 表作为主 seed domain。
+Controlled local parameterization：列出初版模板应包含的关键连续 scale，例如 support_width_scale、station_spacing_scale、arm_reach_scale、hub_radius_scale、branch_thickness_scale、terminal_size_scale；说明取值范围、clamp / derived constraints，以及它们不会破坏 InterfaceSpec / MatingContract / multiplicity。
 
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | anchor module combination | regression anchor | source identity / baseline joint |
-| 1-N | <high-risk combo> | floating / collision / axis / max multiplicity / bulky module / optional child | <checks> |
+| item | policy | validator / viewer focus |
+|---|---|---|
+| sampler | <slot order, weighted choices, compatibility gates> | slot_choices_for_seed matches build choices |
+| compatibility matrix | <legal / mutually exclusive / fallback policies> | no floating, collision, axis, max multiplicity, bulky module, optional child failures |
+| controlled local variation | <safe continuous scale params + clamp policy> | proportions vary without breaking interfaces, clearance, support, joint origin, or category identity |
+| regression overrides | none / <seed + reason> | previously failed or reviewer-selected cases only |
+| random sweep | e.g. seeds 0-49 for initial pass, 0-999 for maturity audit | module_topology_diversity and contract failures |
 
 | slot | candidate_count | 是否 ≥2 | 是否 ≥3 | 备注 |
 |---|---:|---|---|---|
@@ -175,24 +179,24 @@ Stage 2 procedural target：所有 Stage-1 模板完成后升级；目标为 unb
 
 要求：
 
-- `module_topology_diversity` 的 `>=5 distinct` 只是最低机械门槛，不是最终 seed domain 的目标。
-- Stage 1 允许 finite coverage seed domain：可以用 curated / gated / modulo coverage table 先覆盖关键合法组合，目标是模板质量、稳定装配和 viewer 可审查。
-- Stage 1 spec 必须明确 coverage domain 覆盖哪些 module、哪些 multiplicity、哪些稀有组合，以及哪些组合暂不采样。
-- Coverage seed plan 必须优先覆盖最容易坏的组合：悬空/漂浮风险、穿模/clearance 风险、joint 轴或 range 风险、closed pose 风险、max multiplicity、bulky module、可选 moving child、长链/多子件装配、互斥 gate 或 fallback 降级路径。
-- Stage 1 的目的之一是先收敛这些高风险几何/接口/约束组合；Stage 2 再放开 seed domain 时应复用这些已验证的 InterfaceSpec、尺寸派生和 compatibility gates。
-- Stage 2 / final 要求迁移为 unbounded deterministic procedural sampling；除 anchor / regression / coverage overrides 外，主体 `seed>0` 不得无限轮换小型固定表。
+- `module_topology_diversity` 的 `>=10 distinct` 只是最低机械门槛，不是最终 seed domain 的目标。
+- 新模板首次实现时就应以 deterministic procedural sampling 作为主 seed domain；`seed=0` 不特殊。
+- 新模板首次实现时应包含少量关键局部 scale，但主多样性仍必须来自 slot/module/layout/multiplicity。不要把每个小零件都做自由随机；所有连续参数必须在 `resolve_config` 中 clamp / 派生，并受接口、clearance、joint range 和类别 identity 约束。
+- Compatibility matrix / gating 必须优先排除容易坏的组合：悬空/漂浮风险、穿模/clearance 风险、joint 轴或 range 风险、closed pose 风险、max multiplicity、bulky module、可选 moving child、长链/多子件装配、互斥 gate 或 fallback 降级路径。
+- Regression overrides 只能用于已知失败回归或审核指定样本；主体 seed domain 不得无限轮换小型 fixed / curated / modulo 表。
 
 ### 10. Validator 和 Reject cases
 
 ```markdown
 ## Validator
 
-- seed=0 equals anchor module combination
 - slot_choices_for_seed returns implemented module names
+- config_from_seed uses deterministic procedural sampling for all ordinary seeds
 - module_topology_diversity expected to pass
-- Stage 1 high-risk coverage seed domain is documented and covers representative modules plus failure-prone combos
-- Stage 2 procedural seed migration target is documented
+- compatibility matrix / gating prevents illegal module combinations
+- optional regression overrides are sparse and justified
 - final templates do not endlessly cycle a small curated table as the main seed domain
+- controlled local scale params are clamped and cannot break interfaces, clearance, joint origin, or category multiplicity
 - critical InterfaceSpec / MatingContract points exist
 - key joints have expected type / axis / range
 - copied objects follow naming and placement policy

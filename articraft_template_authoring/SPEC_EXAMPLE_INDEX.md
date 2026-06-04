@@ -4,7 +4,7 @@
 
 ## Canonical Modular V1 Examples
 
-`specs_modular_v1/` 是新 spec 的唯一示例来源。新增类别 spec 必须以 `SPEC_TEMPLATE.md` 为准，并且只能从本目录学习 schema、章节顺序、slot/module/interface 写法和 Stage 1 / Stage 2 seed-domain 表达。
+`specs_modular_v1/` 是新 spec 的唯一示例来源。新增类别 spec 必须以 `SPEC_TEMPLATE.md` 为准，并且只能从本目录学习 schema、章节顺序、slot/module/interface 写法和 procedural-first sampling / sweep plan 表达。
 
 当前文件：
 
@@ -29,6 +29,8 @@
 
 `specs_modular_transitional/` 中的文件有 slot/module 思路和有价值的结构分析，但不保证完全符合当前 `SPEC_TEMPLATE.md` 的强制字段。可以参考结构识别、slot graph、validator 和 source adaptation 思路；禁止作为新 spec 的 schema 来源。
 
+这些文件可能保留旧的 `seed=0 anchor`、Stage 1/Stage 2、coverage seed 术语；这些术语是历史迁移材料，不适用于新 spec。
+
 当前文件：
 
 - `robotic_arms.md`
@@ -46,6 +48,8 @@
 ## Legacy Reference Only
 
 `specs_legacy_reference_only/` 中的文件是旧 parts/joints spec、baseline style reference，或含 `primary_anchor` 的旧路线材料。它们只能用于理解历史类别边界、validator 风格或迁移需求；禁止作为 modular spec schema、source contract、seed-domain contract 或新模板 authoring 路线来源。
+
+这些文件中的 anchor / baseline / parts-only schema 术语不得带入新 modular spec。
 
 当前文件：
 

@@ -200,7 +200,7 @@ def test_run_sweep_passes_when_threshold_met(monkeypatch, tmp_path: Path) -> Non
             module_topology_diversity=CoverageGateResult(
                 name="module_topology_diversity",
                 status="pass",
-                details={"distinct_count": 5},
+                details={"distinct_count": 10},
             )
         ),
     )

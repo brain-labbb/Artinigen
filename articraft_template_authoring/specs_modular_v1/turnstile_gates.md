@@ -63,30 +63,30 @@
 ## 槽位 + 候选模块表
 
 ### Slot A：fixed_support_lane
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `refined_frame` | S2 | `model.py:L154-L245` | **yes** | compact frame/rails around central rotor |
-| `rugged_base_frame` | S1 | `model.py:L92-L225` | | heavy utility frame with panels and hatches |
-| `service_bearing_base` | S3 | `model.py:L47-L197` | | base plus bearing_core and service_door/wear rings |
-| `split_head_lane` | S4 | `model.py:L30-L153` | | base + bearing_module + fixed_frame + left/right head modules |
-| `dual_cabinet_glass_lane` | S6 | `model.py:L39-L142` | | left/right cabinet pair, no central rotor; review-gated alternate |
+| `refined_frame` | S2 | `model.py:L154-L245` | eligible if compatible | compact frame/rails around central rotor |
+| `rugged_base_frame` | S1 | `model.py:L92-L225` | eligible if compatible | heavy utility frame with panels and hatches |
+| `service_bearing_base` | S3 | `model.py:L47-L197` | eligible if compatible | base plus bearing_core and service_door/wear rings |
+| `split_head_lane` | S4 | `model.py:L30-L153` | eligible if compatible | base + bearing_module + fixed_frame + left/right head modules |
+| `dual_cabinet_glass_lane` | S6 | `model.py:L39-L142` | eligible if compatible | left/right cabinet pair, no central rotor; review-gated alternate |
 
 ### Slot B：barrier_mechanism
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `three_arm_rotor` | S2 | `model.py:L270-L339` | **yes** | central rotor with three radial arms, CONTINUOUS Z axis |
-| `rugged_rotor_assembly` | S1 | `model.py:L293-L506` | | heavy rotor with caps/arms plus service/inspection hatches |
-| `bearing_hub_rotor` | S3 | `model.py:L284-L382` | | rotor rides fixed bearing stack/wear rings |
-| `modular_arm_hub` | S4 | `model.py:L165-L247` | | arm_hub parented to bearing_module |
-| `dual_swing_glass_gates` | S6 | `model.py:L150-L195` | | opposing left/right gate leaves with REVOLUTE hinges |
+| `three_arm_rotor` | S2 | `model.py:L270-L339` | eligible if compatible | central rotor with three radial arms, CONTINUOUS Z axis |
+| `rugged_rotor_assembly` | S1 | `model.py:L293-L506` | eligible if compatible | heavy rotor with caps/arms plus service/inspection hatches |
+| `bearing_hub_rotor` | S3 | `model.py:L284-L382` | eligible if compatible | rotor rides fixed bearing stack/wear rings |
+| `modular_arm_hub` | S4 | `model.py:L165-L247` | eligible if compatible | arm_hub parented to bearing_module |
+| `dual_swing_glass_gates` | S6 | `model.py:L150-L195` | eligible if compatible | opposing left/right gate leaves with REVOLUTE hinges |
 
 ### Slot C：service_and_locking
-| module_name | 5_star_source | model.py:Lx-Ly | seed=0 anchor | 结构特征 |
+| module_name | 5_star_source | model.py:Lx-Ly | sampling eligibility | 结构特征 |
 |---|---|---|---|---|
-| `none` | S2 | `model.py:L333-L339` | **yes** | only rotor joint |
-| `service_panel_and_hatch` | S1 | `model.py:L437-L529` | | service panel vertical hinge + inspection hatch horizontal hinge |
-| `fixed_bearing_service_stack` | S3 | `model.py:L154-L376` | | service door fixed, bearing_core and wear rings fixed |
-| `lockout_pawl` | S5 | `model.py:L364-L406` | | pawl part with REVOLUTE lockout motion |
+| `none` | S2 | `model.py:L333-L339` | eligible if compatible | only rotor joint |
+| `service_panel_and_hatch` | S1 | `model.py:L437-L529` | eligible if compatible | service panel vertical hinge + inspection hatch horizontal hinge |
+| `fixed_bearing_service_stack` | S3 | `model.py:L154-L376` | eligible if compatible | service door fixed, bearing_core and wear rings fixed |
+| `lockout_pawl` | S5 | `model.py:L364-L406` | eligible if compatible | pawl part with REVOLUTE lockout motion |
 
 ## 槽位图（slot graph）
 pattern = `mixed`
@@ -176,7 +176,7 @@ The default template should likely seed central rotor. The dual swing gate branc
 
 总组合数：5 lane modules x 5 barrier modules x 4 service modules x 2 arm_count values = 200 before legality gating.
 
-预计 `module_topology_diversity` 门控（>=5 distinct）能否过：yes。理由：central rotor, bearing stack, service hatches, pawl, split head and dual swing gate produce distinct part/joint graphs.
+预计 `module_topology_diversity` 门控（>=10 distinct）能否过：yes。理由：central rotor, bearing stack, service hatches, pawl, split head and dual swing gate produce distinct part/joint graphs.
 
 | slot | candidate_count | 是否 >=3 | 备注 |
 |---|---:|---|---|
@@ -211,19 +211,16 @@ The default template should likely seed central rotor. The dual swing gate branc
 - Swing gate alternate is mutually exclusive with central rotor and should be reviewed for possible split.
 - Service/hatch/pawl cannot occlude rotor arms in closed pose.
 
-### Stage 1 / Stage 2 seed-domain plan
+### Procedural Sampling / Sweep Plan
 
-seed_domain_stage：stage1_coverage。当前 spec 的组合空间以「拓扑多样性审计」中的兼容 slot/module 组合为准；Stage 1 seed domain 应优先覆盖 seed=0 anchor、每个主要 slot candidate、最大 part/joint 数组合、bulky module、可选 moving child、captured-pin / bearing / hinge / rail 接口、以及最容易出现悬空、穿模、joint 轴错或 closed pose 不合理的组合。
+seed_domain_policy：procedural_first。`config_from_seed(seed)` 对普通 seed 使用 deterministic procedural sampling；`seed=0` 不特殊，不作为 anchor 或 reference seed。Sampling 先选择上游结构槽，再从 compatible 下游 candidate 集合中选择 module / multiplicity / module-local variant。
 
-Stage 1 high-risk coverage seed plan：
+Compatibility matrix / gating：以「槽位图」「每槽位 Module Emits / Interfaces」「Validator」中定义的接口、joint 轴、支撑面、range 和互斥关系为准；不兼容组合必须在 sampler 或 `resolve_config` 中降级、重采样或拒绝，不能让 builder 后期失败。
 
-| seed/range | covered combo | risk type | viewer / validator focus |
-|---|---|---|---|
-| 0 | spec 标注的 seed=0 anchor module combination | regression anchor | 类别身份、baseline part tree、主 joint 语义 |
-| 1-N | 覆盖各 slot 的非 anchor candidate 和 gated optional moving child | interface / axis / support | 悬空、穿模、joint origin、axis、range、closed pose |
-| N+ | 覆盖最大 part count、bulky module、captured-pin / bearing / hinge / rail 组合 | clearance / mating contract | visible support path、allow-overlap 局部理由、viewer 比例 |
+Regression overrides：默认无。若未来 sweep 发现稳定失败组合，或 reviewer 指定固定回归样本，可以添加少量显式 regression seed，但必须写明 seed、组合和原因；不得用小型 curated / modulo 表作为主 seed domain。
 
-Stage 2 procedural target：所有 Stage-1 模板完成并通过 sweep/viewer 后，主体 `seed>0` 逻辑迁移为 unbounded deterministic procedural sampling；除 anchor、coverage 和 regression overrides 外，不得无限轮换少数 curated / modulo 组合表来冒充 dataset-scale seed domain。
+Random sweep / viewer plan：首次模板验收跑 `uv run articraft template sweep-pipeline <slug>`，依赖 0、0-4、0-19、0-49 的 cumulative random seeds 检查 build、MatingContract、joint origin / axis / range、support、collision 和 `module_topology_diversity`。机械通过后 viewer 目检一小批随机 seed，重点看类别身份、比例、closed pose、bulky module、optional moving child、max multiplicity、captured-pin / bearing / hinge / rail 接口。
+
 
 ## Validator
 | 检查项 | 标准 |
