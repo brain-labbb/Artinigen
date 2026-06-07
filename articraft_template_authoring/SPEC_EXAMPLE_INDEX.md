@@ -9,21 +9,32 @@
 当前文件：
 
 - `articulated_task_lamp.md`
+- `astronomical_telescope_on_tripod.md`
 - `bell_tower_with_swinging_bell.md`
+- `clock_tower_with_rotating_hour_and_minute_hands.md`
 - `candy_vending_machine.md`
 - `casino_machine.md`
 - `globe.md`
 - `lighthouse_with_rotating_beacon_assembly.md`
+- `missile_launcher.md`
 - `metronome.md`
 - `overshot_waterwheel.md`
 - `paper_cutter_guillotine.md`
 - `parabolic_dish_on_azimuth_elevation_mount.md`
 - `playground_swing.md`
+- `remote_weapon_station.md`
+- `rotary_table_with_tilting_trunnion.md`
+- `rotating_observatory_dome.md`
+- `searchlight_tower.md`
 - `single_rotor_helicopter.md`
 - `singleleaf_drawbridge.md`
 - `traditional_windmill.md`
 - `turnstile_gates.md`
 - `turntable.md`
+- `dual_independent_finger_chains.md`
+- `gear_assemblies.md`
+- `car_axles.md`
+- `drawer_cabinet_with_sliding_drawers.md`
 
 ## Transitional Modular References
 

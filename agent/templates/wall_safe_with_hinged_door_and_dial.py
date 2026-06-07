@@ -243,11 +243,11 @@ def resolve_config(
     elif lock_style == "lower_latch_lever":
         dial_z = door_height * 0.18
         handle_z = -door_height * 0.30
-    hinge_barrel_count = _clamp_int(config.hinge_barrel_count, 2, 4)
-    lock_bolt_count = _clamp_int(config.lock_bolt_count, 2, 4)
+    hinge_barrel_count = _clamp_int(config.hinge_barrel_count, 2, 5)
+    lock_bolt_count = _clamp_int(config.lock_bolt_count, 2, 5)
     vault_rib_count = _clamp_int(config.vault_rib_count, 2, 4)
     if lock_style == "wheel_handle":
-        handle_spoke_count = _clamp_int(config.handle_spoke_count, 4, 6)
+        handle_spoke_count = _clamp_int(config.handle_spoke_count, 4, 8)
     elif lock_style == "three_spoke_center":
         handle_spoke_count = _clamp_int(config.handle_spoke_count, 3, 4)
     else:
@@ -321,10 +321,10 @@ def config_from_seed(seed: int) -> WallSafeWithHingedDoorAndDialConfig:
         depth=rng.uniform(0.14, 0.23),
         door_swing=rng.uniform(math.radians(85.0), math.radians(125.0)),
         drawer_travel=rng.uniform(0.055, 0.100),
-        hinge_barrel_count=rng.choice((2, 3, 4)),
-        handle_spoke_count=rng.choice((3, 4, 5, 6)),
+        hinge_barrel_count=rng.choice((2, 3, 4, 5)),
+        handle_spoke_count=rng.choice((3, 4, 5, 6, 8)),
         vault_rib_count=rng.choice((2, 3, 4)),
-        lock_bolt_count=rng.choice((2, 3, 4)),
+        lock_bolt_count=rng.choice((2, 3, 4, 5)),
         name=f"seeded_wall_safe_with_hinged_door_and_dial_{seed}",
     )
 
@@ -388,7 +388,11 @@ def _cyl(
 def _deposit_flap_pose(
     r: ResolvedWallSafeWithHingedDoorAndDialConfig,
 ) -> tuple[float, float, float]:
-    return (0.0, -r.door_thickness * 0.5 - 0.006, r.door_height * 0.49)
+    return (
+        -r.hinge_side * r.door_width * 0.5,
+        -r.door_thickness * 0.5 - 0.006,
+        r.door_height * 0.50,
+    )
 
 
 def _even_offsets(count: int, extent: float) -> tuple[float, ...]:
@@ -734,8 +738,8 @@ def _build_deposit_flap(
     _box(
         flap,
         "deposit_flap_panel",
-        (r.door_width * 0.40, 0.014, 0.044),
-        (0.0, -0.010, -0.022),
+        (r.door_width * 0.38, 0.014, 0.030),
+        (0.0, -0.010, -0.015),
         m["door"],
     )
     _cyl(
@@ -750,8 +754,8 @@ def _build_deposit_flap(
     _box(
         flap,
         "deposit_pull_lip",
-        (r.door_width * 0.30, 0.014, 0.010),
-        (0.0, -0.018, -0.046),
+        (r.door_width * 0.28, 0.014, 0.008),
+        (0.0, -0.018, -0.024),
         m["accent"],
     )
     return flap
@@ -823,7 +827,7 @@ def build_wall_safe_with_hinged_door_and_dial(
     dial = _build_dial(model, r, m)
     handle = _build_handle(model, r, m)
 
-    axis_sign = -1.0 if r.hinge_side > 0 else 1.0
+    axis_sign = 1.0 if r.hinge_side > 0 else -1.0
     model.articulation(
         "safe_door_hinge",
         ArticulationType.REVOLUTE,
@@ -913,6 +917,7 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
             "frame_hinge_barrel_1",
             "frame_hinge_barrel_2",
             "frame_hinge_barrel_3",
+            "frame_hinge_barrel_4",
             "hinge_backstrap",
             "front_frame_left",
             "front_frame_right",
@@ -922,12 +927,14 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                 "door_hinge_knuckle_1",
                 "door_hinge_knuckle_2",
                 "door_hinge_knuckle_3",
+                "door_hinge_knuckle_4",
                 "hinge_leaf_strip",
                 "door_slab",
                 "sliding_lock_bolt_0",
                 "sliding_lock_bolt_1",
                 "sliding_lock_bolt_2",
                 "sliding_lock_bolt_3",
+                "sliding_lock_bolt_4",
             ):
                 try:
                     ctx.allow_overlap(
@@ -936,6 +943,25 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                         elem_a=elem_a,
                         elem_b=elem_b,
                         reason="door hinge knuckles are captured by the frame hinge barrels",
+                    )
+                except Exception:
+                    pass
+        for elem_a in ("inner_jamb_left", "inner_jamb_right"):
+            for elem_b in (
+                "door_hinge_knuckle_0",
+                "door_hinge_knuckle_1",
+                "door_hinge_knuckle_2",
+                "door_hinge_knuckle_3",
+                "door_hinge_knuckle_4",
+                "hinge_leaf_strip",
+            ):
+                try:
+                    ctx.allow_overlap(
+                        body,
+                        door,
+                        elem_a=elem_a,
+                        elem_b=elem_b,
+                        reason="side jambs are tight around the hinge leaf but the door slab opens outside the safe body",
                     )
                 except Exception:
                     pass
@@ -975,6 +1001,8 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
             "wheel_spoke_3",
             "wheel_spoke_4",
             "wheel_spoke_5",
+            "wheel_spoke_6",
+            "wheel_spoke_7",
             "spoke_0",
             "spoke_1",
             "spoke_2",
@@ -1079,6 +1107,8 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
             "wheel_spoke_3",
             "wheel_spoke_4",
             "wheel_spoke_5",
+            "wheel_spoke_6",
+            "wheel_spoke_7",
             "spoke_0",
             "spoke_1",
             "spoke_2",
@@ -1133,13 +1163,21 @@ def run_wall_safe_with_hinged_door_and_dial_tests(
         rest = ctx.part_element_world_aabb(door, elem="door_slab")
         with ctx.pose(safe_door_hinge=r.door_swing * 0.55):
             opened = ctx.part_element_world_aabb(door, elem="door_slab")
+            ctx.fail_if_parts_overlap_in_current_pose(name="door_open_no_box_penetration")
         if rest is not None and opened is not None:
             rest_x = (rest[0][0] + rest[1][0]) * 0.5
             opened_x = (opened[0][0] + opened[1][0]) * 0.5
+            rest_y = (rest[0][1] + rest[1][1]) * 0.5
+            opened_y = (opened[0][1] + opened[1][1]) * 0.5
             ctx.check(
                 "door_swings_about_side_hinge",
                 abs(opened_x - rest_x) > 0.04,
                 details=f"rest_x={rest_x:.3f}, opened_x={opened_x:.3f}",
+            )
+            ctx.check(
+                "door_opens_outside_safe_body",
+                opened_y < rest_y - 0.035,
+                details=f"rest_y={rest_y:.3f}, opened_y={opened_y:.3f}",
             )
     if "combination_dial_spin" in joint_names:
         j = object_model.get_articulation("combination_dial_spin")

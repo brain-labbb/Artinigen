@@ -108,7 +108,6 @@ class SweepReport:
     seeds_requested: list[int]
     passed_seeds: list[int]
     failed_outcomes: list[SeedOutcome]
-    line_count: int
     pass_rate: float
     pass_threshold: float
     verdict: str
@@ -133,7 +132,6 @@ class SweepReport:
             "passed_seeds": self.passed_seeds,
             "failed_seeds": [outcome.to_dict() for outcome in self.failed_outcomes],
             "failure_clusters": [self._cluster_dict(c) for c in self.failure_clusters],
-            "line_count": self.line_count,
             "pass_rate": self.pass_rate,
             "pass_threshold": self.pass_threshold,
             "verdict": self.verdict,
@@ -207,14 +205,6 @@ def _extract_failure(exc: BaseException) -> tuple[str, str]:
         details = primary.details or primary.summary or ""
         return check, details
     return type(exc).__name__, str(exc)
-
-
-def _line_count(path: Path) -> int:
-    try:
-        with path.open("r", encoding="utf-8") as fp:
-            return sum(1 for _ in fp)
-    except OSError:
-        return 0
 
 
 def _template_module_path(slug: str, *, repo_root: Path) -> Path:
@@ -592,11 +582,9 @@ def build_sweep_report_from_outcomes(
 
     clusters = cluster_failures(failed_outcomes)
     cluster_signatures = [c.cluster_signature for c in clusters]
-    line_count = _line_count(template_path)
 
     gates = evaluate_gates(
         slug=slug,
-        line_count=line_count,
         outcomes=outcomes,
         repo_root=repo_root,
     )
@@ -626,7 +614,6 @@ def build_sweep_report_from_outcomes(
         seeds_requested=list(seeds),
         passed_seeds=passed_seeds,
         failed_outcomes=failed_outcomes,
-        line_count=line_count,
         pass_rate=round(pass_rate, 6),
         pass_threshold=pass_threshold,
         verdict=verdict,

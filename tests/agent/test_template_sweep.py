@@ -169,7 +169,6 @@ def test_run_sweep_handles_mixed_pass_fail(monkeypatch, tmp_path: Path) -> None:
     assert {o.seed for o in report.failed_outcomes} == {1, 4}
     assert report.pass_rate == pytest.approx(0.6)
     assert report.verdict == "fail"  # below 0.95 threshold
-    assert report.line_count == 42
 
 
 def test_run_sweep_passes_when_threshold_met(monkeypatch, tmp_path: Path) -> None:
@@ -214,7 +213,6 @@ def test_run_sweep_passes_when_threshold_met(monkeypatch, tmp_path: Path) -> Non
     )
     assert report.pass_rate == 1.0
     assert report.verdict == "pass"
-    assert report.line_count == 1500
 
 
 def test_run_sweep_raises_when_template_missing(tmp_path: Path) -> None:

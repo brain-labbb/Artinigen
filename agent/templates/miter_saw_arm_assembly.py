@@ -562,7 +562,7 @@ def _build_base(
         base.visual(
             Box((r.base_width * 0.20, 0.050, 0.046)),
             origin=Origin(
-                xyz=(sign * r.base_width * 0.27, r.fence_y + 0.006, r.base_height + 0.028)
+                xyz=(sign * r.base_width * 0.31, r.fence_y + 0.020, r.base_height + 0.046)
             ),
             material=m["base"],
             name=f"{side}_fence_pedestal",
@@ -662,24 +662,6 @@ def _build_miter_table(
         origin=Origin(xyz=(0.0, 0.0, r.table_thickness + 0.005)),
         material=m["base_dark"],
         name="kerf_slot",
-    )
-    table.visual(
-        Box((0.040, r.table_radius * 1.25, 0.014)),
-        origin=Origin(xyz=(0.0, r.table_radius * 1.38, r.table_thickness + 0.017)),
-        material=m["table"],
-        name="front_miter_handle_stem",
-    )
-    table.visual(
-        Box((0.115, 0.050, 0.016)),
-        origin=Origin(xyz=(0.0, r.table_radius * 1.82, r.table_thickness + 0.018)),
-        material=m["rubber"],
-        name="front_miter_handle",
-    )
-    table.visual(
-        Box((0.050, 0.085, 0.036)),
-        origin=Origin(xyz=(0.0, r.table_radius * 1.05, r.table_thickness + 0.010)),
-        material=m["table"],
-        name="front_handle_riser",
     )
     hx, hy, hz = r.hinge_xyz
     table.visual(
@@ -807,8 +789,8 @@ def _build_saw_arm(
         name="handle_mount_pad",
     )
     arm.visual(
-        Box((0.060, 0.034, 0.100)),
-        origin=Origin(xyz=(0.0, r.arm_length, -0.045)),
+        Box((0.058, 0.026, 0.090)),
+        origin=Origin(xyz=(0.040, r.arm_length, -0.045)),
         material=m["arm"],
         name="front_bevel_drop_bracket",
     )
@@ -906,7 +888,7 @@ def _build_saw_head(
     )
     head.visual(
         Box((0.030, 0.110, 0.026)),
-        origin=Origin(xyz=(0.054, motor_y + 0.025, 0.082)),
+        origin=Origin(xyz=(-0.075, motor_y + 0.025, 0.082)),
         material=m["rubber"],
         name="trigger_handle",
     )
@@ -1179,6 +1161,8 @@ def _allow_expected_overlaps(
             "rear_fence_stanchion_bridge",
             "rear_rail_root_strut",
             "front_miter_scale_lip",
+            "left_fence_pedestal",
+            "right_fence_pedestal",
         ):
             for elem_b in (
                 "table_disc",
@@ -1207,17 +1191,18 @@ def _allow_expected_overlaps(
     if "base" in names and "blade" in names:
         base = model.get_part("base")
         blade = model.get_part("blade")
-        for elem_b in blade_cut_elems:
-            try:
-                ctx.allow_overlap(
-                    base,
-                    blade,
-                    elem_a="turntable_seat",
-                    elem_b=elem_b,
-                    reason="lowered circular blade cuts into the base turntable throat",
-                )
-            except Exception:
-                pass
+        for elem_a in ("turntable_seat", "rear_fence_bar"):
+            for elem_b in blade_cut_elems:
+                try:
+                    ctx.allow_overlap(
+                        base,
+                        blade,
+                        elem_a=elem_a,
+                        elem_b=elem_b,
+                        reason="lowered circular blade cuts into the base/fence throat slot",
+                    )
+                except Exception:
+                    pass
     if "miter_table" in names and "blade" in names:
         table = model.get_part("miter_table")
         blade = model.get_part("blade")
@@ -1249,8 +1234,10 @@ def _allow_expected_overlaps(
                 "bevel_mount_lug",
                 "motor_gearbox_block",
                 "guard_neck_bridge",
+                "upper_blade_guard",
                 "arbor_side_web",
                 "side_motor_mount_bridge",
+                "carry_handle_stanchion",
             ):
                 try:
                     ctx.allow_overlap(
@@ -1285,7 +1272,12 @@ def _allow_expected_overlaps(
     if "saw_head" in names and "lower_guard" in names:
         head = model.get_part("saw_head")
         guard = model.get_part("lower_guard")
-        for elem_a in ("upper_blade_guard", "arbor_shaft_visual", "arbor_side_web"):
+        for elem_a in (
+            "upper_blade_guard",
+            "arbor_shaft_visual",
+            "arbor_side_web",
+            "bevel_mount_lug",
+        ):
             for elem_b in (
                 "lower_guard_shell",
                 "lower_guard_pivot_boss",

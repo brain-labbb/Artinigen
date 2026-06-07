@@ -210,9 +210,8 @@ def evaluate_gates(
     slug: str,
     outcomes: Sequence[SeedOutcome],
     repo_root: Path,
-    line_count: int | None = None,
 ) -> CoverageGates:
-    _ = repo_root, line_count
+    _ = repo_root
     return CoverageGates(
         module_topology_diversity=check_module_topology_diversity(slug, outcomes),
     )

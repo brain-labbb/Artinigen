@@ -117,7 +117,6 @@ uv run articraft template compile-sweep <slug> --seeds 0-49
     "cluster_streaks": { "2774f2e29b65": 2 },
     "pass_rate_trend": [0.0, 0.4, 0.6]
   },
-  "line_count": 1247,
   "pass_rate": 0.94,
   "pass_threshold": 0.95,
   "verdict": "pass" | "fail",

@@ -46,6 +46,11 @@ Homepage = "https://github.com/mattzh72/articraft"
 Repository = "https://github.com/mattzh72/articraft"
 Issues = "https://github.com/mattzh72/articraft/issues"
 
+[project.optional-dependencies]
+preview = [
+    "pyrender>=0.1.45",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

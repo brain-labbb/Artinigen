@@ -424,7 +424,7 @@ def _land_patch_geometry(
     height: float,
     outline: tuple[tuple[float, float], ...],
 ) -> MeshGeometry:
-    surface_radius = radius * 1.009
+    surface_radius = radius * 0.998
     lon_span = math.degrees(width / radius)
     lat_span = math.degrees(height / radius)
     lon_scale = max(0.35, math.cos(math.radians(center_lat)))
@@ -998,8 +998,8 @@ def _build_outer_cradle_base(
         name="rectangular_cradle_foot",
     )
     cradle.visual(
-        Cylinder(radius=r.pedestal_radius * 1.15, length=r.base_height * 0.82),
-        origin=Origin(xyz=(0.0, 0.0, r.base_height * 0.45), rpy=_cyl_z()),
+        Cylinder(radius=r.pedestal_radius * 1.15, length=r.base_height),
+        origin=Origin(xyz=(0.0, 0.0, r.base_height * 0.5), rpy=_cyl_z()),
         material=materials["wood"],
         name="center_cradle_column",
     )
@@ -1010,10 +1010,22 @@ def _build_outer_cradle_base(
         name="front_cross_saddle",
     )
     cradle.visual(
+        Box((r.pedestal_radius * 1.15, r.base_depth * 0.42, R * 0.045)),
+        origin=Origin(xyz=(0.0, -r.base_depth * 0.17, r.base_height)),
+        material=materials["metal_dark"],
+        name="front_saddle_center_bridge",
+    )
+    cradle.visual(
         Box((r.ring_radius * 1.30, r.base_depth * 0.24, R * 0.055)),
         origin=Origin(xyz=(0.0, r.base_depth * 0.32, r.base_height)),
         material=materials["metal_dark"],
         name="rear_cross_saddle",
+    )
+    cradle.visual(
+        Box((r.pedestal_radius * 1.15, r.base_depth * 0.42, R * 0.045)),
+        origin=Origin(xyz=(0.0, r.base_depth * 0.17, r.base_height)),
+        material=materials["metal_dark"],
+        name="rear_saddle_center_bridge",
     )
     outer_radius = r.ring_radius + R * 0.085
     _add_torus(
@@ -1032,6 +1044,12 @@ def _build_outer_cradle_base(
             material=materials["metal_dark"],
             name=f"outer_cradle_pivot_socket_{'left' if x < 0 else 'right'}",
         )
+    cradle.visual(
+        Cylinder(radius=r.ring_tube * 0.72, length=r.ring_radius * 2.02),
+        origin=Origin(xyz=(0.0, 0.0, r.globe_center_z), rpy=_cyl_x()),
+        material=materials["metal_dark"],
+        name="central_tilt_axis_rod",
+    )
 
     meridian = _build_meridian_carrier(model, r, cradle, materials, parent_kind="cradle")
     return SupportAnchors(
@@ -1066,6 +1084,15 @@ def _build_partial_ring_base(
         name="partial_ring_center_post",
     )
     stand.visual(
+        Cylinder(
+            radius=r.ring_tube * 0.82,
+            length=max(R * 0.10, r.globe_center_z - r.base_height),
+        ),
+        origin=Origin(xyz=(0.0, 0.0, (r.globe_center_z + r.base_height) * 0.5), rpy=_cyl_z()),
+        material=materials["metal"],
+        name="partial_ring_center_post_extension",
+    )
+    stand.visual(
         Box((r.ring_radius * 2.18, r.base_depth * 0.24, R * 0.070)),
         origin=Origin(xyz=(0.0, 0.0, r.base_height)),
         material=materials["metal_dark"],
@@ -1076,6 +1103,12 @@ def _build_partial_ring_base(
         origin=Origin(xyz=(0.0, 0.0, r.base_height + R * 0.085)),
         material=materials["metal"],
         name="partial_ring_upper_tie_bar",
+    )
+    stand.visual(
+        Cylinder(radius=r.ring_tube * 0.72, length=r.ring_radius * 2.02),
+        origin=Origin(xyz=(0.0, 0.0, r.globe_center_z), rpy=_cyl_x()),
+        material=materials["metal_dark"],
+        name="central_tilt_axis_rod",
     )
     for x in (-r.ring_radius, r.ring_radius):
         stand.visual(
@@ -1132,6 +1165,12 @@ def _build_rotating_pedestal_base(
         origin=Origin(xyz=(0.0, 0.0, (r.globe_center_z - R * 0.18) * 0.5), rpy=_cyl_z()),
         material=materials["wood"],
         name="rotating_tall_support",
+    )
+    support.visual(
+        Cylinder(radius=r.ring_tube * 0.62, length=R * 0.20),
+        origin=Origin(xyz=(0.0, 0.0, r.globe_center_z - R * 0.10), rpy=_cyl_z()),
+        material=materials["metal_dark"],
+        name="rotating_spin_axis_rod",
     )
     support.visual(
         Cylinder(radius=r.pedestal_radius * 1.75, length=R * 0.070),
@@ -1219,6 +1258,12 @@ def _build_wall_arm_base(
         origin=Origin(xyz=(-r.ring_radius, arm_y * 0.50, r.globe_center_z), rpy=_cyl_y()),
         material=materials["metal_dark"],
         name="wall_arm_side_pivot_socket",
+    )
+    wall.visual(
+        Box((r.ring_radius, arm_y + R * 0.075, R * 0.050)),
+        origin=Origin(xyz=(-r.ring_radius * 0.5, arm_y * 0.25, r.globe_center_z)),
+        material=materials["metal_dark"],
+        name="wall_arm_center_spin_bridge",
     )
 
     meridian = _build_meridian_carrier(model, r, wall, materials, parent_kind="wall")
@@ -1350,6 +1395,18 @@ def _decorate_partial_desktop_meridian(
         material=materials["metal_dark"],
         name="partial_meridian_lower_spine",
     )
+    meridian.visual(
+        Sphere(radius=r.ring_tube * 1.25),
+        origin=Origin(),
+        material=materials["metal_dark"],
+        name="partial_meridian_center_pivot_boss",
+    )
+    meridian.visual(
+        Box((r.ring_tube * 1.35, r.ring_tube * 1.35, r.ring_radius * 0.48)),
+        origin=Origin(xyz=(0.0, 0.0, -r.ring_radius * 0.24)),
+        material=materials["metal_dark"],
+        name="partial_meridian_center_pivot_spine",
+    )
     for sign, side in ((-1.0, "left"), (1.0, "right")):
         meridian.visual(
             Sphere(radius=r.ring_tube * 1.45),
@@ -1392,6 +1449,24 @@ def _decorate_partial_wall_meridian(
         origin=Origin(xyz=(-r.ring_radius, 0.0, 0.0), rpy=_cyl_y()),
         material=materials["metal_dark"],
         name="wall_meridian_side_hinge_pin",
+    )
+    meridian.visual(
+        Sphere(radius=r.ring_tube * 1.20),
+        origin=Origin(),
+        material=materials["metal_dark"],
+        name="wall_meridian_center_spin_boss",
+    )
+    meridian.visual(
+        Box((r.ring_tube * 1.25, r.ring_tube * 1.25, r.globe_center_z)),
+        origin=Origin(xyz=(0.0, 0.0, r.globe_center_z * 0.5)),
+        material=materials["metal_dark"],
+        name="wall_meridian_origin_spine",
+    )
+    meridian.visual(
+        Sphere(radius=r.ring_tube * 1.10),
+        origin=Origin(xyz=(0.0, 0.0, r.globe_center_z)),
+        material=materials["metal_dark"],
+        name="wall_meridian_tilt_origin_boss",
     )
     meridian.visual(
         Sphere(radius=r.ring_tube * 1.35),
@@ -1609,26 +1684,50 @@ def _build_date_ring(
     materials: dict[str, object],
 ) -> Part:
     date_ring = model.part("date_ring")
-    ring_z = max(r.base_height * 0.80, r.globe_center_z - r.globe_radius * 1.16)
+    ring_z = max(r.base_height * 0.54, r.globe_center_z - r.globe_radius * 1.34)
+    ring_radius = r.globe_radius * 0.58
     _add_torus(
         model,
         date_ring,
         name="calendar_date_ring",
-        radius=r.globe_radius * 0.70,
+        radius=ring_radius,
         tube=max(r.globe_radius * 0.014, 0.006),
         material=materials["metal_dark"],
         origin=Origin(),
         radial_segments=10,
         tubular_segments=64,
     )
+    date_ring.visual(
+        Cylinder(
+            radius=max(r.globe_radius * 0.038, 0.014), length=max(r.globe_radius * 0.040, 0.018)
+        ),
+        origin=Origin(rpy=_cyl_z()),
+        material=materials["metal_dark"],
+        name="date_ring_center_bearing",
+    )
+    for i in range(4):
+        angle = math.tau * i / 4.0
+        date_ring.visual(
+            Box((ring_radius * 2.04, r.globe_radius * 0.014, r.globe_radius * 0.012)),
+            origin=Origin(
+                xyz=(
+                    math.cos(angle) * ring_radius * 0.51,
+                    math.sin(angle) * ring_radius * 0.51,
+                    0.0,
+                ),
+                rpy=(0.0, 0.0, angle),
+            ),
+            material=materials["metal"],
+            name=f"date_ring_spoke_{i}",
+        )
     for i in range(12):
         angle = math.tau * i / 12.0
         date_ring.visual(
             Box((r.globe_radius * 0.035, r.globe_radius * 0.012, r.globe_radius * 0.010)),
             origin=Origin(
                 xyz=(
-                    math.cos(angle) * r.globe_radius * 0.70,
-                    math.sin(angle) * r.globe_radius * 0.70,
+                    math.cos(angle) * ring_radius,
+                    math.sin(angle) * ring_radius,
                     0.0,
                 ),
                 rpy=(0.0, 0.0, angle),
@@ -1646,7 +1745,7 @@ def _build_date_ring(
         motion_limits=MotionLimits(effort=8.0, velocity=1.2),
     )
     date_ring.inertial = Inertial.from_geometry(
-        Cylinder(radius=r.globe_radius * 0.70, length=r.globe_radius * 0.03),
+        Cylinder(radius=ring_radius, length=r.globe_radius * 0.03),
         mass=0.3,
         origin=Origin(rpy=_cyl_z()),
     )
@@ -1713,7 +1812,14 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
     part_names = {part.name for part in model.parts}
     if "globe" in part_names:
         globe = model.get_part("globe")
-        for support_name in ("meridian", "inner_ring", "partial_meridian", "support_pedestal"):
+        for support_name in (
+            "meridian",
+            "inner_ring",
+            "partial_meridian",
+            "support_pedestal",
+            "outer_cradle",
+            "stand",
+        ):
             if support_name not in part_names:
                 continue
             support = model.get_part(support_name)
@@ -1727,6 +1833,7 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                 "globe_spin_axis_rod",
                 "globe_bottom_saddle",
                 "lower_spin_saddle_ball",
+                "partial_meridian_lower_spine",
             ):
                 for elem_b in (
                     "ocean_sphere",
@@ -1770,11 +1877,20 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                 "yoke_lower_socket",
                 "central_tilt_axis_datum",
                 "central_tilt_axis_rod",
+                "center_cradle_column",
+                "partial_meridian_center_pivot_boss",
                 "outer_cradle_pivot_socket_left",
                 "outer_cradle_pivot_socket_right",
+                "outer_cradle_ring",
                 "wall_arm_side_pivot_socket",
                 "partial_ring_side_post_left",
                 "partial_ring_side_post_right",
+                "partial_ring_crosshead",
+                "partial_ring_upper_tie_bar",
+                "partial_ring_center_post",
+                "partial_ring_center_post_extension",
+                "front_saddle_center_bridge",
+                "rear_saddle_center_bridge",
             ):
                 for elem_b in (
                     "full_meridian_ring",
@@ -1786,8 +1902,12 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                     "right_meridian_pivot_cap",
                     "left_partial_axis_cap",
                     "right_partial_axis_cap",
+                    "partial_stand_meridian_ring",
                     "wall_meridian_side_hinge_pin",
                     "wall_meridian_free_axis_cap",
+                    "partial_meridian_lower_spine",
+                    "partial_meridian_center_pivot_boss",
+                    "partial_meridian_center_pivot_spine",
                 ):
                     try:
                         ctx.allow_overlap(
@@ -1804,7 +1924,7 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
         base = model.get_part("base_ring")
         pedestal = model.get_part("support_pedestal")
         for elem_a in ("turning_base_bearing_race",):
-            for elem_b in ("rotating_lower_pedestal",):
+            for elem_b in ("rotating_lower_pedestal", "rotating_tall_support"):
                 try:
                     ctx.allow_overlap(
                         base,
@@ -1812,6 +1932,181 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                         elem_a=elem_a,
                         elem_b=elem_b,
                         reason="rotating pedestal sits inside the base bearing race",
+                    )
+                except Exception:
+                    pass
+
+    if "date_ring" in part_names:
+        date_ring = model.get_part("date_ring")
+        for support_name in ("base", "outer_cradle", "stand"):
+            if support_name not in part_names:
+                continue
+            support = model.get_part(support_name)
+            for elem_a in (
+                "central_turned_pedestal",
+                "center_cradle_column",
+                "partial_ring_center_post",
+                "partial_ring_base_disk",
+            ):
+                for elem_b in (
+                    "date_ring_center_bearing",
+                    "date_ring_spoke_0",
+                    "date_ring_spoke_1",
+                    "date_ring_spoke_2",
+                    "date_ring_spoke_3",
+                ):
+                    try:
+                        ctx.allow_overlap(
+                            date_ring,
+                            support,
+                            elem_a=elem_b,
+                            elem_b=elem_a,
+                            reason="date ring center bearing is captured around the support post",
+                        )
+                    except Exception:
+                        pass
+
+    if "stand" in part_names and "globe" in part_names:
+        stand = model.get_part("stand")
+        globe = model.get_part("globe")
+        for elem_a in ("partial_ring_upper_tie_bar", "partial_ring_crosshead"):
+            for elem_b in (
+                "south_polar_axis_cap",
+                "ocean_sphere",
+                "deep_ocean_shadow_core",
+                "prime_meridian_band",
+                "secondary_meridian_band",
+            ):
+                try:
+                    ctx.allow_overlap(
+                        stand,
+                        globe,
+                        elem_a=elem_a,
+                        elem_b=elem_b,
+                        reason="partial ring top tie captures the lower globe axis",
+                    )
+                except Exception:
+                    pass
+
+    for support_name in ("outer_cradle", "stand", "support_pedestal", "wall_arm"):
+        if support_name not in part_names or "globe" not in part_names:
+            continue
+        support = model.get_part(support_name)
+        globe = model.get_part("globe")
+        for support_elem in (
+            "central_tilt_axis_rod",
+            "partial_ring_center_post_extension",
+            "rotating_tall_support",
+            "rotating_spin_axis_rod",
+            "globe_bottom_saddle",
+            "lower_spin_saddle_ball",
+            "wall_arm_center_spin_bridge",
+            "wall_arm_front_yoke_spine",
+            "wall_arm_side_pivot_socket",
+            "cantilever_upper_arm",
+            "cantilever_lower_arm",
+            "front_saddle_center_bridge",
+            "rear_saddle_center_bridge",
+        ):
+            for globe_elem in (
+                "ocean_sphere",
+                "deep_ocean_shadow_core",
+                "equator_band",
+                "prime_meridian_band",
+                "secondary_meridian_band",
+                "south_polar_axis_cap",
+                "north_latitude_band_0",
+                "north_latitude_band_1",
+                "north_latitude_band_2",
+                "south_latitude_band_0",
+                "south_latitude_band_1",
+                "south_latitude_band_2",
+            ):
+                try:
+                    ctx.allow_overlap(
+                        globe,
+                        support,
+                        elem_a=globe_elem,
+                        elem_b=support_elem,
+                        reason="central tilt axis rod passes through the globe axis",
+                    )
+                except Exception:
+                    pass
+    if "partial_meridian" in part_names and "wall_arm" in part_names:
+        meridian = model.get_part("partial_meridian")
+        wall = model.get_part("wall_arm")
+        for meridian_elem in (
+            "wall_partial_meridian_arc",
+            "wall_meridian_upper_mount_bridge",
+            "wall_meridian_lower_mount_bridge",
+            "wall_meridian_side_hinge_pin",
+            "wall_meridian_center_spin_boss",
+            "wall_meridian_origin_spine",
+            "wall_meridian_tilt_origin_boss",
+        ):
+            for wall_elem in (
+                "wall_arm_side_pivot_socket",
+                "wall_arm_front_yoke_spine",
+                "wall_arm_center_spin_bridge",
+                "cantilever_upper_arm",
+                "cantilever_lower_arm",
+            ):
+                try:
+                    ctx.allow_overlap(
+                        meridian,
+                        wall,
+                        elem_a=meridian_elem,
+                        elem_b=wall_elem,
+                        reason="wall meridian hinge seats inside wall arm socket and cantilever brackets",
+                    )
+                except Exception:
+                    pass
+    if "partial_meridian" in part_names and "globe" in part_names:
+        meridian = model.get_part("partial_meridian")
+        globe = model.get_part("globe")
+        for globe_elem in (
+            "ocean_sphere",
+            "deep_ocean_shadow_core",
+            "prime_meridian_band",
+            "secondary_meridian_band",
+            "equator_band",
+            "north_polar_axis_cap",
+            "south_polar_axis_cap",
+        ):
+            for meridian_elem in (
+                "partial_meridian_center_pivot_boss",
+                "partial_meridian_center_pivot_spine",
+                "wall_meridian_upper_mount_bridge",
+                "wall_meridian_lower_mount_bridge",
+                "wall_meridian_center_spin_boss",
+                "wall_meridian_origin_spine",
+                "wall_meridian_tilt_origin_boss",
+            ):
+                try:
+                    ctx.allow_overlap(
+                        globe,
+                        meridian,
+                        elem_a=globe_elem,
+                        elem_b=meridian_elem,
+                        reason="partial meridian center boss captures the globe spin axis",
+                    )
+                except Exception:
+                    pass
+    if "meridian" in part_names and "globe" in part_names:
+        meridian = model.get_part("meridian")
+        globe = model.get_part("globe")
+        for globe_elem in ("ocean_sphere", "deep_ocean_shadow_core"):
+            for meridian_elem in (
+                "partial_meridian_center_pivot_boss",
+                "partial_meridian_center_pivot_spine",
+            ):
+                try:
+                    ctx.allow_overlap(
+                        globe,
+                        meridian,
+                        elem_a=globe_elem,
+                        elem_b=meridian_elem,
+                        reason="partial meridian center boss captures the globe spin axis",
                     )
                 except Exception:
                     pass

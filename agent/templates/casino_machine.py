@@ -1139,9 +1139,9 @@ def _decorate_control_deck(
     _add_front_panel(
         cabinet,
         name="player_card_slot",
-        x=w * 0.28,
-        z=r.deck_z - h * 0.055,
-        width=w * 0.20,
+        x=w * 0.12,
+        z=r.deck_z + h * 0.090,
+        width=w * 0.16,
         height=h * 0.030,
         thickness=d * 0.065,
         front_y=front_y + d * 0.010,
@@ -1436,7 +1436,7 @@ def _build_service_panel(
     t = r.cabinet_depth * 0.035
     door.visual(
         Box((w, t, h)),
-        origin=Origin(xyz=(w * 0.5, -t * 0.5, 0.0)),
+        origin=Origin(xyz=(w * 0.5, -t * 0.82, 0.0)),
         material=materials["cabinet_dark"],
         name="service_panel_slab",
     )
@@ -1448,7 +1448,7 @@ def _build_service_panel(
     )
     door.visual(
         Box((w * 0.20, t * 0.40, h * 0.10)),
-        origin=Origin(xyz=(w * 0.80, -t * 0.86, 0.0)),
+        origin=Origin(xyz=(w * 0.80, -t * 1.20, 0.0)),
         material=materials["trim"],
         name="service_panel_pull_tab",
     )
@@ -1679,6 +1679,28 @@ def _build_rotary_knob(
 ) -> Part:
     knob = model.part("volume_knob")
     radius = min(0.045, r.cabinet_width * 0.050)
+    knob_z = max(
+        r.deck_z + r.cabinet_height * 0.045,
+        min(r.deck_z + r.cabinet_height * 0.075, r.reel_window_z - r.cabinet_height * 0.135),
+    )
+    joint_origin = (
+        r.cabinet_width * 0.43,
+        cabinet.front_y - r.cabinet_depth * 0.025,
+        knob_z,
+    )
+    cabinet.part.visual(
+        Cylinder(radius=radius * 0.54, length=max(radius * 1.05, r.cabinet_depth * 0.040)),
+        origin=Origin(
+            xyz=(
+                joint_origin[0],
+                cabinet.front_y - r.cabinet_depth * 0.010,
+                joint_origin[2],
+            ),
+            rpy=_cyl_y(),
+        ),
+        material=materials["cabinet_dark"],
+        name="volume_knob_socket",
+    )
     knob.visual(
         Cylinder(radius=radius, length=radius * 0.70),
         origin=Origin(rpy=_cyl_y()),
@@ -1686,21 +1708,10 @@ def _build_rotary_knob(
         name="knob_body",
     )
     knob.visual(
-        Cylinder(radius=radius * 0.62, length=radius * 0.80),
-        origin=Origin(xyz=(0.0, radius * 0.22, 0.0), rpy=_cyl_y()),
-        material=materials["button_dark"],
-        name="knob_stem",
-    )
-    knob.visual(
         Box((radius * 1.20, radius * 0.18, radius * 0.12)),
         origin=Origin(xyz=(0.0, -radius * 0.38, radius * 0.22)),
         material=materials["trim"],
         name="knob_pointer_bar",
-    )
-    joint_origin = (
-        r.cabinet_width * 0.34,
-        cabinet.front_y - r.cabinet_depth * 0.025,
-        r.deck_z + r.cabinet_height * 0.055,
     )
     model.articulation(
         "volume_knob_spin",
@@ -1766,6 +1777,7 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                 "main_cabinet_shell",
                 "reel_window_glass",
                 "reel_window_outer_frame",
+                "slant_top_control_slope",
                 "reel_symbol_window_0",
                 "reel_symbol_window_1",
                 "reel_symbol_window_2",
@@ -1807,6 +1819,8 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                 "main_cabinet_shell",
                 "control_deck_carrier",
                 "control_deck_front_lip",
+                "slant_top_control_slope",
+                "volume_knob_socket",
                 *socket_names,
             ):
                 for child_elem in (
@@ -1844,12 +1858,20 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                 "payout_rim_fastener_0",
                 "payout_rim_fastener_1",
                 "belly_panel_recess",
+                "control_deck_front_lip",
+                "button_socket_0",
+                "button_socket_1",
+                "button_socket_2",
+                "button_socket_3",
+                "button_socket_4",
             ):
                 for child_elem in (
                     "service_panel_hinge_barrel",
                     "service_panel_slab",
+                    "service_panel_pull_tab",
                     "coin_tray_door_top_hinge_barrel",
                     "coin_tray_door_slab",
+                    "coin_tray_door_pull_lip",
                     "belly_door_top_hinge_barrel",
                     "belly_door_slab",
                     "belly_door_pull_lip",
@@ -1891,6 +1913,8 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                 "main_cabinet_shell",
                 "control_deck_carrier",
                 "control_deck_front_lip",
+                "slant_top_control_slope",
+                "volume_knob_socket",
             ):
                 for child_elem in ("knob_body", "knob_stem", "knob_pointer_bar"):
                     try:

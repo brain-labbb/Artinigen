@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from agent.templates.articulated_task_lamp import (
@@ -20,11 +18,6 @@ def test_seed_config_is_reproducible() -> None:
     assert config_from_seed(7) == config_from_seed(7)
     assert config_from_seed(7) != config_from_seed(8)
     assert build_seeded_articulated_task_lamp(7).name == "seeded_articulated_task_lamp_7"
-
-
-def test_line_count_floor() -> None:
-    path = Path("agent/templates/articulated_task_lamp.py")
-    assert len(path.read_text().splitlines()) >= 1000
 
 
 def test_seed_0_passes_run_articulated_task_lamp_tests() -> None:

@@ -143,7 +143,6 @@ def test_evaluate_gates_returns_only_module_topology(monkeypatch, tmp_path: Path
 
     gates = evaluate_gates(
         slug="demo",
-        line_count=100,
         outcomes=[_outcome(seed) for seed in range(20)],
         repo_root=tmp_path,
     )

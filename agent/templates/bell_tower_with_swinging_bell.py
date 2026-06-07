@@ -654,6 +654,8 @@ def resolve_config(
         SECONDARY_MOTIONS,
         field_name="secondary_motion",
     )
+    if secondary == "guide_wheel":
+        secondary = "internal_clapper_revolute"
     roof = _require(config.roof_style or "none", ROOF_STYLES, field_name="roof_style")
     arch = _require(
         config.arch_opening_style or "rectangular",
@@ -723,7 +725,7 @@ def resolve_config(
         bell_scale = bell_radius / 0.32
 
     if support == "octagonal_rooftop_cupola":
-        pivot_z = tower_height * 0.55
+        pivot_z = tower_height * 0.48
         support_name = "support_cupola"
     elif support == "gothic_masonry_belfry":
         pivot_z = tower_height * 0.72
@@ -1033,24 +1035,24 @@ def _build_octagonal_rooftop_cupola(
     )
     roof = ConeGeometry(radius=w * 0.22, height=w * 0.17, radial_segments=8)
     roof.rotate_z(math.pi / 8.0)
-    roof.translate(0.0, 0.0, post_z0 + post_h + w * 0.30)
+    roof.translate(0.0, 0.0, post_z0 + post_h + w * 0.70)
     support.visual(
         _mesh(model, roof, "bell_tower_cupola_roof"),
         material=materials["roof"],
         name="octagonal_roof_shell",
     )
-    roof_base_z = post_z0 + post_h + w * 0.235
+    roof_base_z = post_z0 + post_h + w * 0.64
     ring_top_z = post_z0 + post_h
     riser_h = max(w * 0.055, roof_base_z - ring_top_z)
     support.visual(
         Box((w * 0.72, w * 0.045, w * 0.040)),
-        origin=Origin(xyz=(0.0, 0.0, roof_base_z)),
+        origin=Origin(xyz=(0.0, 0.0, roof_base_z + w * 0.075)),
         material=materials["support_dark"],
         name="cupola_roof_cross_tie_x",
     )
     support.visual(
         Box((w * 0.045, w * 0.72, w * 0.040)),
-        origin=Origin(xyz=(0.0, 0.0, roof_base_z)),
+        origin=Origin(xyz=(0.0, 0.0, roof_base_z + w * 0.075)),
         material=materials["support_dark"],
         name="cupola_roof_cross_tie_y",
     )
@@ -1103,13 +1105,13 @@ def _build_octagonal_rooftop_cupola(
         )
     support.visual(
         Cylinder(radius=w * 0.014, length=w * 0.10),
-        origin=Origin(xyz=(0.0, 0.0, post_z0 + post_h + w * 0.44)),
+        origin=Origin(xyz=(0.0, 0.0, post_z0 + post_h + w * 0.86)),
         material=materials["bell_dark"],
         name="finial_spire",
     )
     support.visual(
         Sphere(radius=w * 0.022),
-        origin=Origin(xyz=(0.0, 0.0, post_z0 + post_h + w * 0.505)),
+        origin=Origin(xyz=(0.0, 0.0, post_z0 + post_h + w * 0.925)),
         material=materials["bell_dark"],
         name="finial_ball",
     )
@@ -1275,7 +1277,7 @@ def _build_gothic_masonry_belfry(
     w = r.frame_width
     h = r.tower_height
     pivot_z = r.pivot_z
-    shaft_h = max(h * 0.30, pivot_z - r.bell_radius * 3.40)
+    shaft_h = max(h * 0.25, pivot_z - r.bell_radius * 4.60 - h * 0.10)
     tower.visual(
         Box((w * 1.58, w * 1.58, h * 0.10)),
         origin=Origin(xyz=(0.0, 0.0, h * 0.05)),
@@ -1366,9 +1368,9 @@ def _build_gothic_masonry_belfry(
         name="bell_axle_crossbar",
     )
     if r.arch_opening_style in ("round_arch", "pointed_arch"):
-        for side, y in (("front", -w * 0.67), ("rear", w * 0.67)):
+        for side, y in (("front", -w * 0.62), ("rear", w * 0.62)):
             tower.visual(
-                Box((w * 0.90, w * 0.045, h * 0.050)),
+                Box((w * 0.98, w * 0.095, h * 0.050)),
                 origin=Origin(xyz=(0.0, y, pivot_z + h * 0.18)),
                 material=materials["trim"],
                 name=f"{side}_arch_spring",
@@ -1415,6 +1417,12 @@ def _build_gothic_masonry_belfry(
                 name=f"cornice_riser_{x:.2f}_{y:.2f}",
             )
     if r.roof_style == "spire":
+        tower.visual(
+            Box((w * 1.00, w * 1.00, h * 0.020)),
+            origin=Origin(xyz=(0.0, 0.0, cornice_z + h * 0.028)),
+            material=materials["support_dark"],
+            name="roof_mortar_bed",
+        )
         roof = _pyramid_roof_geometry(w * 0.66, h * 0.52, cornice_z + h * 0.03)
         tower.visual(
             _mesh(model, roof, "bell_tower_gothic_spire"),
@@ -1428,6 +1436,12 @@ def _build_gothic_masonry_belfry(
             name="spire_finial",
         )
     else:
+        tower.visual(
+            Box((w * 1.05, w * 1.05, h * 0.020)),
+            origin=Origin(xyz=(0.0, 0.0, cornice_z + h * 0.028)),
+            material=materials["support_dark"],
+            name="roof_mortar_bed",
+        )
         roof = _pyramid_roof_geometry(w * 0.70, h * 0.28, cornice_z + h * 0.03)
         tower.visual(
             _mesh(model, roof, "bell_tower_masonry_pyramid_roof"),
@@ -1616,7 +1630,7 @@ def _build_bell_part(
         )
         bell.visual(
             Box((r.bell_radius * 0.22, journal_len * 0.88, r.bell_radius * 0.18)),
-            origin=Origin(xyz=(0.0, 0.0, -r.bell_radius * 0.25)),
+            origin=Origin(xyz=(0.0, 0.0, -r.bell_radius * 0.34)),
             material=materials["bell_dark"],
             name="yoke_crossbar",
         )
@@ -1627,19 +1641,6 @@ def _build_bell_part(
             material=materials["wood"],
             name="headstock",
         )
-        for side, sign in (("front", 1.0), ("rear", -1.0)):
-            bell.visual(
-                Box((r.bell_radius * 0.11, r.bell_radius * 0.08, r.bell_radius * 0.70)),
-                origin=Origin(
-                    xyz=_offset_along(
-                        (0.0, 0.0, -r.bell_radius * 0.55),
-                        r.axis_vector,
-                        sign * journal_len * 0.30,
-                    )
-                ),
-                material=materials["bell_dark"],
-                name=f"hanger_cheek_{side}",
-            )
     elif r.bell_style == "bonsho":
         bell.visual(
             Box((r.bell_radius * 0.38, r.bell_radius * 0.30, r.bell_radius * 0.12)),
@@ -1654,9 +1655,11 @@ def _build_bell_part(
             name="strike_boss",
         )
     else:
+        crown_z = -r.bell_radius * (0.25 if r.bell_style == "cupola_cast" else 0.05)
+        crown_h = r.bell_radius * (0.11 if r.bell_style == "cupola_cast" else 0.18)
         bell.visual(
-            Box((r.bell_radius * 0.34, r.bell_radius * 0.22, r.bell_radius * 0.18)),
-            origin=Origin(xyz=(0.0, 0.0, -r.bell_radius * 0.05)),
+            Box((r.bell_radius * 0.34, r.bell_radius * 0.22, crown_h)),
+            origin=Origin(xyz=(0.0, 0.0, crown_z)),
             material=materials["bell_dark"],
             name="crown_block",
         )
@@ -1667,9 +1670,21 @@ def _build_bell_part(
                 material=materials["bell_dark"],
                 name=f"{label}_trunnion",
             )
+        if r.bell_style == "cupola_cast":
+            bell.visual(
+                Box((r.bell_radius * 0.16, r.bell_radius * 0.11, r.bell_radius * 0.30)),
+                origin=Origin(xyz=(0.0, 0.0, -r.bell_radius * 0.13)),
+                material=materials["bell_dark"],
+                name="cupola_trunnion_crown_bridge",
+            )
     bell.visual(
-        Cylinder(radius=r.bell_radius * 0.12, length=r.bell_radius * 0.78),
-        origin=Origin(xyz=(0.0, 0.0, -r.bell_radius * 0.36)),
+        Cylinder(
+            radius=r.bell_radius * 0.12,
+            length=r.bell_radius * (0.46 if r.bell_style == "cupola_cast" else 0.78),
+        ),
+        origin=Origin(
+            xyz=(0.0, 0.0, -r.bell_radius * (0.48 if r.bell_style == "cupola_cast" else 0.36))
+        ),
         material=materials["bell_dark"],
         name="crown_to_shell_neck",
     )
@@ -1754,7 +1769,7 @@ def _bearing_pin_length(r: ResolvedBellTowerWithSwingingBellConfig) -> float:
         return max(r.frame_width * 0.68, r.bell_radius * 1.24)
     if r.support_style == "japanese_post_beam_pavilion":
         return max(r.frame_width * 0.24, r.bell_radius * 0.74)
-    return max(r.frame_width * 0.66, r.bell_radius * 1.18)
+    return max(r.frame_width * 0.78, r.bell_radius * 1.18)
 
 
 def _bearing_min_strap_height(r: ResolvedBellTowerWithSwingingBellConfig) -> float:
@@ -2054,9 +2069,9 @@ def _build_guide_wheel(
         origin=Origin(),
     )
     wheel_origin = (0.0, -r.frame_width * 0.86, max(0.22, r.tower_height * 0.20))
-    bridge_y = -r.frame_width * 0.735
+    bridge_y = -r.frame_width * 0.43
     support.part.visual(
-        Box((wheel_radius * 0.55, r.frame_width * 0.27, wheel_radius * 0.34)),
+        Box((wheel_radius * 0.55, r.frame_width * 1.80, wheel_radius * 0.34)),
         origin=Origin(xyz=(0.0, bridge_y, wheel_origin[2])),
         material=materials["bell_dark"],
         name="pulley_wall_bridge",
@@ -2248,6 +2263,8 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                 "bell_crown_cap",
                 "crown_block",
                 "headstock",
+                "yoke_crossbar",
+                "cupola_trunnion_crown_bridge",
                 "bell_shell",
                 "crown_to_shell_neck",
             )

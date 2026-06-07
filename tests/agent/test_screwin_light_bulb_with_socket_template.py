@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from agent.templates.screwin_light_bulb_with_socket import (
@@ -51,11 +49,6 @@ def test_source_adaptation_map_covers_core_semantics() -> None:
     assert SOURCE_IDS
     assert SOURCE_ADAPTATION_MAP
     assert len(SOURCE_IDS) >= 13
-
-
-def test_line_count_floor() -> None:
-    path = Path("agent/templates/screwin_light_bulb_with_socket.py")
-    assert len(path.read_text().splitlines()) >= 1000
 
 
 def test_representative_seeded_models_pass_basic_qc() -> None:

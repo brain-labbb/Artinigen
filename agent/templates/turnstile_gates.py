@@ -648,7 +648,7 @@ def _build_frame_core(frame: Part, r: ResolvedTurnstileGatesConfig, m: dict) -> 
     # thrust face embeds ~3 mm into it (depth < 5 mm overlap tol -> connected,
     # not flagged).
     frame.visual(
-        Cylinder(radius=r.bearing_radius * 1.05, length=0.012),
+        Cylinder(radius=r.bearing_radius * 0.55, length=0.012),
         origin=Origin(xyz=(0.0, 0.0, r.bearing_top_z - 0.008)),
         material=m["bearing_bright"],
         name="bearing_pad",
@@ -1194,7 +1194,7 @@ def _build_inspection_hatch(
     +x and lies just above the cabinet top.
     """
     hatch = model.part("inspection_hatch")
-    hatch_len = r.cab_w * 0.72
+    hatch_len = r.cab_w * (0.12 if r.lane_style == "split_head" else 0.24)
     hatch_wy = r.cab_d * 0.5
     hatch.visual(
         Cylinder(radius=0.012, length=hatch_wy),
@@ -1209,8 +1209,8 @@ def _build_inspection_hatch(
         name="hatch_leaf",
     )
     hatch.visual(
-        Box((0.05, 0.07, 0.024)),
-        origin=Origin(xyz=(hatch_len * 0.82, 0.0, 0.02)),
+        Box((0.035, 0.035, 0.018)),
+        origin=Origin(xyz=(hatch_len * 0.22, -hatch_wy * 0.38, 0.019)),
         material=m["hardware"],
         name="hatch_handle",
     )
