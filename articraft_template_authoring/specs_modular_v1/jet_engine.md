@@ -332,3 +332,13 @@ Controlled local parameterization：初版应包含 `engine_length_scale`、`nac
 |---|---|
 | reviewer status | approved |
 | reviewer notes | 用户经多轮迭代审核（修正 multiplicity 定义=含 jointless 复制；range 外推 fan_blade 12-28 / petal 6-18 / compressor_stage 3-8 / turbine_stage 2-5，reviewer-gated，sweep 再 clamp），并明确指示进入第二阶段。stator/strut 根数暂保持写死（不开成 multiplicity）。核心要求 = 强制转子 CONTINUOUS 主轴。 |
+
+## 实现记录（TEMPLATE_AFTER_REVIEW 完成）
+| 项 | 结论 |
+|---|---|
+| status | implemented，`sweep-pipeline verdict=pass`（0-49 全过，pass_rate=1.0；`module_topology_diversity=pass`，0-49 distinct=34，0-999 distinct=199 ≥100 成熟目标） |
+| 坐标约定 | 统一 world X 中轴；`outer_shell` 轴向居中（x∈[-EL/2,EL/2]），中轴高度由 `axis_z` 决定（bare=0 / stand=+R 腹部为 local 原点 / pylon=-R 顶冠为 local 原点），使 FIXED 挂载关节两侧都落在真实几何上 |
+| 叶片 primitive | 风扇/压气机/各级盘统一用 `section_loft`(4 点翼型)×`_radial_pattern` 纯 python 叶排（spec 认可写法），**未用 cadquery `FanRotorGeometry`**——后者每 seed 多达 13 个 boolean union 触发 60s compile 超时；section_loft 既保真又快（worst cutaway 单 seed≈13s） |
+| compatibility gate（实现版，需登记） | turbojet→无 chevron、door 强制 `none`；stand+belly→改 side（saddle 占腹部）；**cutaway→尾段强制 `static_exhaust_cone`**：开放笼/暴露核心机收尾于轴上 plug，chevron/petal 需要封闭尾罩故保留给 turbofan/turbojet。此 gate 收窄了 cutaway 的尾段轴（spec 原列其兼容全部尾段，含 S15=cutaway+chevron），为鲁棒性与机构连贯性做的实现决定 |
+| 视觉目检 | 已按根协议 preview 目检：进气口开放、风扇/压气机面正面可见（轴向 head-on 视角），cutaway 暴露双轴核心，variable petal 在尾部张开，stand/pylon/bare 姿态连贯；转子 CONTINUOUS 自转 + petal/door REVOLUTE 经 posed-AABB 断言验证方向正确。注意：闭合涵道 turbofan 在斜 3/4 视角呈短舱筒身（符合真实短舱外观），运动件（风扇）从进气口正视可见，满足"运动件必须可见"要求 |
+| QC 实现要点 | 全部 captured-shaft / hinge-pin / 腹部门 overlap 用 element-scoped `allow_overlap`（按真实 visual 名遍历），无 blanket allow；rotor 居中自转、petal 外张、door 开向用 `ctx.pose` + AABB 断言；无 disconnected island（无 `allow_disconnected_islands` 逃生口可用，全部 part visual 互相接触保证单连通） |

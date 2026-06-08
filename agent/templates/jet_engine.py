@@ -314,25 +314,25 @@ def _shell_outer_r(r: ResolvedJetEngineConfig) -> float:
 
 
 # Shell radial profiles, expressed as (axial_frac in [0,1], radius_frac of NR).
-# Authored after S2 0001 / S6 278c04 / S19 ec6fd5 nacelle & casing lathes.
+# Authored after S2 0001 / S6 278c04 / S19 ec6fd5 nacelle & casing lathes. The
+# front bore (inner radius near frac 0) is kept wide — close to the fan radius —
+# so the open intake shows the fan face instead of a narrow lip closing over it.
 _TURBOFAN_OUTER = [
-    (0.00, 0.70),
-    (0.05, 0.93),
-    (0.22, 1.00),
-    (0.60, 0.94),
-    (0.85, 0.82),
-    (1.00, 0.72),
+    (0.00, 0.86),
+    (0.08, 1.00),
+    (0.32, 1.00),
+    (0.72, 0.90),
+    (1.00, 0.76),
 ]
 _TURBOFAN_INNER = [
-    (0.00, 0.62),
-    (0.05, 0.84),
-    (0.22, 0.90),
-    (0.60, 0.85),
-    (0.85, 0.72),
-    (1.00, 0.62),
+    (0.00, 0.80),
+    (0.08, 0.90),
+    (0.32, 0.90),
+    (0.72, 0.78),
+    (1.00, 0.64),
 ]
-_CASING_OUTER = [(0.00, 0.86), (0.07, 1.00), (0.85, 1.00), (1.00, 0.84)]
-_CASING_INNER = [(0.00, 0.78), (0.07, 0.90), (0.85, 0.90), (1.00, 0.76)]
+_CASING_OUTER = [(0.00, 0.92), (0.08, 1.00), (0.85, 1.00), (1.00, 0.84)]
+_CASING_INNER = [(0.00, 0.82), (0.08, 0.90), (0.85, 0.90), (1.00, 0.76)]
 
 
 def _scaled_profile(
@@ -463,11 +463,45 @@ def _blade_disk(
             [
                 _blade_section(hub_r, -th * 0.4, chord, th),
                 _blade_section(hub_r + 0.5 * span, 0.0, chord * 0.85, th * 0.7),
-                _blade_section(outer_r, th * 0.5, chord * 0.55, th * 0.45),
+                _blade_section(outer_r, th * 0.5, chord * 0.45, th * 0.45),
             ]
         )
     )
     return _mesh(model, _to_x(_radial_pattern(blade, max(2, int(blade_count)))), name)
+
+
+def _petal_mesh(
+    model: ArticulatedObject,
+    *,
+    length: float,
+    w_root: float,
+    w_tip: float,
+    thickness: float,
+    name: str,
+) -> MeshGeometry:
+    """A convergent-nozzle petal: a shallow concave flap that tapers from root
+    to tip, lofted through 3 stations (S18 e2123c / S8 4f9be8 petal skins).
+    Built along local +x (aft) from the hinge at x=0."""
+
+    def sec(x: float, w: float, t: float) -> list[tuple[float, float, float]]:
+        # x = axial station, y = radial (concave), z = tangential width
+        return [
+            (x, -t * 0.45, -w * 0.5),
+            (x, t * 0.55, -w * 0.34),
+            (x, t * 0.55, w * 0.34),
+            (x, -t * 0.45, w * 0.5),
+        ]
+
+    geom = repair_loft(
+        section_loft(
+            [
+                sec(0.0, w_root, thickness),
+                sec(length * 0.55, 0.5 * (w_root + w_tip), thickness * 0.82),
+                sec(length, w_tip, thickness * 0.6),
+            ]
+        )
+    )
+    return _mesh(model, geom, name)
 
 
 def _radial_struts(
@@ -559,7 +593,7 @@ def _build_front_rotor(
             name=f"{part_name}_disk",
         ),
         origin=Origin(xyz=(EL * 0.01, 0.0, 0.0)),
-        material="blade",
+        material="dark",  # dark fan reads against the bright open intake
         name="fan_blades",
     )
     # Rearward shaft so the rotor reaches its captured bearing on the shell.
@@ -632,8 +666,8 @@ def _build_smooth_turbofan(model: ArticulatedObject, r: ResolvedJetEngineConfig)
         name="nacelle_shell",
     )
 
-    fan_x = front + 0.22 * EL
-    hub_r = NR * 0.26
+    fan_x = front + 0.12 * EL  # fan just inside the open intake lip
+    hub_r = NR * 0.24
     _add_central_spine(
         shell,
         model,
@@ -647,7 +681,7 @@ def _build_smooth_turbofan(model: ArticulatedObject, r: ResolvedJetEngineConfig)
     _radial_struts(
         shell,
         r,
-        x_pos=fan_x + 0.30 * EL,
+        x_pos=fan_x + 0.34 * EL,
         inner_r=NR * 0.30,
         outer_r=_shell_radius_at(r, 0.55, inner=True),
         count=6,
@@ -659,7 +693,7 @@ def _build_smooth_turbofan(model: ArticulatedObject, r: ResolvedJetEngineConfig)
         part_name="fan_rotor",
         joint_name="fan_spin",
         fan_x=fan_x,
-        fan_r=NR * 0.80,
+        fan_r=NR * 0.76,
         hub_r=hub_r,
         hub_style="spinner",
         effort=120.0,
@@ -680,8 +714,8 @@ def _build_turbojet_module(model: ArticulatedObject, r: ResolvedJetEngineConfig)
         name="nacelle_shell",
     )
 
-    comp_x = front + 0.24 * EL
-    hub_r = NRc * 0.34
+    comp_x = front + 0.14 * EL  # compressor face just inside the casing intake
+    hub_r = NRc * 0.30
     _add_central_spine(
         shell,
         model,
@@ -695,8 +729,8 @@ def _build_turbojet_module(model: ArticulatedObject, r: ResolvedJetEngineConfig)
     _radial_struts(
         shell,
         r,
-        x_pos=comp_x + 0.16 * EL,
-        inner_r=NRc * 0.34,
+        x_pos=comp_x + 0.20 * EL,
+        inner_r=NRc * 0.30,
         outer_r=_shell_radius_at(r, 0.45, inner=True),
         count=4,
         name="front_strut",
@@ -708,12 +742,12 @@ def _build_turbojet_module(model: ArticulatedObject, r: ResolvedJetEngineConfig)
         part_name="compressor_rotor",
         joint_name="compressor_spin",
         fan_x=comp_x,
-        fan_r=NRc * 0.82,
+        fan_r=NRc * 0.78,
         hub_r=hub_r,
         hub_style="flat",
         effort=25.0,
         velocity=70.0,
-        blade_count=max(10, r.fan_blade_count - 2),
+        blade_count=max(12, r.fan_blade_count + 4),
     )
 
 
@@ -879,27 +913,29 @@ def _build_mount_platform(model: ArticulatedObject, r: ResolvedJetEngineConfig) 
         return
 
     # ground_display_stand: a separate grounded part cradles the belly (S19/S3).
-    # axis_z = +sor, so the shell belly is at the part's local z=0 and the
-    # centreline rides ``stand_height`` above the floor.
+    # axis_z = +sor, so the shell belly plane is local z=0 and the centreline
+    # rides ``stand_height`` above the floor. A belly keel runs along the
+    # underside through x=0 (touching the cowl belly — for the short cutaway it
+    # reaches forward onto the cowl) so the FIXED joint anchor at the shell's
+    # local origin lands on real geometry, and the saddle grips that keel at x=0.
     belly_z = r.stand_height
-    belly_pad_x = -EL * 0.05
+    keel_z = r.axis_z - sor  # local belly plane
     shell.visual(
-        Box((EL * 0.40, NR * 0.40, NR * 0.07)),
-        origin=Origin(xyz=(belly_pad_x, 0.0, NR * 0.02)),
+        Box((EL * 0.58, NR * 0.5, NR * 0.06)),
+        origin=Origin(xyz=(-0.15 * EL, 0.0, keel_z)),
         material="dark",
         name="belly_mount_pad",
     )
     stand = model.part("display_stand")
     stand.visual(
-        Box((EL * 0.62, sor * 2.1, 0.05)),
+        Box((EL * 1.02, sor * 2.1, 0.05)),
         origin=Origin(xyz=(0.0, 0.0, 0.025)),
         material="dark",
         name="base_plate",
     )
-    saddle_top = belly_z
     saddle_h = NR * 0.16
-    for idx, sx in enumerate((-0.26 * EL, 0.26 * EL)):
-        col_top = saddle_top - saddle_h * 0.5
+    for idx, sx in enumerate((-0.18 * EL, 0.06 * EL)):
+        col_top = belly_z - saddle_h * 0.5
         stand.visual(
             Box((NR * 0.22, sor * 0.55, col_top - 0.04)),
             origin=Origin(xyz=(sx, 0.0, 0.5 * (col_top + 0.04))),
@@ -908,7 +944,7 @@ def _build_mount_platform(model: ArticulatedObject, r: ResolvedJetEngineConfig) 
         )
     stand.visual(
         Box((EL * 0.46, sor * 1.05, saddle_h)),
-        origin=Origin(xyz=(belly_pad_x, 0.0, saddle_top - saddle_h * 0.5)),
+        origin=Origin(xyz=(0.0, 0.0, belly_z - saddle_h * 0.5)),
         material="metal",
         name="stand_saddle",
     )
@@ -1034,11 +1070,18 @@ def _build_aft_nozzle(model: ArticulatedObject, r: ResolvedJetEngineConfig) -> N
             name=f"petal_mount_{i:02d}",
         )
         petal = model.part(f"nozzle_petal_{i:02d}")
-        # Skin near edge starts at the hinge (local x=0) so it overlaps the
-        # hinge barrel — one connected petal island.
+        # Lofted tapered concave petal, starting at the hinge (local x=0) so it
+        # overlaps the hinge barrel — one connected petal island.
         petal.visual(
-            Box((petal_len, NR * 0.04, petal_w)),
-            origin=Origin(xyz=(petal_len * 0.5, 0.0, 0.0)),
+            _petal_mesh(
+                model,
+                length=petal_len,
+                w_root=petal_w,
+                w_tip=petal_w * 0.6,
+                thickness=NR * 0.05,
+                name=f"nozzle_petal_{i:02d}_skin",
+            ),
+            origin=Origin(xyz=(0.0, 0.0, 0.0)),
             material="metal",
             name="petal_skin",
         )
