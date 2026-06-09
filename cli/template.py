@@ -47,6 +47,9 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     "branching_tree_with_three_independent_rotary_branches": (
         "branching_tree_with_three_independent_rotary_branches"
     ),
+    "branching_tree_with_two_independent_rotary_branches": (
+        "branching_tree_with_two_independent_rotary_branches"
+    ),
     "barrier_gate_boom": "barrier_gate",
     "barrier_gate_leaf_gate": "barrier_gate",
     "bell_tower_with_swinging_bell": "bell_tower_with_swinging_bell",
@@ -107,6 +110,9 @@ TEMPLATE_REGISTRY: dict[str, str] = {
     "refrigerator_with_hinged_doors": "refrigerator",
     "revolving_door": "revolving_door",
     "robotic_arms": "robotic_arms",
+    "robotic_leg": "robotic_leg",
+    "wheelbarrow": "wheelbarrow",
+    "satellite_with_articulated_solar_panels": "satellite_with_articulated_solar_panels",
     "simple_aframe_step_ladder": "simple_aframe_step_ladder",
     "stand_mixer": "stand_mixer",
     "searchlight_tower": "searchlight_tower",

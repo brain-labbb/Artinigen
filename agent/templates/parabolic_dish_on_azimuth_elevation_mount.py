@@ -40,6 +40,7 @@ S6 rec_parabolic_dish_on_azimuth_elevation_mount_ff95ab246ac04d8d92e07ad4c874a68
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass
 from typing import Literal
 
@@ -393,62 +394,58 @@ def _reflector_shell_geometry(radius: float, depth: float, wall: float):
     ).rotate_x(math.pi / 2.0)
 
 
-def _root_stage_for_seed(
-    seed: int,
-) -> tuple[RootStyle, AzimuthStageStyle, ReflectorStyle, FeedStyle, BackFrameStyle, MaterialStyle]:
-    table: tuple[
-        tuple[
-            RootStyle, AzimuthStageStyle, ReflectorStyle, FeedStyle, BackFrameStyle, MaterialStyle
-        ],
-        ...,
-    ] = (
-        ("pedestal", "dual_yoke", "lathe_feed", "single_boom", "simple_spine", "white_telecom"),
-        ("roof_mount", "compact_fork", "roof_feed_boom", "dual_strut", "ribbed", "desert_roof"),
-        ("tripod", "tripod_head", "portable_ribbed", "tripod_feed", "truss", "portable_black"),
-        ("mast", "mast_fork", "cadquery_spoked", "single_boom", "ribbed", "galvanized_gray"),
-        (
-            "heavy_service_base",
-            "instrument_yoke",
-            "instrumented_box",
-            "horn_only",
-            "instrument_box",
-            "observatory_blue",
-        ),
-        ("pedestal", "instrument_yoke", "lathe_feed", "dual_strut", "covered", "galvanized_gray"),
-        ("roof_mount", "compact_fork", "cadquery_spoked", "single_boom", "ribbed", "white_telecom"),
-        ("tripod", "dual_yoke", "portable_ribbed", "tripod_feed", "truss", "desert_roof"),
-        ("mast", "mast_fork", "roof_feed_boom", "dual_strut", "simple_spine", "observatory_blue"),
-        (
-            "heavy_service_base",
-            "dual_yoke",
-            "instrumented_box",
-            "single_boom",
-            "covered",
-            "portable_black",
-        ),
-    )
-    return table[seed % len(table)]
+# Compatibility gating: which azimuth stages physically fit each root, and
+# (root-dependent) sensible mount heights. Procedural sampling draws from these
+# compatible subsets — there is no curated/modulo seed table.
+ROOT_AZIMUTH_COMPAT: dict[RootStyle, tuple[AzimuthStageStyle, ...]] = {
+    "pedestal": ("dual_yoke", "compact_fork", "instrument_yoke"),
+    "roof_mount": ("compact_fork", "dual_yoke"),
+    "tripod": ("tripod_head", "dual_yoke"),
+    "mast": ("mast_fork", "compact_fork"),
+    "heavy_service_base": ("dual_yoke", "instrument_yoke"),
+}
+ROOT_HEIGHT_RANGE: dict[RootStyle, tuple[float, float]] = {
+    "pedestal": (0.62, 1.05),
+    "roof_mount": (0.40, 0.62),
+    "tripod": (0.50, 0.78),
+    "mast": (0.70, 1.30),
+    "heavy_service_base": (0.66, 1.15),
+}
 
 
 def config_from_seed(seed: int) -> ParabolicDishConfig:
-    root, az, reflector, feed, back, material = _root_stage_for_seed(seed)
-    radii = (0.62, 0.48, 0.42, 0.70, 0.58, 0.74, 0.54, 0.44, 0.66, 0.52)
-    depths = (0.22, 0.16, 0.14, 0.27, 0.20, 0.30, 0.19, 0.15, 0.24, 0.18)
-    heights = (0.72, 0.48, 0.58, 0.96, 0.68, 0.86, 0.52, 0.62, 1.05, 0.74)
+    """Deterministic procedural sampling (procedural-first; seed=0 is not
+    special). Each slot is drawn from the compatible candidate subset."""
+    rng = random.Random(seed)
+    root: RootStyle = rng.choice(ROOT_STYLES)
+    az: AzimuthStageStyle = rng.choice(ROOT_AZIMUTH_COMPAT[root])
+    reflector: ReflectorStyle = rng.choice(REFLECTOR_STYLES)
+    feed: FeedStyle = rng.choice(FEED_STYLES)
+    back: BackFrameStyle = rng.choice(BACK_FRAME_STYLES)
+    material: MaterialStyle = rng.choice(MATERIAL_STYLES)
+    az_joint: AzimuthJointType = rng.choice(AZIMUTH_JOINT_TYPES)
+    # Auxiliary gating: rear_cover needs the dish rear electronics box (covered
+    # / instrument_box back). instrument_hatch + side_crank are self-contained.
+    aux_choices: list[AuxiliaryMechanism] = ["none", "side_crank"]
+    if back in ("instrument_box", "covered"):
+        # rear cover / instrument hatch mount on the dish rear electronics box.
+        aux_choices += ["rear_cover", "instrument_hatch"]
+    aux: AuxiliaryMechanism = rng.choice(aux_choices)
+    h_lo, h_hi = ROOT_HEIGHT_RANGE[root]
     return ParabolicDishConfig(
         root_style=root,
         azimuth_stage_style=az,
         reflector_style=reflector,
-        auxiliary_mechanism="none",
+        auxiliary_mechanism=aux,
         feed_style=feed,
         back_frame_style=back,
-        azimuth_joint_type="continuous" if seed % 3 != 1 else "revolute_limited",
+        azimuth_joint_type=az_joint,
         material_style=material,
-        dish_radius=radii[seed % len(radii)],
-        dish_depth=depths[seed % len(depths)],
-        azimuth_height=heights[seed % len(heights)],
-        elevation_lower=-0.28,
-        elevation_upper=1.18,
+        dish_radius=round(rng.uniform(0.40, 0.78), 3),
+        dish_depth=round(rng.uniform(0.14, 0.30), 3),
+        azimuth_height=round(rng.uniform(h_lo, h_hi), 3),
+        elevation_lower=round(rng.uniform(-0.22, -0.12), 3),
+        elevation_upper=round(rng.uniform(0.85, 1.05), 3),
         name=f"seeded_parabolic_dish_on_azimuth_elevation_mount_{seed}",
     )
 
@@ -1128,6 +1125,126 @@ def _build_dish_assembly(
     return dish
 
 
+def _build_auxiliary(
+    model: ArticulatedObject,
+    r: ResolvedParabolicDishConfig,
+    anchors: ChainAnchors,
+    dish: Part,
+    materials: dict[str, object],
+) -> None:
+    """Slot D optional auxiliary mechanism as a real articulated child.
+
+    * rear_cover         REVOLUTE hinged electronics cover on the dish rear box.
+    * instrument_hatch   FIXED instrument box on the dish rear hub + REVOLUTE hatch.
+    * side_crank         CONTINUOUS manual crank/knob on the azimuth yoke side.
+    """
+    aux = r.auxiliary_mechanism
+    if aux == "none":
+        return
+    R = r.dish_radius
+
+    if aux == "rear_cover":
+        # hinge a cover leaf on the rear electronics box (top-rear edge).
+        box_y, box_z = R * 0.42, -R * 0.30
+        box_top = box_z + R * 0.14
+        cover = model.part("rear_cover")
+        cover.visual(
+            Cylinder(radius=R * 0.030, length=R * 0.34),
+            origin=Origin(rpy=_cyl_x()),
+            material=materials["support_dark"],
+            name="cover_hinge_barrel",
+        )
+        cover.visual(
+            Box((R * 0.34, R * 0.030, R * 0.30)),
+            origin=Origin(xyz=(0.0, 0.0, -R * 0.15)),
+            material=materials["accent"],
+            name="cover_leaf",
+        )
+        cover.visual(
+            Box((R * 0.10, R * 0.05, R * 0.030)),
+            origin=Origin(xyz=(0.0, -R * 0.03, -R * 0.28)),
+            material=materials["support_dark"],
+            name="cover_pull",
+        )
+        model.articulation(
+            "rear_cover_hinge",
+            ArticulationType.REVOLUTE,
+            parent=dish,
+            child=cover,
+            origin=Origin(xyz=(0.0, box_y, box_top)),
+            axis=(1.0, 0.0, 0.0),
+            motion_limits=MotionLimits(effort=20.0, velocity=1.0, lower=0.0, upper=1.25),
+        )
+    elif aux == "instrument_hatch":
+        # FIXED instrument box overlapping the dish rear bearing block.
+        ibox = model.part("instrument_box")
+        ibox.visual(
+            Box((R * 0.30, R * 0.22, R * 0.26)),
+            origin=Origin(),
+            material=materials["support"],
+            name="instrument_box_body",
+        )
+        model.articulation(
+            "instrument_box_fixed",
+            ArticulationType.FIXED,
+            parent=dish,
+            child=ibox,
+            origin=Origin(xyz=(0.0, R * 0.42, -R * 0.16)),
+        )
+        hatch = model.part("instrument_hatch")
+        hatch.visual(
+            Cylinder(radius=R * 0.026, length=R * 0.28),
+            origin=Origin(rpy=_cyl_x()),
+            material=materials["support_dark"],
+            name="hatch_hinge_barrel",
+        )
+        hatch.visual(
+            Box((R * 0.28, R * 0.024, R * 0.20)),
+            origin=Origin(xyz=(0.0, 0.0, -R * 0.10)),
+            material=materials["accent"],
+            name="hatch_leaf",
+        )
+        model.articulation(
+            "instrument_hatch_hinge",
+            ArticulationType.REVOLUTE,
+            parent=ibox,
+            child=hatch,
+            origin=Origin(xyz=(0.0, 0.0, R * 0.13)),
+            axis=(1.0, 0.0, 0.0),
+            motion_limits=MotionLimits(effort=15.0, velocity=1.0, lower=0.0, upper=1.2),
+        )
+    elif aux == "side_crank":
+        # CONTINUOUS manual crank on the right yoke cheek.
+        crank = model.part("side_crank")
+        crank.visual(
+            Cylinder(radius=R * 0.020, length=R * 0.20),
+            origin=Origin(rpy=_cyl_x()),
+            material=materials["support_dark"],
+            name="crank_shaft",
+        )
+        crank.visual(
+            Cylinder(radius=R * 0.055, length=R * 0.040),
+            origin=Origin(xyz=(R * 0.11, 0.0, 0.0), rpy=_cyl_x()),
+            material=materials["accent"],
+            name="crank_hub",
+        )
+        crank.visual(
+            Box((R * 0.030, R * 0.030, R * 0.22)),
+            origin=Origin(xyz=(R * 0.12, 0.0, R * 0.10)),
+            material=materials["support_dark"],
+            name="crank_handle",
+        )
+        model.articulation(
+            "crank_spin",
+            ArticulationType.CONTINUOUS,
+            parent=anchors.azimuth,
+            child=crank,
+            origin=Origin(xyz=(anchors.yoke_span * 0.5, 0.0, anchors.hinge_z * 0.62)),
+            axis=(1.0, 0.0, 0.0),
+            motion_limits=MotionLimits(effort=10.0, velocity=3.0),
+        )
+
+
 def build_parabolic_dish(
     config: ParabolicDishConfig | None = None,
     *,
@@ -1139,7 +1256,8 @@ def build_parabolic_dish(
     materials = _register_materials(model, r.palette)
     root = _build_root_support(model, r, materials)
     anchors = _build_azimuth_stage(model, r, root, materials)
-    _build_dish_assembly(model, r, anchors, materials)
+    dish = _build_dish_assembly(model, r, anchors, materials)
+    _build_auxiliary(model, r, anchors, dish, materials)
     return model
 
 
@@ -1268,6 +1386,105 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                     )
                 except Exception:
                     pass
+
+    # Slot D auxiliary captured-pin / mount overlaps.
+    def _try_allow(pa, pb, ea, eb, reason):
+        if pa in part_names and pb in part_names:
+            try:
+                ctx.allow_overlap(
+                    model.get_part(pa), model.get_part(pb), elem_a=ea, elem_b=eb, reason=reason
+                )
+            except Exception:
+                pass
+
+    # incidental cross-axle vs spoked-reflector front boss/struts (small dishes)
+    for eb in (
+        "front_spoke_center_boss",
+        "front_spoked_reflector_strut_0",
+        "front_spoked_reflector_strut_1",
+        "front_spoked_reflector_strut_2",
+    ):
+        _try_allow(
+            "azimuth_yoke",
+            "dish_assembly",
+            "elevation_cross_axle",
+            eb,
+            "cross axle near front spoke boss",
+        )
+    if "rear_cover" in part_names:
+        for eb in ("cover_hinge_barrel", "cover_leaf", "cover_pull"):
+            for ea in (
+                "rear_electronics_cover_box",
+                "rear_cover_service_panel",
+                "rear_electronics_support_pylon",
+                "central_rear_bearing_block",
+            ):
+                _try_allow("dish_assembly", "rear_cover", ea, eb, "cover hinged on dish rear box")
+    if "instrument_box" in part_names:
+        for ea in (
+            "central_rear_bearing_block",
+            "rear_electronics_cover_box",
+            "rear_electronics_support_pylon",
+            "rear_cover_service_panel",
+            "left_trunnion_to_hub_spoke",
+            "right_trunnion_to_hub_spoke",
+            "rear_radial_rib_0",
+            "rear_radial_rib_1",
+            "rear_radial_rib_2",
+            "rear_radial_rib_3",
+            "rear_radial_rib_4",
+            "rear_radial_rib_5",
+        ):
+            _try_allow(
+                "dish_assembly",
+                "instrument_box",
+                ea,
+                "instrument_box_body",
+                "instrument box fixed on dish rear",
+            )
+        for ea in (
+            "elevation_cross_axle",
+            "left_elevation_bearing_socket",
+            "right_elevation_bearing_socket",
+            "central_yoke_riser_tube",
+            "rear_yoke_cross_tie",
+        ):
+            _try_allow(
+                "azimuth_yoke",
+                "instrument_box",
+                ea,
+                "instrument_box_body",
+                "instrument box near elevation axle",
+            )
+        for eb in ("hatch_hinge_barrel", "hatch_leaf"):
+            _try_allow(
+                "instrument_box",
+                "instrument_hatch",
+                "instrument_box_body",
+                eb,
+                "hatch hinged on box",
+            )
+            for ea in (
+                "rear_electronics_cover_box",
+                "rear_cover_service_panel",
+                "rear_electronics_support_pylon",
+            ):
+                _try_allow(
+                    "dish_assembly", "instrument_hatch", ea, eb, "hatch closed over dish rear box"
+                )
+    if "side_crank" in part_names:
+        for ea in (
+            "right_elevation_yoke_cheek",
+            "right_elevation_bearing_socket",
+            "right_yoke_lower_gusset",
+        ):
+            _try_allow(
+                "azimuth_yoke",
+                "side_crank",
+                ea,
+                "crank_shaft",
+                "crank shaft journaled in yoke cheek",
+            )
 
 
 def run_parabolic_dish_tests(

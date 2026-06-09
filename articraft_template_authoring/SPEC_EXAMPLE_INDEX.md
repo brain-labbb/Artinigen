@@ -35,6 +35,9 @@
 - `gear_assemblies.md`
 - `car_axles.md`
 - `drawer_cabinet_with_sliding_drawers.md`
+- `branching_tree_with_two_independent_rotary_branches.md`
+- `dishwasher_with_dropdown_door_and_sliding_racks.md`
+- `simple_drying_rack.md`
 
 ## Transitional Modular References
 
