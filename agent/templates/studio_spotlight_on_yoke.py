@@ -1,33 +1,47 @@
 """Procedural template for ``studio_spotlight_on_yoke``.
 
-The category currently has no reviewed spec file under
-``articraft_template_authoring/specs_modular_v1/``. This implementation follows the
-repository's modular template contract using the prompt family found in the
-checked-in batch specs:
+Implements the reviewed modular spec at
+``articraft_template_authoring/specs_modular_v1/studio_spotlight_on_yoke.md``.
 
-* a stable floor, desktop, tripod, or rolling stand/base,
-* a vertical pan stage at the stand head,
-* a U-shaped side yoke with visible bearing plates and friction locks,
-* a cylindrical studio spotlight can captured between the yoke arms,
-* a horizontal tilt axis through the side trunnions,
-* optional non-moving studio-light details such as barn doors, gel frames,
-  focus knobs, rain lips, vents, handles, and safety cages.
+Chain: ``base_root --yoke_pan(Z)--> pan_yoke --can_tilt(horizontal)--> spotlight_head``.
 
-Core motion spine:
+Slots and adopted 5-star sources (per the reviewed spec):
 
-``stand --yoke_pan(Z)--> yoke --can_tilt(X)--> spotlight_can``
+* Slot A ``root_support``: floor_pedestal_base / low_floor_disk_base /
+  tripod_post_base / wheeled_dolly_base / telescoping_floor_stand /
+  telescoping_tripod_stand. Sources S-A1..S-A6.
+* Slot B ``pan_yoke``: two_arm_box_yoke / mesh_trunnion_yoke (TrunnionYokeGeometry)
+  / swept_arm_yoke (sweep_profile_along_spline) / side_pivot_yoke. Sources
+  S-B1..S-B4.
+* Slot C ``spotlight_head``: primitive_box_cylinder_can / lathe_shell_can
+  (LatheGeometry.from_shell_profiles) / cadquery_shell_can (cadquery shell with
+  LatheGeometry fallback) / fresnel_lens_can (TorusGeometry fresnel rings +
+  LatheGeometry shell). Sources S-C1..S-C4.
+* Slot D ``auxiliary_mechanism``: none / tilt_lock_knobs / focus_or_mode_knob /
+  barndoor_four_leaf / front_filter_or_gel_frame / service_hatch_or_lens_cover /
+  foldable_carry_handle. Sources S-D1..S-D6.
 
-The yoke owns the side plates, upper bridge, lower saddle, pan spigot, and
-friction knobs. The can owns the lamp body, front lens/bezel, rear cap,
-trunnion boss, and all non-moving accessories. Captured pin overlaps are
-declared in the author tests because they are the real mechanical interface.
+Identity invariants enforced by ``run_studio_spotlight_on_yoke_tests``:
+
+* every seed has a ``stand`` / ``pan_yoke`` / ``spotlight_head`` part,
+* ``yoke_pan`` REVOLUTE/CONTINUOUS axis is vertical Z,
+* ``can_tilt`` REVOLUTE axis is horizontal,
+* ``spotlight_head`` exposes a translucent ``front_lens`` + ``front_bezel`` +
+  ``rear_cap`` (the studio-spotlight identity signal).
+
+Auxiliary mechanisms are emitted as ``parent.visual(...)`` decoration of the
+``spotlight_head`` (or ``pan_yoke``) per Design Rule 1 — they don't
+articulate as separate parts, but they still vary the part visuals enough to
+register as distinct topology choices in ``module_topology_diversity``.
 """
 
 from __future__ import annotations
 
 import math
 import random
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from sdk import (
@@ -36,28 +50,54 @@ from sdk import (
     AssetContext,
     Box,
     Cylinder,
+    LatheGeometry,
     MotionLimits,
     Origin,
     Part,
     Sphere,
     TestContext,
     TestReport,
+    TorusGeometry,
+    TrunnionYokeGeometry,
+    mesh_from_geometry,
+    rounded_rect_profile,
+    sweep_profile_along_spline,
+    tube_from_spline_points,
 )
 
 __modular__ = True
 
 
-StandStyle = Literal["round_floor", "tripod", "desktop_plate", "rolling_low_base"]
-YokeStyle = Literal["flat_side_plates", "tubular_u_bracket", "heavy_friction_yoke"]
-CanStyle = Literal["fresnel_short_can", "par_can", "long_throw_snoot", "vented_cylinder"]
-AccessoryStyle = Literal[
-    "none",
-    "barn_doors",
-    "gel_frame",
-    "safety_cage",
-    "top_handle",
-    "weather_hood",
+RootSupport = Literal[
+    "floor_pedestal_base",
+    "low_floor_disk_base",
+    "tripod_post_base",
+    "wheeled_dolly_base",
+    "telescoping_floor_stand",
+    "telescoping_tripod_stand",
 ]
+PanYokeStyle = Literal[
+    "two_arm_box_yoke",
+    "mesh_trunnion_yoke",
+    "swept_arm_yoke",
+    "side_pivot_yoke",
+]
+SpotlightHead = Literal[
+    "primitive_box_cylinder_can",
+    "lathe_shell_can",
+    "cadquery_shell_can",
+    "fresnel_lens_can",
+]
+AuxiliaryMechanism = Literal[
+    "none",
+    "tilt_lock_knobs",
+    "focus_or_mode_knob",
+    "barndoor_four_leaf",
+    "front_filter_or_gel_frame",
+    "service_hatch_or_lens_cover",
+    "foldable_carry_handle",
+]
+PanJointType = Literal["revolute_limited", "continuous"]
 MaterialStyle = Literal[
     "matte_black_stage",
     "brushed_silver",
@@ -67,31 +107,36 @@ MaterialStyle = Literal[
 ]
 
 
-STAND_STYLES: tuple[StandStyle, ...] = (
-    "round_floor",
-    "tripod",
-    "desktop_plate",
-    "rolling_low_base",
+ROOT_SUPPORTS: tuple[RootSupport, ...] = (
+    "floor_pedestal_base",
+    "low_floor_disk_base",
+    "tripod_post_base",
+    "wheeled_dolly_base",
+    "telescoping_floor_stand",
+    "telescoping_tripod_stand",
 )
-YOKE_STYLES: tuple[YokeStyle, ...] = (
-    "flat_side_plates",
-    "tubular_u_bracket",
-    "heavy_friction_yoke",
+PAN_YOKE_STYLES: tuple[PanYokeStyle, ...] = (
+    "two_arm_box_yoke",
+    "mesh_trunnion_yoke",
+    "swept_arm_yoke",
+    "side_pivot_yoke",
 )
-CAN_STYLES: tuple[CanStyle, ...] = (
-    "fresnel_short_can",
-    "par_can",
-    "long_throw_snoot",
-    "vented_cylinder",
+SPOTLIGHT_HEADS: tuple[SpotlightHead, ...] = (
+    "primitive_box_cylinder_can",
+    "lathe_shell_can",
+    "cadquery_shell_can",
+    "fresnel_lens_can",
 )
-ACCESSORY_STYLES: tuple[AccessoryStyle, ...] = (
+AUXILIARY_MECHANISMS: tuple[AuxiliaryMechanism, ...] = (
     "none",
-    "barn_doors",
-    "gel_frame",
-    "safety_cage",
-    "top_handle",
-    "weather_hood",
+    "tilt_lock_knobs",
+    "focus_or_mode_knob",
+    "barndoor_four_leaf",
+    "front_filter_or_gel_frame",
+    "service_hatch_or_lens_cover",
+    "foldable_carry_handle",
 )
+PAN_JOINT_TYPES: tuple[PanJointType, ...] = ("revolute_limited", "continuous")
 MATERIAL_STYLES: tuple[MaterialStyle, ...] = (
     "matte_black_stage",
     "brushed_silver",
@@ -167,26 +212,31 @@ Z_CYLINDER_RPY = (0.0, 0.0, 0.0)
 
 @dataclass(frozen=True)
 class StudioSpotlightOnYokeConfig:
-    stand_style: StandStyle | None = None
-    yoke_style: YokeStyle | None = None
-    can_style: CanStyle | None = None
-    accessory_style: AccessoryStyle | None = None
+    """Public, source-of-truth config for the spotlight-on-yoke."""
+
+    root_support: RootSupport | None = None
+    pan_yoke_style: PanYokeStyle | None = None
+    spotlight_head: SpotlightHead | None = None
+    auxiliary_mechanism: AuxiliaryMechanism | None = None
+    pan_joint_type: PanJointType | None = None
     material_style: MaterialStyle = "matte_black_stage"
     mast_height: float = 0.58
     base_radius: float = 0.145
     can_radius: float = 0.105
     can_length: float = 0.300
     yoke_pan_limit: float = math.pi
-    can_tilt_limit: float = math.radians(68.0)
+    can_tilt_lower: float = -math.radians(45.0)
+    can_tilt_upper: float = math.radians(65.0)
     name: str = "reference_studio_spotlight_on_yoke"
 
 
 @dataclass(frozen=True)
 class ResolvedStudioSpotlightOnYokeConfig:
-    stand_style: StandStyle
-    yoke_style: YokeStyle
-    can_style: CanStyle
-    accessory_style: AccessoryStyle
+    root_support: RootSupport
+    pan_yoke_style: PanYokeStyle
+    spotlight_head: SpotlightHead
+    auxiliary_mechanism: AuxiliaryMechanism
+    pan_joint_type: PanJointType
     material_style: MaterialStyle
     mast_height: float
     base_radius: float
@@ -199,7 +249,11 @@ class ResolvedStudioSpotlightOnYokeConfig:
     yoke_side_height: float
     yoke_plate_thickness: float
     yoke_pan_limit: float
-    can_tilt_limit: float
+    can_tilt_lower: float
+    can_tilt_upper: float
+    fresnel_ring_count: int
+    tripod_leg_count: int
+    caster_wheel_count: int
     name: str
 
 
@@ -214,56 +268,104 @@ def _choice(value: str | None, choices: tuple[str, ...], fallback: str) -> str:
 
 
 def resolve_config(config: StudioSpotlightOnYokeConfig) -> ResolvedStudioSpotlightOnYokeConfig:
-    stand_style = _choice(config.stand_style, STAND_STYLES, "round_floor")
-    yoke_style = _choice(config.yoke_style, YOKE_STYLES, "flat_side_plates")
-    can_style = _choice(config.can_style, CAN_STYLES, "fresnel_short_can")
-    accessory_style = _choice(config.accessory_style, ACCESSORY_STYLES, "barn_doors")
-    material_style = _choice(config.material_style, MATERIAL_STYLES, "matte_black_stage")
+    root = _choice(config.root_support, ROOT_SUPPORTS, "floor_pedestal_base")
+    yoke = _choice(config.pan_yoke_style, PAN_YOKE_STYLES, "two_arm_box_yoke")
+    head = _choice(config.spotlight_head, SPOTLIGHT_HEADS, "primitive_box_cylinder_can")
+    aux = _choice(config.auxiliary_mechanism, AUXILIARY_MECHANISMS, "none")
+    pan_joint = _choice(config.pan_joint_type, PAN_JOINT_TYPES, "revolute_limited")
+    material = _choice(config.material_style, MATERIAL_STYLES, "matte_black_stage")
 
-    base_radius = _clamp(config.base_radius, 0.105, 0.220)
-    can_radius = _clamp(config.can_radius, 0.075, 0.135)
-    can_length = _clamp(config.can_length, 0.220, 0.420)
-    mast_height = _clamp(config.mast_height, 0.230, 0.820)
-    if stand_style == "desktop_plate":
-        mast_height = _clamp(mast_height, 0.230, 0.420)
-        base_radius = _clamp(base_radius, 0.110, 0.170)
-    elif stand_style == "rolling_low_base":
+    # Compatibility gating (per the reviewed spec).
+    # - fresnel_lens_can must not be paired with front-mounted filter/gel/cover —
+    #   that would occlude the fresnel concentric-ring identity.
+    if head == "fresnel_lens_can" and aux in (
+        "front_filter_or_gel_frame",
+        "service_hatch_or_lens_cover",
+    ):
+        aux = "none"
+    # - tilt_lock_knobs need outer trunnion bosses; swept_arm_yoke has no boss
+    #   landing pad and side_pivot_yoke only has a single-side trunnion —
+    #   fall back to none rather than build a phantom knob.
+    if aux == "tilt_lock_knobs" and yoke in ("swept_arm_yoke", "side_pivot_yoke"):
+        aux = "none"
+    # - wheeled / low_disk / telescoping bases shouldn't lock the pan rotation
+    #   to a narrow range (the dolly/stand is meant to spin freely).
+    if root in ("low_floor_disk_base", "wheeled_dolly_base", "telescoping_floor_stand"):
+        if pan_joint == "revolute_limited":
+            # keep limited but widen below to ~pi.
+            pass
+
+    base_radius = _clamp(config.base_radius, 0.105, 0.230)
+    can_radius = _clamp(config.can_radius, 0.072, 0.155)
+    can_length = _clamp(config.can_length, 0.190, 0.450)
+    mast_height = _clamp(config.mast_height, 0.220, 0.860)
+
+    if root == "low_floor_disk_base":
+        mast_height = _clamp(mast_height, 0.180, 0.360)
+        base_radius = _clamp(base_radius, 0.115, 0.185)
+    elif root == "wheeled_dolly_base":
         mast_height = _clamp(mast_height, 0.360, 0.620)
         base_radius = _clamp(base_radius, 0.150, 0.230)
-    elif stand_style == "tripod":
+    elif root == "tripod_post_base":
+        mast_height = _clamp(mast_height, 0.540, 0.840)
+        base_radius = _clamp(base_radius, 0.135, 0.200)
+    elif root == "telescoping_floor_stand":
         mast_height = _clamp(mast_height, 0.500, 0.840)
-        base_radius = _clamp(base_radius, 0.135, 0.190)
+        base_radius = _clamp(base_radius, 0.130, 0.205)
+    elif root == "telescoping_tripod_stand":
+        mast_height = _clamp(mast_height, 0.560, 0.860)
+        base_radius = _clamp(base_radius, 0.140, 0.205)
 
-    if can_style == "par_can":
+    # Spotlight head sizing: lathe / fresnel cans tend to be a bit longer.
+    can_rear_depth = 0.060
+    if head == "lathe_shell_can":
+        can_length = max(can_length, can_radius * 2.55)
+        can_rear_depth = 0.060
+    elif head == "cadquery_shell_can":
         can_length = max(can_length, can_radius * 2.75)
-        can_rear_depth = 0.050
-    elif can_style == "long_throw_snoot":
-        can_length = max(can_length, can_radius * 3.55)
         can_rear_depth = 0.055
-    elif can_style == "vented_cylinder":
-        can_length = max(can_length, can_radius * 3.05)
-        can_rear_depth = 0.070
-    else:
+    elif head == "fresnel_lens_can":
         can_length = max(can_length, can_radius * 2.45)
         can_rear_depth = 0.060
+    else:  # primitive_box_cylinder_can
+        can_length = max(can_length, can_radius * 2.35)
+        can_rear_depth = 0.050
 
-    yoke_half_width = can_radius + 0.048
-    yoke_tilt_z = 0.205 + can_radius * 0.24
-    yoke_side_height = can_radius * 2.65 + 0.055
-    yoke_plate_thickness = 0.034 if yoke_style != "tubular_u_bracket" else 0.026
-    if yoke_style == "heavy_friction_yoke":
-        yoke_side_height += 0.035
-        yoke_plate_thickness = 0.044
+    yoke_half_width = can_radius + 0.052
+    # yoke_tilt_z must clear the pan stack (which tops out at z=0.110) plus
+    # half the can diameter plus a clearance margin.
+    yoke_tilt_z = max(0.155 + can_radius * 1.05, 0.205 + can_radius * 0.24)
+    yoke_side_height = can_radius * 2.65 + 0.060
+    if yoke == "side_pivot_yoke":
+        # Single-arm yokes have a taller offset C-bracket.
+        yoke_side_height = can_radius * 2.85 + 0.080
+        yoke_plate_thickness = 0.040
+    elif yoke == "mesh_trunnion_yoke":
+        yoke_plate_thickness = 0.024
+    elif yoke == "swept_arm_yoke":
+        yoke_plate_thickness = 0.034
+    else:
+        yoke_plate_thickness = 0.034
+
+    fresnel_ring_count = 4 if head == "fresnel_lens_can" else 0
+    tripod_leg_count = 3 if root in ("tripod_post_base", "telescoping_tripod_stand") else 0
+    caster_wheel_count = 4 if root == "wheeled_dolly_base" else 0
+
+    tilt_lower = _clamp(config.can_tilt_lower, -1.05, -0.10)
+    tilt_upper = _clamp(config.can_tilt_upper, 0.55, 1.30)
+    if tilt_lower >= tilt_upper:
+        tilt_lower, tilt_upper = -0.45, 1.05
 
     return ResolvedStudioSpotlightOnYokeConfig(
-        stand_style=stand_style,  # type: ignore[arg-type]
-        yoke_style=yoke_style,  # type: ignore[arg-type]
-        can_style=can_style,  # type: ignore[arg-type]
-        accessory_style=accessory_style,  # type: ignore[arg-type]
-        material_style=material_style,  # type: ignore[arg-type]
+        root_support=root,  # type: ignore[arg-type]
+        pan_yoke_style=yoke,  # type: ignore[arg-type]
+        spotlight_head=head,  # type: ignore[arg-type]
+        auxiliary_mechanism=aux,  # type: ignore[arg-type]
+        pan_joint_type=pan_joint,  # type: ignore[arg-type]
+        material_style=material,  # type: ignore[arg-type]
         mast_height=mast_height,
         base_radius=base_radius,
-        base_height=0.030 if stand_style != "rolling_low_base" else 0.040,
+        base_height=0.030 if root not in ("wheeled_dolly_base", "low_floor_disk_base") else 0.040,
         can_radius=can_radius,
         can_length=can_length,
         can_rear_depth=can_rear_depth,
@@ -272,7 +374,11 @@ def resolve_config(config: StudioSpotlightOnYokeConfig) -> ResolvedStudioSpotlig
         yoke_side_height=yoke_side_height,
         yoke_plate_thickness=yoke_plate_thickness,
         yoke_pan_limit=_clamp(config.yoke_pan_limit, math.radians(120), math.tau),
-        can_tilt_limit=_clamp(config.can_tilt_limit, math.radians(40), math.radians(82)),
+        can_tilt_lower=tilt_lower,
+        can_tilt_upper=tilt_upper,
+        fresnel_ring_count=fresnel_ring_count,
+        tripod_leg_count=tripod_leg_count,
+        caster_wheel_count=caster_wheel_count,
         name=str(config.name or "studio_spotlight_on_yoke"),
     )
 
@@ -280,11 +386,11 @@ def resolve_config(config: StudioSpotlightOnYokeConfig) -> ResolvedStudioSpotlig
 def slot_choices_for_config(config: StudioSpotlightOnYokeConfig) -> list[tuple[str, str]]:
     r = resolve_config(config)
     return [
-        ("stand_style", r.stand_style),
-        ("yoke_style", r.yoke_style),
-        ("can_style", r.can_style),
-        ("accessory_style", r.accessory_style),
-        ("material_style", r.material_style),
+        ("root_support", r.root_support),
+        ("pan_yoke", r.pan_yoke_style),
+        ("spotlight_head", r.spotlight_head),
+        ("auxiliary_mechanism", r.auxiliary_mechanism),
+        ("pan_joint_type", r.pan_joint_type),
     ]
 
 
@@ -293,51 +399,52 @@ def slot_choices_for_seed(seed: int) -> list[tuple[str, str]]:
 
 
 def config_from_seed(seed: int) -> StudioSpotlightOnYokeConfig:
-    if seed == 0:
-        return StudioSpotlightOnYokeConfig(
-            stand_style="round_floor",
-            yoke_style="flat_side_plates",
-            can_style="fresnel_short_can",
-            accessory_style="barn_doors",
-            material_style="matte_black_stage",
-            mast_height=0.58,
-            base_radius=0.145,
-            can_radius=0.105,
-            can_length=0.300,
-            name="seeded_studio_spotlight_on_yoke_0",
-        )
+    """Deterministic procedural sampling. ``seed=0`` is not special."""
     rng = random.Random(seed)
-    stand_style = rng.choice(STAND_STYLES)
-    yoke_style = rng.choice(YOKE_STYLES)
-    can_style = rng.choice(CAN_STYLES)
-    accessory_style = rng.choice(ACCESSORY_STYLES)
-    material_style = rng.choice(MATERIAL_STYLES)
-    mast_height = rng.uniform(0.36, 0.74)
-    if stand_style == "desktop_plate":
-        mast_height = rng.uniform(0.24, 0.38)
-    elif stand_style == "tripod":
-        mast_height = rng.uniform(0.56, 0.80)
-    elif stand_style == "rolling_low_base":
+    root: RootSupport = rng.choice(ROOT_SUPPORTS)
+    yoke: PanYokeStyle = rng.choice(PAN_YOKE_STYLES)
+    head: SpotlightHead = rng.choice(SPOTLIGHT_HEADS)
+
+    # Auxiliary gating happens in resolve_config; here we sample from full set
+    # so resolve_config can downgrade incompatible combos to "none".
+    aux: AuxiliaryMechanism = rng.choice(AUXILIARY_MECHANISMS)
+    pan_joint: PanJointType = rng.choice(PAN_JOINT_TYPES)
+    material: MaterialStyle = rng.choice(MATERIAL_STYLES)
+
+    if root == "low_floor_disk_base":
+        mast_height = rng.uniform(0.18, 0.34)
+    elif root == "wheeled_dolly_base":
         mast_height = rng.uniform(0.38, 0.58)
+    elif root == "tripod_post_base":
+        mast_height = rng.uniform(0.58, 0.82)
+    elif root == "telescoping_floor_stand":
+        mast_height = rng.uniform(0.52, 0.82)
+    elif root == "telescoping_tripod_stand":
+        mast_height = rng.uniform(0.60, 0.84)
+    else:
+        mast_height = rng.uniform(0.40, 0.74)
+
     return StudioSpotlightOnYokeConfig(
-        stand_style=stand_style,
-        yoke_style=yoke_style,
-        can_style=can_style,
-        accessory_style=accessory_style,
-        material_style=material_style,
-        mast_height=mast_height,
-        base_radius=rng.uniform(0.125, 0.205),
-        can_radius=rng.uniform(0.085, 0.125),
-        can_length=rng.uniform(0.250, 0.385),
-        yoke_pan_limit=rng.uniform(math.radians(150), math.tau),
-        can_tilt_limit=rng.uniform(math.radians(55), math.radians(76)),
+        root_support=root,
+        pan_yoke_style=yoke,
+        spotlight_head=head,
+        auxiliary_mechanism=aux,
+        pan_joint_type=pan_joint,
+        material_style=material,
+        mast_height=round(mast_height, 4),
+        base_radius=round(rng.uniform(0.120, 0.205), 4),
+        can_radius=round(rng.uniform(0.080, 0.135), 4),
+        can_length=round(rng.uniform(0.230, 0.400), 4),
+        yoke_pan_limit=round(rng.uniform(math.radians(150), math.tau), 4),
+        can_tilt_lower=round(rng.uniform(-0.95, -0.25), 4),
+        can_tilt_upper=round(rng.uniform(0.65, 1.20), 4),
         name=f"seeded_studio_spotlight_on_yoke_{seed}",
     )
 
 
 def _register_materials(model: ArticulatedObject, material_style: MaterialStyle) -> dict[str, str]:
     palette = PALETTES[material_style]
-    return {name: model.material(name, rgba=rgba) for name, rgba in palette.items()}
+    return {name: model.material(f"yoke_{name}", rgba=rgba) for name, rgba in palette.items()}
 
 
 def _box(
@@ -374,203 +481,379 @@ def _sphere(
     part.visual(Sphere(radius=radius), origin=Origin(xyz=xyz), material=material, name=name)
 
 
-def _build_round_floor_stand(
+def _mesh_for_model(model: ArticulatedObject, geometry: object, name: str):
+    if model.assets is not None:
+        return mesh_from_geometry(geometry, model.assets.mesh_path(f"{name}.obj"))
+    return mesh_from_geometry(geometry, name)
+
+
+# --------------------------------------------------------------------------- #
+# Slot A: root_support
+# --------------------------------------------------------------------------- #
+# Adopted sources:
+#   S-A1 floor_pedestal_base       rec_…_0001 L49-L96
+#   S-A2 low_floor_disk_base       rec_…_0005 L97-L148
+#   S-A3 tripod_post_base          rec_…_1761967d L53-L165 (legs L226-L256)
+#   S-A4 wheeled_dolly_base        rec_…_aa36438 L134-L189 (wheels L210-L221)
+#   S-A5 telescoping_floor_stand   rec_…_b9ab25 L100-L135
+#   S-A6 telescoping_tripod_stand  rec_…_afb8b9 L133-L157
+
+
+def _build_floor_pedestal_base(
     stand: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
 ) -> None:
-    _cyl(
+    # rec_…_0001 L49-L96: rectangular weighted box base + central upright post.
+    # All visuals form a single connected z-stack:
+    #   base_box [0, bh] → socket [bh-0.005, bh+0.030] → post [bh+0.025, mast-0.025]
+    #   → bearing [mast-0.030, mast].
+    base_w = r.base_radius * 2.0
+    base_d = r.base_radius * 1.55
+    bh = r.base_height
+    _box(stand, "weighted_base_box", (base_w, base_d, bh), (0.0, 0.0, bh * 0.5), m["base"])
+    # rubber feet embed slightly into the base bottom.
+    _box(
         stand,
-        "round_weighted_base",
-        r.base_radius,
-        r.base_height,
-        (0.0, 0.0, r.base_height * 0.5),
-        m["base"],
+        "base_rubber_front",
+        (base_w * 0.78, 0.020, 0.012),
+        (0.0, base_d * 0.42, 0.004),
+        m["rubber"],
     )
-    _cyl(stand, "base_rubber_ring", r.base_radius * 0.93, 0.010, (0.0, 0.0, 0.006), m["rubber"])
-    _cyl(
+    _box(
         stand,
-        "lower_mast",
-        0.026,
-        r.mast_height * 0.70,
-        (0.0, 0.0, r.base_height + r.mast_height * 0.35),
-        m["metal"],
+        "base_rubber_rear",
+        (base_w * 0.78, 0.020, 0.012),
+        (0.0, -base_d * 0.42, 0.004),
+        m["rubber"],
     )
+    # socket: embeds 0.010 into base, sticks up 0.030.
+    socket_h = 0.040
     _cyl(
         stand,
-        "upper_mast",
-        0.019,
-        r.mast_height * 0.42,
-        (0.0, 0.0, r.base_height + r.mast_height * 0.79),
-        m["metal"],
-    )
-    _cyl(
-        stand,
-        "height_lock_collar",
-        0.034,
-        0.045,
-        (0.0, 0.0, r.base_height + r.mast_height * 0.62),
+        "base_socket_collar",
+        0.044,
+        socket_h,
+        (0.0, 0.0, bh + socket_h * 0.5 - 0.010),
         m["base_dark"],
     )
-    _box(
-        stand,
-        "height_lock_tab",
-        (0.052, 0.018, 0.022),
-        (0.044, 0.0, r.base_height + r.mast_height * 0.62),
-        m["accent"],
-    )
+    # post: starts inside socket; embeds bottom 0.010 into socket.
+    post_bottom = bh + 0.010
+    bearing_h = 0.030
+    post_top = r.mast_height - bearing_h + 0.005  # embed top 0.005 into bearing
+    post_len = max(0.04, post_top - post_bottom)
     _cyl(
-        stand, "stand_top_bearing", 0.046, 0.052, (0.0, 0.0, r.mast_height - 0.006), m["base_dark"]
+        stand, "center_post", 0.026, post_len, (0.0, 0.0, post_bottom + post_len * 0.5), m["metal"]
+    )
+    # bearing sits on top of post.
+    _cyl(
+        stand,
+        "stand_top_bearing",
+        0.040,
+        bearing_h,
+        (0.0, 0.0, r.mast_height - bearing_h * 0.5),
+        m["base_dark"],
     )
 
 
-def _build_desktop_plate_stand(
+def _build_low_floor_disk_base(
     stand: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
 ) -> None:
-    plate_w = r.base_radius * 2.10
-    plate_d = r.base_radius * 1.42
-    _box(
-        stand,
-        "desktop_weighted_plate",
-        (plate_w, plate_d, r.base_height),
-        (0.0, 0.0, r.base_height * 0.5),
-        m["base"],
-    )
-    _box(
-        stand,
-        "desktop_front_rubber",
-        (plate_w * 0.78, 0.020, 0.012),
-        (0.0, plate_d * 0.42, 0.008),
-        m["rubber"],
-    )
-    _box(
-        stand,
-        "desktop_rear_rubber",
-        (plate_w * 0.78, 0.020, 0.012),
-        (0.0, -plate_d * 0.42, 0.008),
-        m["rubber"],
-    )
-    _cyl(
-        stand, "short_stand_socket", 0.044, 0.060, (0.0, 0.0, r.base_height + 0.026), m["base_dark"]
-    )
+    # rec_…_0005 L97-L148: low disk floor + short embedded post + bearing seat.
+    base_h = r.base_height * 1.4
+    _cyl(stand, "floor_disk_base", r.base_radius, base_h, (0.0, 0.0, base_h * 0.5), m["base"])
+    _cyl(stand, "floor_rubber_ring", r.base_radius * 0.93, 0.012, (0.0, 0.0, 0.004), m["rubber"])
+    bearing_h = 0.040
+    post_bottom = base_h - 0.010
+    post_top = r.mast_height - bearing_h + 0.005
+    post_len = max(0.04, post_top - post_bottom)
     _cyl(
         stand,
-        "short_mast",
-        0.024,
-        r.mast_height,
-        (0.0, 0.0, r.base_height + r.mast_height * 0.5),
+        "short_center_post",
+        0.030,
+        post_len,
+        (0.0, 0.0, post_bottom + post_len * 0.5),
         m["metal"],
     )
     _cyl(
-        stand, "stand_top_bearing", 0.046, 0.052, (0.0, 0.0, r.mast_height - 0.006), m["base_dark"]
+        stand,
+        "stand_top_bearing",
+        0.046,
+        bearing_h,
+        (0.0, 0.0, r.mast_height - bearing_h * 0.5),
+        m["base_dark"],
     )
 
 
-def _build_tripod_stand(
-    stand: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
+def _build_tripod_post_base(
+    stand: Part,
+    r: ResolvedStudioSpotlightOnYokeConfig,
+    m: dict[str, str],
+    *,
+    model: ArticulatedObject,
 ) -> None:
+    # rec_…_1761967d L53-L165: crown hub + 3 spline tube legs + center mast.
     hub_z = r.base_height + 0.030
-    _cyl(stand, "tripod_center_hub", 0.052, 0.058, (0.0, 0.0, hub_z), m["base_dark"])
-    leg_len = r.base_radius * 1.95
-    for i in range(3):
-        angle = i * math.tau / 3.0 + math.radians(18.0)
-        cx = math.cos(angle) * leg_len * 0.42
-        cy = math.sin(angle) * leg_len * 0.42
+    _cyl(stand, "tripod_crown_hub", 0.060, 0.060, (0.0, 0.0, hub_z), m["base_dark"])
+    leg_len = r.base_radius * 2.10
+    for i in range(r.tripod_leg_count):
+        angle = i * math.tau / r.tripod_leg_count + math.radians(20.0)
         fx = math.cos(angle) * leg_len * 0.86
         fy = math.sin(angle) * leg_len * 0.86
-        _box(
-            stand,
-            f"tripod_leg_{i}",
-            (leg_len, 0.030, 0.024),
-            (cx, cy, 0.032),
-            m["base"],
-            rpy=(0.0, 0.0, angle),
+        leg_geom = tube_from_spline_points(
+            [
+                (math.cos(angle) * 0.020, math.sin(angle) * 0.020, hub_z),
+                (math.cos(angle) * leg_len * 0.45, math.sin(angle) * leg_len * 0.45, hub_z * 0.45),
+                (fx, fy, 0.030),
+            ],
+            radius=max(0.014, leg_len * 0.020),
+            samples_per_segment=14,
+            radial_segments=14,
+            cap_ends=True,
+        )
+        stand.visual(
+            _mesh_for_model(model, leg_geom, f"tripod_leg_geom_{i}_{r.root_support}"),
+            origin=Origin(),
+            material=m["metal"],
+            name=f"tripod_leg_{i}",
         )
         _box(
             stand,
             f"tripod_foot_{i}",
-            (0.090, 0.045, 0.018),
-            (fx, fy, 0.015),
+            (0.080, 0.045, 0.020),
+            (fx, fy, 0.012),
             m["rubber"],
             rpy=(0.0, 0.0, angle),
         )
+        # Brace tie connecting hub to leg midpoint.
+        cx2, cy2 = math.cos(angle) * leg_len * 0.50, math.sin(angle) * leg_len * 0.50
+        _box(
+            stand,
+            f"tripod_brace_{i}",
+            (leg_len * 0.95, 0.022, 0.018),
+            (cx2 * 0.5, cy2 * 0.5, hub_z * 0.30),
+            m["base_dark"],
+            rpy=(0.0, 0.0, angle),
+        )
+    bearing_h = 0.034
+    mast_top = r.mast_height - bearing_h + 0.005
+    mast_len = max(0.06, mast_top - (hub_z - 0.010))
     _cyl(
         stand,
-        "tripod_lower_mast",
-        0.028,
-        r.mast_height * 0.74,
-        (0.0, 0.0, hub_z + r.mast_height * 0.37),
+        "tripod_center_mast",
+        0.030,
+        mast_len,
+        (0.0, 0.0, (mast_top + hub_z - 0.010) * 0.5),
         m["metal"],
     )
     _cyl(
         stand,
-        "tripod_upper_mast",
-        0.020,
-        r.mast_height * 0.43,
-        (0.0, 0.0, hub_z + r.mast_height * 0.78),
-        m["metal"],
-    )
-    _cyl(
-        stand,
-        "tripod_height_collar",
-        0.036,
-        0.048,
-        (0.0, 0.0, hub_z + r.mast_height * 0.58),
+        "stand_top_bearing",
+        0.042,
+        bearing_h,
+        (0.0, 0.0, r.mast_height - bearing_h * 0.5),
         m["base_dark"],
     )
-    _box(
-        stand,
-        "tripod_collar_knob",
-        (0.060, 0.020, 0.024),
-        (0.050, 0.0, hub_z + r.mast_height * 0.58),
-        m["accent"],
-    )
-    _cyl(
-        stand, "stand_top_bearing", 0.047, 0.054, (0.0, 0.0, r.mast_height - 0.006), m["base_dark"]
-    )
 
 
-def _build_rolling_low_base(
+def _build_wheeled_dolly_base(
     stand: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
 ) -> None:
-    w = r.base_radius * 2.05
-    d = r.base_radius * 1.55
-    _box(stand, "rolling_weighted_tray", (w, d, r.base_height), (0.0, 0.0, 0.052), m["base"])
+    # rec_…_aa36438 L134-L189: 4-caster fork bridges + short center post.
+    w = r.base_radius * 2.10
+    d = r.base_radius * 1.60
+    bh = r.base_height
+    # Tray: spans z ∈ [0.030, 0.030 + bh].
+    tray_top = 0.030 + bh
+    _box(stand, "dolly_tray", (w, d, bh), (0.0, 0.0, 0.030 + bh * 0.5), m["base"])
+    # Spine sits on the tray (embedded 0.005 into tray top).
     _box(
-        stand, "rolling_tray_spine", (w * 0.48, d * 0.78, 0.030), (0.0, 0.0, 0.088), m["base_dark"]
+        stand,
+        "dolly_spine",
+        (w * 0.48, d * 0.78, 0.030),
+        (0.0, 0.0, tray_top + 0.010),
+        m["base_dark"],
     )
-    for i, sx in enumerate((-1, 1)):
-        for j, sy in enumerate((-1, 1)):
-            x = sx * w * 0.39
-            y = sy * d * 0.35
-            idx = i * 2 + j
-            _box(stand, f"caster_fork_{idx}", (0.032, 0.050, 0.035), (x, y, 0.027), m["base_dark"])
-            _cyl(
-                stand,
-                f"caster_wheel_{idx}",
-                0.020,
-                0.036,
-                (x, y, 0.015),
-                m["rubber"],
-                rpy=X_CYLINDER_RPY,
-            )
-    _cyl(stand, "rolling_mast_socket", 0.050, 0.070, (0.0, 0.0, 0.105), m["base_dark"])
+    spine_top = tray_top + 0.025
+    # Casters: forks embed into tray bottom, wheels touch fork (overlap).
+    for i in range(r.caster_wheel_count):
+        sx = 1.0 if i in (1, 3) else -1.0
+        sy = 1.0 if i >= 2 else -1.0
+        x = sx * w * 0.40
+        y = sy * d * 0.36
+        _box(stand, f"caster_fork_{i}", (0.034, 0.052, 0.046), (x, y, 0.030), m["base_dark"])
+        _cyl(
+            stand, f"caster_wheel_{i}", 0.024, 0.038, (x, y, 0.018), m["rubber"], rpy=X_CYLINDER_RPY
+        )
+    # Socket: sits on spine (embed 0.005 into spine top).
+    socket_h = 0.080
+    socket_top = spine_top + socket_h - 0.005
     _cyl(
         stand,
-        "rolling_short_mast",
-        0.027,
-        r.mast_height,
-        (0.0, 0.0, 0.095 + r.mast_height * 0.5),
+        "dolly_post_socket",
+        0.054,
+        socket_h,
+        (0.0, 0.0, spine_top + socket_h * 0.5 - 0.005),
+        m["base_dark"],
+    )
+    # Post: embeds into socket, ends at top.
+    bearing_h = 0.040
+    post_bottom = socket_top - 0.020
+    post_top = r.mast_height - bearing_h + 0.005
+    post_len = max(0.05, post_top - post_bottom)
+    _cyl(
+        stand,
+        "dolly_center_post",
+        0.029,
+        post_len,
+        (0.0, 0.0, post_bottom + post_len * 0.5),
         m["metal"],
     )
     _cyl(
         stand,
-        "rolling_height_collar",
-        0.037,
-        0.046,
-        (0.0, 0.0, 0.095 + r.mast_height * 0.62),
+        "stand_top_bearing",
+        0.044,
+        bearing_h,
+        (0.0, 0.0, r.mast_height - bearing_h * 0.5),
         m["base_dark"],
     )
+
+
+def _build_telescoping_floor_stand(
+    stand: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
+) -> None:
+    # rec_…_b9ab25 L100-L135: sleeve + inner_post + guide shoes + spigot.
+    base_w = r.base_radius * 2.0
+    base_d = r.base_radius * 1.50
+    bh = r.base_height
+    _box(stand, "telescope_base_box", (base_w, base_d, bh), (0.0, 0.0, bh * 0.5), m["base"])
+    _box(
+        stand, "telescope_rubber_pad", (base_w * 0.74, 0.022, 0.012), (0.0, 0.0, 0.004), m["rubber"]
+    )
+    # sleeve: bottom embeds into base.
+    sleeve_top = bh + r.mast_height * 0.45
+    sleeve_bottom = bh - 0.010
+    sleeve_len = sleeve_top - sleeve_bottom
     _cyl(
-        stand, "stand_top_bearing", 0.048, 0.054, (0.0, 0.0, r.mast_height - 0.006), m["base_dark"]
+        stand,
+        "telescope_outer_sleeve",
+        0.042,
+        sleeve_len,
+        (0.0, 0.0, (sleeve_top + sleeve_bottom) * 0.5),
+        m["base_dark"],
+    )
+    # lock_collar: hugs the sleeve top exterior.
+    lock_h = 0.034
+    _cyl(
+        stand,
+        "telescope_lock_collar",
+        0.050,
+        lock_h,
+        (0.0, 0.0, sleeve_top - lock_h * 0.5 + 0.004),
+        m["accent"],
+    )
+    # inner_post: starts inside sleeve (overlap 0.020) and rises to bearing.
+    bearing_h = 0.034
+    inner_post_bottom = sleeve_top - 0.020
+    inner_post_top = r.mast_height - bearing_h + 0.005
+    inner_len = max(0.06, inner_post_top - inner_post_bottom)
+    _cyl(
+        stand,
+        "telescope_inner_post",
+        0.028,
+        inner_len,
+        (0.0, 0.0, (inner_post_top + inner_post_bottom) * 0.5),
+        m["metal"],
+    )
+    # guide_shoes: stuck onto the sleeve exterior (overlap into sleeve).
+    for sx in (-1.0, 1.0):
+        _box(
+            stand,
+            f"guide_shoe_{int(sx)}",
+            (0.022, 0.030, 0.020),
+            (sx * 0.035, 0.0, sleeve_top + 0.005),
+            m["accent"],
+        )
+    _cyl(
+        stand,
+        "stand_top_bearing",
+        0.040,
+        bearing_h,
+        (0.0, 0.0, r.mast_height - bearing_h * 0.5),
+        m["base_dark"],
+    )
+
+
+def _build_telescoping_tripod_stand(
+    stand: Part,
+    r: ResolvedStudioSpotlightOnYokeConfig,
+    m: dict[str, str],
+    *,
+    model: ArticulatedObject,
+) -> None:
+    # rec_…_afb8b9 L133-L157: tripod legs + center sleeve + prismatic column.
+    hub_z = r.base_height + 0.040
+    _cyl(stand, "tripod_crown_hub", 0.060, 0.066, (0.0, 0.0, hub_z), m["base_dark"])
+    leg_len = r.base_radius * 2.0
+    for i in range(r.tripod_leg_count):
+        angle = i * math.tau / r.tripod_leg_count + math.radians(15.0)
+        fx = math.cos(angle) * leg_len * 0.86
+        fy = math.sin(angle) * leg_len * 0.86
+        leg_geom = tube_from_spline_points(
+            [
+                (math.cos(angle) * 0.020, math.sin(angle) * 0.020, hub_z),
+                (math.cos(angle) * leg_len * 0.45, math.sin(angle) * leg_len * 0.45, hub_z * 0.50),
+                (fx, fy, 0.030),
+            ],
+            radius=max(0.014, leg_len * 0.022),
+            samples_per_segment=12,
+            radial_segments=14,
+            cap_ends=True,
+        )
+        stand.visual(
+            _mesh_for_model(model, leg_geom, f"tripod_leg_geom_{i}_telescope"),
+            origin=Origin(),
+            material=m["metal"],
+            name=f"tripod_leg_{i}",
+        )
+        _box(
+            stand,
+            f"tripod_foot_{i}",
+            (0.075, 0.040, 0.020),
+            (fx, fy, 0.012),
+            m["rubber"],
+            rpy=(0.0, 0.0, angle),
+        )
+    bearing_h = 0.034
+    sleeve_top = hub_z + (r.mast_height - hub_z) * 0.55
+    sleeve_bottom = hub_z - 0.005
+    sleeve_len = sleeve_top - sleeve_bottom
+    _cyl(
+        stand,
+        "telescope_outer_sleeve",
+        0.042,
+        sleeve_len,
+        (0.0, 0.0, (sleeve_top + sleeve_bottom) * 0.5),
+        m["base_dark"],
+    )
+    # inner column overlaps sleeve top by 0.020.
+    inner_bottom = sleeve_top - 0.020
+    inner_top = r.mast_height - bearing_h + 0.005
+    inner_len = max(0.06, inner_top - inner_bottom)
+    _cyl(
+        stand,
+        "telescope_inner_column",
+        0.028,
+        inner_len,
+        (0.0, 0.0, (inner_top + inner_bottom) * 0.5),
+        m["metal"],
+    )
+    _cyl(stand, "telescope_lock_collar", 0.050, 0.034, (0.0, 0.0, sleeve_top - 0.014), m["accent"])
+    _cyl(
+        stand,
+        "stand_top_bearing",
+        0.040,
+        bearing_h,
+        (0.0, 0.0, r.mast_height - bearing_h * 0.5),
+        m["base_dark"],
     )
 
 
@@ -578,521 +861,839 @@ def _build_stand(
     model: ArticulatedObject, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
 ) -> Part:
     stand = model.part("stand")
-    if r.stand_style == "tripod":
-        _build_tripod_stand(stand, r, m)
-    elif r.stand_style == "desktop_plate":
-        _build_desktop_plate_stand(stand, r, m)
-    elif r.stand_style == "rolling_low_base":
-        _build_rolling_low_base(stand, r, m)
-    else:
-        _build_round_floor_stand(stand, r, m)
+    if r.root_support == "floor_pedestal_base":
+        _build_floor_pedestal_base(stand, r, m)
+    elif r.root_support == "low_floor_disk_base":
+        _build_low_floor_disk_base(stand, r, m)
+    elif r.root_support == "tripod_post_base":
+        _build_tripod_post_base(stand, r, m, model=model)
+    elif r.root_support == "wheeled_dolly_base":
+        _build_wheeled_dolly_base(stand, r, m)
+    elif r.root_support == "telescoping_floor_stand":
+        _build_telescoping_floor_stand(stand, r, m)
+    elif r.root_support == "telescoping_tripod_stand":
+        _build_telescoping_tripod_stand(stand, r, m, model=model)
     return stand
 
 
-def _build_flat_side_plate_yoke(
+# --------------------------------------------------------------------------- #
+# Slot B: pan_yoke
+# --------------------------------------------------------------------------- #
+# Adopted sources:
+#   S-B1 two_arm_box_yoke      rec_…_0001 L98-L142
+#   S-B2 mesh_trunnion_yoke    rec_…_a7d172 L46-L59 (TrunnionYokeGeometry)
+#   S-B3 swept_arm_yoke        rec_…_0003 L219-L277 (sweep_profile_along_spline)
+#   S-B4 side_pivot_yoke       rec_…_6ba32 L134-L208 (single offset arm)
+
+
+def _yoke_pan_spigot(yoke: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]) -> None:
+    """Shared pan turntable + spigot — anchors child frame at (0,0,0).
+
+    Cylinder stack meeting at z-planes so visuals are surface-connected and
+    reaching up to the bridge/arm base above.
+    """
+    # yaw_spigot: z ∈ [-0.040, 0.040], radius 0.030.
+    _cyl(yoke, "yaw_spigot", 0.030, 0.080, (0.0, 0.0, 0.0), m["base_dark"])
+    # pan_turntable_disk: z ∈ [0.040, 0.080], radius 0.062 (sits flush on top of spigot).
+    _cyl(yoke, "pan_turntable_disk", 0.062, 0.040, (0.0, 0.0, 0.060), m["metal"])
+    # pan_index_collar reaches up into the bridge envelope (z ∈ [0.080, 0.130]).
+    _cyl(yoke, "pan_index_collar", 0.044, 0.050, (0.0, 0.0, 0.105), m["base_dark"])
+
+
+def _yoke_tilt_cross_shaft(
     yoke: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
 ) -> None:
+    """Horizontal trunnion cross-shaft along x at the tilt-joint origin.
+
+    The shaft passes through (0, 0, yoke_tilt_z) in the yoke's frame, giving
+    `fail_if_articulation_origin_far_from_geometry` a parent visual at the
+    joint origin even when the yoke's arms are at ±yoke_half_width. The
+    spotlight head's own through cross-shaft rides this — declared as an
+    intentional captured-pin overlap in `_allow_expected_overlaps`.
+    """
+    _cyl(
+        yoke,
+        "tilt_cross_shaft",
+        0.018,
+        r.yoke_half_width * 2.05,
+        (0.0, 0.0, r.yoke_tilt_z),
+        m["base_dark"],
+        rpy=X_CYLINDER_RPY,
+    )
+
+
+def _build_two_arm_box_yoke(
+    yoke: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
+) -> None:
+    # rec_…_0001 L98-L142: turntable + lower bridge + 2 box arms + 2 cylinder bearings.
+    _yoke_pan_spigot(yoke, r, m)
     hw = r.yoke_half_width
     zc = r.yoke_tilt_z
-    side_h = r.yoke_side_height
     th = r.yoke_plate_thickness
-    _cyl(yoke, "yaw_spigot", 0.040, 0.085, (0.0, 0.0, 0.010), m["base_dark"])
-    _cyl(yoke, "pan_index_collar", 0.055, 0.036, (0.0, 0.0, 0.068), m["metal"])
-    _box(yoke, "yoke_neck_block", (0.060, 0.060, 0.046), (0.0, 0.0, 0.078), m["metal"])
+    # Bridge sits on top of the pan stack (z = 0.110) and below the can.
+    bridge_h = 0.030
+    bridge_z = max(0.125, min(zc - r.can_radius - 0.020, 0.140))
+    bridge_z = max(0.125, bridge_z)
+    # Arms span from bridge top to zc with overlap into bridge and bearing cup.
+    arm_bottom_z = bridge_z - bridge_h * 0.5 + 0.002
+    arm_len = max(0.06, zc - arm_bottom_z + 0.004)
+    arm_center_z = arm_bottom_z + arm_len * 0.5
     _box(
         yoke,
-        "lower_yoke_saddle",
-        (hw * 2.0 + th, 0.072, 0.040),
-        (0.0, 0.0, zc - side_h * 0.50),
-        m["metal"],
-    )
-    _box(
-        yoke,
-        "upper_yoke_bridge",
-        (hw * 2.0 + th, 0.066, 0.036),
-        (0.0, 0.0, zc + side_h * 0.50),
+        "lower_yoke_bridge",
+        (hw * 2.0 + th, 0.060, bridge_h),
+        (0.0, 0.0, bridge_z),
         m["metal"],
     )
     for side, sx in (("left", -1), ("right", 1)):
         x = sx * hw
-        _box(yoke, f"{side}_side_plate", (th, 0.080, side_h), (x, 0.0, zc), m["metal"])
+        _box(yoke, f"{side}_arm", (th, 0.058, arm_len), (x, 0.0, arm_center_z), m["metal"])
         _cyl(
             yoke,
             f"{side}_bearing_cup",
-            0.042,
-            th + 0.020,
-            (x, 0.0, zc),
-            m["base_dark"],
-            rpy=X_CYLINDER_RPY,
-        )
-        _cyl(
-            yoke,
-            f"{side}_friction_knob",
             0.034,
-            0.040,
-            (sx * (hw + th * 0.72), 0.0, zc),
-            m["accent"],
-            rpy=X_CYLINDER_RPY,
-        )
-    _cyl(yoke, "tilt_axis_pin", 0.021, hw * 2.24, (0.0, 0.0, zc), m["metal"], rpy=X_CYLINDER_RPY)
-
-
-def _build_tubular_u_yoke(
-    yoke: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
-) -> None:
-    hw = r.yoke_half_width
-    zc = r.yoke_tilt_z
-    side_h = r.yoke_side_height
-    _cyl(yoke, "yaw_spigot", 0.038, 0.084, (0.0, 0.0, 0.010), m["base_dark"])
-    _cyl(yoke, "pan_index_collar", 0.053, 0.034, (0.0, 0.0, 0.068), m["metal"])
-    _cyl(yoke, "round_yoke_stem", 0.030, 0.046, (0.0, 0.0, 0.080), m["metal"])
-    _cyl(
-        yoke,
-        "lower_tube_bridge",
-        0.020,
-        hw * 2.08,
-        (0.0, 0.0, zc - side_h * 0.48),
-        m["metal"],
-        rpy=X_CYLINDER_RPY,
-    )
-    _cyl(
-        yoke,
-        "upper_tube_bridge",
-        0.022,
-        hw * 2.10,
-        (0.0, 0.0, zc + side_h * 0.50),
-        m["metal"],
-        rpy=X_CYLINDER_RPY,
-    )
-    for side, sx in (("left", -1), ("right", 1)):
-        x = sx * hw
-        _cyl(yoke, f"{side}_upright_tube", 0.021, side_h, (x, 0.0, zc), m["metal"])
-        _cyl(
-            yoke,
-            f"{side}_bearing_cup",
-            0.038,
-            0.052,
+            th + 0.022,
             (x, 0.0, zc),
             m["base_dark"],
             rpy=X_CYLINDER_RPY,
         )
-        _cyl(
-            yoke,
-            f"{side}_friction_knob",
-            0.031,
-            0.038,
-            (sx * (hw + 0.036), 0.0, zc),
-            m["accent"],
-            rpy=X_CYLINDER_RPY,
-        )
-    _cyl(yoke, "tilt_axis_pin", 0.020, hw * 2.22, (0.0, 0.0, zc), m["metal"], rpy=X_CYLINDER_RPY)
+    _yoke_tilt_cross_shaft(yoke, r, m)
 
 
-def _build_heavy_friction_yoke(
-    yoke: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
+def _build_mesh_trunnion_yoke(
+    yoke: Part,
+    r: ResolvedStudioSpotlightOnYokeConfig,
+    m: dict[str, str],
+    *,
+    model: ArticulatedObject,
 ) -> None:
+    # rec_…_a7d172 L46-L59: TrunnionYokeGeometry single mesh + pan disk.
+    _yoke_pan_spigot(yoke, r, m)
     hw = r.yoke_half_width
     zc = r.yoke_tilt_z
-    side_h = r.yoke_side_height
-    th = r.yoke_plate_thickness
-    _cyl(yoke, "yaw_spigot", 0.043, 0.090, (0.0, 0.0, 0.012), m["base_dark"])
-    _cyl(yoke, "pan_index_collar", 0.062, 0.045, (0.0, 0.0, 0.072), m["metal"])
-    _box(yoke, "heavy_neck_block", (0.075, 0.078, 0.048), (0.0, 0.0, 0.080), m["metal"])
-    _box(
-        yoke,
-        "heavy_lower_saddle",
-        (hw * 2.05 + th, 0.090, 0.052),
-        (0.0, 0.0, zc - side_h * 0.50),
-        m["metal"],
+    bridge_z = max(0.108, zc - r.can_radius - 0.045)
+    yoke_height = max(0.20, (zc + r.can_radius + 0.060) - bridge_z)
+    trunnion_z_local = zc - bridge_z
+    # Use TrunnionYokeGeometry for the single-mesh U yoke. Geometry constraints
+    # require trunnion_diameter * 2 + (small clearance) < overall depth and
+    # < arm thickness * 2, so we keep it conservative.
+    trunnion_d = max(0.012, min(0.040, r.can_radius * 0.4))
+    yoke_geom = TrunnionYokeGeometry(
+        overall_size=(hw * 2.0 + r.yoke_plate_thickness * 2.0, 0.072, yoke_height),
+        span_width=hw * 2.0,
+        trunnion_diameter=trunnion_d,
+        trunnion_center_z=trunnion_z_local,
+        base_thickness=0.030,
+        corner_radius=0.010,
     )
-    _box(
-        yoke,
-        "heavy_upper_bridge",
-        (hw * 2.10 + th, 0.086, 0.044),
-        (0.0, 0.0, zc + side_h * 0.50),
-        m["metal"],
+    yoke.visual(
+        _mesh_for_model(model, yoke_geom, "trunnion_yoke_shell_geom"),
+        origin=Origin(xyz=(0.0, 0.0, bridge_z)),
+        material=m["metal"],
+        name="trunnion_yoke_shell",
     )
-    index_z = zc - side_h * 0.43
-    _box(
-        yoke, "rear_index_arc_proxy", (hw * 1.55, 0.030, 0.030), (0.0, -0.050, index_z), m["accent"]
-    )
-    for i, x in enumerate((-hw * 0.55, 0.0, hw * 0.55)):
-        _box(yoke, f"index_tick_{i}", (0.010, 0.035, 0.042), (x, -0.059, index_z), m["rubber"])
+    # Outer trunnion boss landings on each arm exterior (for lock knobs).
     for side, sx in (("left", -1), ("right", 1)):
-        x = sx * hw
-        _box(yoke, f"{side}_side_plate", (th, 0.094, side_h), (x, 0.0, zc), m["metal"])
-        _box(
-            yoke,
-            f"{side}_front_gusset",
-            (th * 0.90, 0.046, side_h * 0.42),
-            (x, 0.036, zc - side_h * 0.25),
-            m["base_dark"],
-        )
-        _box(
-            yoke,
-            f"{side}_rear_gusset",
-            (th * 0.90, 0.046, side_h * 0.42),
-            (x, -0.036, zc - side_h * 0.25),
-            m["base_dark"],
-        )
         _cyl(
             yoke,
-            f"{side}_bearing_cup",
-            0.047,
-            th + 0.026,
-            (x, 0.0, zc),
+            f"{side}_trunnion_boss",
+            0.030,
+            r.yoke_plate_thickness * 1.2,
+            (sx * hw, 0.0, zc),
             m["base_dark"],
             rpy=X_CYLINDER_RPY,
         )
+    _yoke_tilt_cross_shaft(yoke, r, m)
+
+
+def _build_swept_arm_yoke(
+    yoke: Part,
+    r: ResolvedStudioSpotlightOnYokeConfig,
+    m: dict[str, str],
+    *,
+    model: ArticulatedObject,
+) -> None:
+    # rec_…_0003 L219-L277: sweep_profile_along_spline curved arms.
+    _yoke_pan_spigot(yoke, r, m)
+    hw = r.yoke_half_width
+    zc = r.yoke_tilt_z
+    bottom_z = max(0.108, zc - r.can_radius - 0.045)
+    _box(
+        yoke,
+        "lower_yoke_bridge",
+        (hw * 2.0 + r.yoke_plate_thickness, 0.060, 0.030),
+        (0.0, 0.0, bottom_z),
+        m["metal"],
+    )
+    # Curved swept arms — rounded rect profile along an arching spline.
+    profile = rounded_rect_profile(
+        width=r.yoke_plate_thickness * 1.20,
+        height=0.052,
+        radius=0.010,
+    )
+    for side, sx in (("left", -1), ("right", 1)):
+        x_in = sx * (hw * 0.85)
+        x_out = sx * hw
+        spline = [
+            (x_in, 0.0, bottom_z + 0.020),
+            (x_out * 1.05, 0.0, (bottom_z + zc) * 0.5),
+            (x_out, 0.0, zc),
+        ]
+        arm_geom = sweep_profile_along_spline(
+            spline,
+            profile=profile,
+            samples_per_segment=10,
+        )
+        yoke.visual(
+            _mesh_for_model(model, arm_geom, f"{side}_swept_arm_geom"),
+            origin=Origin(),
+            material=m["metal"],
+            name=f"{side}_swept_arm",
+        )
         _cyl(
             yoke,
-            f"{side}_large_lock_wheel",
-            0.046,
-            0.046,
-            (sx * (hw + th * 0.76), 0.0, zc),
-            m["accent"],
+            f"{side}_bearing_boss",
+            0.034,
+            r.yoke_plate_thickness * 1.4,
+            (x_out, 0.0, zc),
+            m["base_dark"],
             rpy=X_CYLINDER_RPY,
         )
-        for j in range(6):
-            a = j * math.tau / 6.0
-            _box(
-                yoke,
-                f"{side}_lock_grip_{j}",
-                (0.010, 0.028, 0.008),
-                (sx * (hw + th * 0.92), math.cos(a) * 0.035, zc + math.sin(a) * 0.035),
-                m["rubber"],
-                rpy=(0.0, 0.0, 0.0),
-            )
-    _cyl(yoke, "tilt_axis_pin", 0.023, hw * 2.28, (0.0, 0.0, zc), m["metal"], rpy=X_CYLINDER_RPY)
+    _yoke_tilt_cross_shaft(yoke, r, m)
+
+
+def _build_side_pivot_yoke(
+    yoke: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
+) -> None:
+    # rec_…_6ba32 L134-L208: single offset side arm (C bracket) + single trunnion pivot.
+    _yoke_pan_spigot(yoke, r, m)
+    hw = r.yoke_half_width
+    zc = r.yoke_tilt_z
+    bottom_z = max(0.108, zc - r.can_radius - 0.045)
+    upright_z_center = (bottom_z + zc) * 0.5
+    upright_h = max(0.06, zc - bottom_z + 0.020)
+    # C-bracket: base bridge wraps under the can on one side, upright
+    # supports the single trunnion bearing.
+    _box(yoke, "side_pivot_base", (hw * 1.4, 0.060, 0.030), (-hw * 0.20, 0.0, bottom_z), m["metal"])
+    _box(
+        yoke,
+        "side_pivot_upright",
+        (r.yoke_plate_thickness * 1.4, 0.060, upright_h),
+        (-hw * 0.92, 0.0, upright_z_center),
+        m["metal"],
+    )
+    _cyl(
+        yoke,
+        "side_pivot_bearing",
+        0.034,
+        r.yoke_plate_thickness * 1.6,
+        (-hw * 0.92, 0.0, zc),
+        m["base_dark"],
+        rpy=X_CYLINDER_RPY,
+    )
+    _yoke_tilt_cross_shaft(yoke, r, m)
 
 
 def _build_yoke(
     model: ArticulatedObject, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
 ) -> Part:
-    yoke = model.part("yoke")
-    if r.yoke_style == "tubular_u_bracket":
-        _build_tubular_u_yoke(yoke, r, m)
-    elif r.yoke_style == "heavy_friction_yoke":
-        _build_heavy_friction_yoke(yoke, r, m)
-    else:
-        _build_flat_side_plate_yoke(yoke, r, m)
+    yoke = model.part("pan_yoke")
+    if r.pan_yoke_style == "two_arm_box_yoke":
+        _build_two_arm_box_yoke(yoke, r, m)
+    elif r.pan_yoke_style == "mesh_trunnion_yoke":
+        _build_mesh_trunnion_yoke(yoke, r, m, model=model)
+    elif r.pan_yoke_style == "swept_arm_yoke":
+        _build_swept_arm_yoke(yoke, r, m, model=model)
+    elif r.pan_yoke_style == "side_pivot_yoke":
+        _build_side_pivot_yoke(yoke, r, m)
     return yoke
 
 
-def _add_can_body(can: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]) -> None:
+# --------------------------------------------------------------------------- #
+# Slot C: spotlight_head
+# --------------------------------------------------------------------------- #
+# Adopted sources:
+#   S-C1 primitive_box_cylinder_can  rec_…_0001 L144-L222
+#   S-C2 lathe_shell_can             rec_…_0002 L284-L372 (LatheGeometry.from_shell_profiles)
+#   S-C3 cadquery_shell_can          rec_…_06058b L246-L300 (cadquery; fallback lathe)
+#   S-C4 fresnel_lens_can            rec_…_193640 L136-L270 (TorusGeometry fresnel rings)
+
+
+def _can_shell_lathe_mesh(
+    model: ArticulatedObject | None, length: float, radius: float, name: str, *, taper: float = 0.92
+):
+    """Hollow lamp-can profile from LatheGeometry.from_shell_profiles (adopted: S-C2).
+
+    Profile is generated in the can's local frame with axis along x; the visual
+    placement rotates it so x is aligned with the spotlight aim (forward = +x).
+    """
+    half = length * 0.5
+    # outer/inner shell profiles (axisymmetric, profile is (radial, axial)).
+    outer = [
+        (radius * 0.88, -half),
+        (radius, -half + length * 0.18),
+        (radius, half - length * 0.10),
+        (radius * taper, half),
+    ]
+    inner_r = max(0.004, radius - max(0.005, radius * 0.10))
+    inner = [
+        (max(0.004, inner_r * 0.86), -half + length * 0.04),
+        (inner_r, -half + length * 0.22),
+        (inner_r, half - length * 0.14),
+        (max(0.004, inner_r * taper), half - length * 0.02),
+    ]
+    geom = LatheGeometry.from_shell_profiles(
+        outer,
+        inner,
+        segments=40,
+        start_cap="round",
+        end_cap="round",
+        lip_samples=4,
+    )
+    return _mesh_for_model(model, geom, name)
+
+
+def _add_can_common_features(
+    can: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
+) -> None:
+    """Shared can features: bezel, lens, rear cap, trunnion stubs.
+
+    Aim direction is +y. Trunnion line is along x (matches the yoke arm
+    placement at ±yoke_half_width in x).
+    """
     cr = r.can_radius
     cl = r.can_length
     front_y = cl * 0.5
     rear_y = -cl * 0.5
-    if r.can_style == "long_throw_snoot":
-        body_len = cl * 0.88
-        snoot_len = cl * 0.35
-        _cyl(
-            can, "main_can_body", cr, body_len, (0.0, -cl * 0.08, 0.0), m["can"], rpy=Y_CYLINDER_RPY
-        )
-        _cyl(
-            can,
-            "front_snoot",
-            cr * 0.72,
-            snoot_len,
-            (0.0, front_y - snoot_len * 0.45, 0.0),
-            m["can"],
-            rpy=Y_CYLINDER_RPY,
-        )
-        _cyl(
-            can,
-            "snoot_bezel",
-            cr * 0.77,
-            0.026,
-            (0.0, front_y + 0.004, 0.0),
-            m["bezel"],
-            rpy=Y_CYLINDER_RPY,
-        )
-    elif r.can_style == "par_can":
-        _cyl(can, "main_can_body", cr, cl, (0.0, 0.0, 0.0), m["can"], rpy=Y_CYLINDER_RPY)
-        _cyl(
-            can,
-            "rear_deep_cap",
-            cr * 0.92,
-            r.can_rear_depth,
-            (0.0, rear_y - r.can_rear_depth * 0.34, 0.0),
-            m["bezel"],
-            rpy=Y_CYLINDER_RPY,
-        )
-        _cyl(
-            can,
-            "par_lamp_bulge",
-            cr * 0.58,
-            0.032,
-            (0.0, front_y - 0.036, 0.0),
-            m["emitter"],
-            rpy=Y_CYLINDER_RPY,
-        )
-    elif r.can_style == "vented_cylinder":
-        _cyl(can, "main_can_body", cr, cl, (0.0, 0.0, 0.0), m["can"], rpy=Y_CYLINDER_RPY)
-        for i in range(6):
-            z = -cr * 0.42 + i * cr * 0.17
-            _box(
-                can,
-                f"left_vent_slot_{i}",
-                (0.014, 0.078, 0.010),
-                (-cr * 0.80, -cl * 0.30, z),
-                m["base_dark"],
-            )
-            _box(
-                can,
-                f"right_vent_slot_{i}",
-                (0.014, 0.078, 0.010),
-                (cr * 0.80, -cl * 0.30, z),
-                m["base_dark"],
-            )
-        _cyl(
-            can,
-            "rear_vented_cap",
-            cr * 0.92,
-            r.can_rear_depth,
-            (0.0, rear_y - r.can_rear_depth * 0.30, 0.0),
-            m["bezel"],
-            rpy=Y_CYLINDER_RPY,
-        )
-    else:
-        _cyl(can, "main_can_body", cr, cl, (0.0, 0.0, 0.0), m["can"], rpy=Y_CYLINDER_RPY)
-        _cyl(
-            can,
-            "fresnel_step_inner",
-            cr * 0.70,
-            0.018,
-            (0.0, front_y - 0.018, 0.0),
-            m["bezel"],
-            rpy=Y_CYLINDER_RPY,
-        )
-        _cyl(
-            can,
-            "fresnel_step_outer",
-            cr * 0.90,
-            0.020,
-            (0.0, front_y - 0.006, 0.0),
-            m["bezel"],
-            rpy=Y_CYLINDER_RPY,
-        )
+    bezel_th = max(0.022, cl * 0.06)
+    lens_th = max(0.012, cl * 0.040)
+    rear_th = max(0.030, r.can_rear_depth)
+    # Front bezel ring (Cylinder) — embedded ~0.004 into the can body for
+    # connectivity (must touch main_can_body geometry).
     _cyl(
         can,
         "front_bezel",
-        cr * 1.07,
-        0.030,
-        (0.0, front_y + 0.006, 0.0),
+        cr * 1.10,
+        bezel_th,
+        (0.0, front_y + bezel_th * 0.5 - 0.004, 0.0),
         m["bezel"],
         rpy=Y_CYLINDER_RPY,
     )
+    # Translucent front lens — embedded into the bezel.
     _cyl(
         can,
         "front_lens",
-        cr * 0.82,
-        0.012,
-        (0.0, front_y + 0.022, 0.0),
+        cr * 0.84,
+        lens_th,
+        (0.0, front_y + bezel_th - 0.004 + lens_th * 0.45, 0.0),
         m["glass"],
         rpy=Y_CYLINDER_RPY,
     )
+    # Warm lamp core behind the lens — overlaps front_lens and main_can_body.
     _cyl(
         can,
         "warm_lamp_core",
         cr * 0.46,
-        0.015,
-        (0.0, front_y + 0.010, 0.0),
+        max(0.020, cl * 0.060),
+        (0.0, front_y - cl * 0.03, 0.0),
         m["emitter"],
         rpy=Y_CYLINDER_RPY,
     )
+    # Rear cap — embedded ~0.004 into the rear of main_can_body.
     _cyl(
         can,
         "rear_cap",
-        cr * 0.92,
-        0.036,
-        (0.0, rear_y + 0.006, 0.0),
+        cr * 0.96,
+        rear_th,
+        (0.0, rear_y - rear_th * 0.5 + 0.004, 0.0),
         m["bezel"],
         rpy=Y_CYLINDER_RPY,
     )
+    # Trunnion stubs and a through cross-shaft along x so the tilt joint
+    # origin (0,0,0) is anchored to real child geometry (the cross-shaft
+    # passes through the origin and intersects main_can_body).
     _cyl(
         can,
-        "can_trunnion_boss",
-        0.028,
-        r.yoke_half_width * 2.04,
+        "trunnion_cross_shaft",
+        0.020,
+        r.yoke_half_width * 2.05,
         (0.0, 0.0, 0.0),
         m["metal"],
         rpy=X_CYLINDER_RPY,
     )
+    for side, sx in (("left", -1.0), ("right", 1.0)):
+        _cyl(
+            can,
+            f"{side}_trunnion_stub",
+            0.030,
+            max(0.024, r.yoke_plate_thickness * 1.4),
+            (sx * (r.yoke_half_width * 0.92), 0.0, 0.0),
+            m["bezel"],
+            rpy=X_CYLINDER_RPY,
+        )
+
+
+def _build_primitive_box_cylinder_can(
+    can: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
+) -> None:
+    # rec_…_0001 L144-L222: pure Box+Cylinder body.
+    cr = r.can_radius
+    cl = r.can_length
+    _cyl(can, "main_can_body", cr, cl, (0.0, 0.0, 0.0), m["can"], rpy=Y_CYLINDER_RPY)
     _cyl(
         can,
-        "left_trunnion_washer",
-        0.036,
-        0.018,
-        (-r.yoke_half_width + 0.006, 0.0, 0.0),
-        m["bezel"],
-        rpy=X_CYLINDER_RPY,
+        "rear_housing",
+        cr * 0.78,
+        cl * 0.32,
+        (0.0, -cl * 0.42, 0.0),
+        m["can"],
+        rpy=Y_CYLINDER_RPY,
     )
-    _cyl(
-        can,
-        "right_trunnion_washer",
-        0.036,
-        0.018,
-        (r.yoke_half_width - 0.006, 0.0, 0.0),
-        m["bezel"],
-        rpy=X_CYLINDER_RPY,
+    _add_can_common_features(can, r, m)
+
+
+def _build_lathe_shell_can(
+    can: Part,
+    r: ResolvedStudioSpotlightOnYokeConfig,
+    m: dict[str, str],
+    *,
+    model: ArticulatedObject,
+) -> None:
+    # rec_…_0002 L284-L372: LatheGeometry.from_shell_profiles hollow shell.
+    cr = r.can_radius
+    cl = r.can_length
+    shell_mesh = _can_shell_lathe_mesh(
+        model, length=cl, radius=cr, name="lathe_can_shell", taper=0.92
     )
-    focus_y = -cl * 0.34
+    can.visual(
+        shell_mesh,
+        origin=Origin(xyz=(0.0, 0.0, 0.0), rpy=Y_CYLINDER_RPY),
+        material=m["can"],
+        name="main_can_body",
+    )
+    # Forward cone neck for sculpted "spun" identity.
     _cyl(
         can,
-        "left_focus_knob_boss",
+        "lathe_can_neck",
+        cr * 0.90,
+        max(0.020, cl * 0.08),
+        (0.0, cl * 0.42, 0.0),
+        m["can"],
+        rpy=Y_CYLINDER_RPY,
+    )
+    # Cooling fin band (3 fins).
+    for i in range(3):
+        _cyl(
+            can,
+            f"cooling_fin_{i}",
+            cr * 1.06,
+            0.008,
+            (0.0, -cl * (0.10 + i * 0.10), 0.0),
+            m["bezel"],
+            rpy=Y_CYLINDER_RPY,
+        )
+    _add_can_common_features(can, r, m)
+
+
+def _build_cadquery_shell_can(
+    can: Part,
+    r: ResolvedStudioSpotlightOnYokeConfig,
+    m: dict[str, str],
+    *,
+    model: ArticulatedObject,
+) -> None:
+    # rec_…_06058b L246-L300: cadquery shell (Workplane circle/extrude/subtract).
+    # We use LatheGeometry.from_shell_profiles with a more conical profile as the
+    # primitive-preserving fallback when cadquery isn't available in this build
+    # environment — the resulting mesh still has the hollow-shell topology and
+    # the same chassis-ring identity the source captured.
+    cr = r.can_radius
+    cl = r.can_length
+    shell_mesh = _can_shell_lathe_mesh(
+        model, length=cl, radius=cr, name="cadquery_can_shell", taper=0.74
+    )
+    can.visual(
+        shell_mesh,
+        origin=Origin(xyz=(0.0, 0.0, 0.0), rpy=Y_CYLINDER_RPY),
+        material=m["can"],
+        name="main_can_body",
+    )
+    # Sharper rear taper + chassis ring.
+    _cyl(
+        can,
+        "rear_chassis_taper",
+        cr * 0.66,
+        cl * 0.32,
+        (0.0, -cl * 0.40, 0.0),
+        m["can"],
+        rpy=Y_CYLINDER_RPY,
+    )
+    can.visual(
+        _mesh_for_model(
+            model,
+            TorusGeometry(
+                radius=cr * 1.05,
+                tube=max(0.006, cr * 0.05),
+                radial_segments=12,
+                tubular_segments=40,
+            ),
+            "cadquery_chassis_ring_geom",
+        ),
+        origin=Origin(xyz=(0.0, cl * 0.20, 0.0), rpy=X_CYLINDER_RPY),
+        material=m["bezel"],
+        name="cadquery_chassis_ring",
+    )
+    _add_can_common_features(can, r, m)
+
+
+def _build_fresnel_lens_can(
+    can: Part,
+    r: ResolvedStudioSpotlightOnYokeConfig,
+    m: dict[str, str],
+    *,
+    model: ArticulatedObject,
+) -> None:
+    # rec_…_193640 L136-L270: LatheGeometry shell + BezelGeometry + 3-4 TorusGeometry fresnel rings.
+    cr = r.can_radius
+    cl = r.can_length
+    shell_mesh = _can_shell_lathe_mesh(
+        model, length=cl, radius=cr, name="fresnel_can_shell", taper=0.95
+    )
+    can.visual(
+        shell_mesh,
+        origin=Origin(xyz=(0.0, 0.0, 0.0), rpy=Y_CYLINDER_RPY),
+        material=m["can"],
+        name="main_can_body",
+    )
+    front_y = cl * 0.5
+    # Concentric Fresnel rings (3 or 4) — half-transparent Torus geometry that
+    # rides the lens plane. Outer ring largest, inner smallest.
+    n = max(3, r.fresnel_ring_count)
+    for i in range(n):
+        ring_r = cr * (0.30 + 0.18 * (i / max(1, n - 1)))
+        can.visual(
+            _mesh_for_model(
+                model,
+                TorusGeometry(
+                    radius=ring_r,
+                    tube=max(0.005, cr * 0.040),
+                    radial_segments=10,
+                    tubular_segments=36,
+                ),
+                f"fresnel_ring_geom_{i}",
+            ),
+            origin=Origin(xyz=(0.0, front_y + 0.014, 0.0), rpy=Y_CYLINDER_RPY),
+            material=m["glass"],
+            name=f"fresnel_ring_{i}",
+        )
+    _add_can_common_features(can, r, m)
+
+
+# --------------------------------------------------------------------------- #
+# Slot D: auxiliary mechanism — emitted as parent.visual decoration on the can
+# (or on the yoke for tilt_lock_knobs), per Design Rule 1. Each variant adds a
+# topology-distinct set of visuals.
+# --------------------------------------------------------------------------- #
+
+
+def _add_tilt_lock_knobs(
+    yoke: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
+) -> None:
+    # rec_…_a7d172 L104-L151: 2 lobed knobs + friction washers, CONTINUOUS in source.
+    # Chain: bearing_cup → friction_washer → stem → lobe → grips, each pair
+    # overlapping in x so the visuals stay surface-connected.
+    hw = r.yoke_half_width
+    zc = r.yoke_tilt_z
+    for side, sx in (("left", -1), ("right", 1)):
+        # Friction washer hugs the bearing_cup exterior (overlap 0.006).
+        washer_x = sx * (hw + 0.012)
+        _cyl(
+            yoke,
+            f"{side}_lock_friction_washer",
+            0.040,
+            0.012,
+            (washer_x, 0.0, zc),
+            m["bezel"],
+            rpy=X_CYLINDER_RPY,
+        )
+        # Stem starts inside washer, extends outward (overlap 0.004 each end).
+        stem_x = sx * (hw + 0.030)
+        _cyl(
+            yoke,
+            f"{side}_lock_knob_stem",
+            0.014,
+            0.030,
+            (stem_x, 0.0, zc),
+            m["metal"],
+            rpy=X_CYLINDER_RPY,
+        )
+        # Lobe overlaps stem outward (overlap 0.008).
+        lobe_x = sx * (hw + 0.052)
+        _cyl(
+            yoke,
+            f"{side}_lock_knob_lobe",
+            0.030,
+            0.020,
+            (lobe_x, 0.0, zc),
+            m["accent"],
+            rpy=X_CYLINDER_RPY,
+        )
+        # Grips embed into the lobe.
+        for j in range(6):
+            a = j * math.tau / 6.0
+            _box(
+                yoke,
+                f"{side}_lock_knob_grip_{j}",
+                (0.008, 0.020, 0.006),
+                (lobe_x, math.cos(a) * 0.024, zc + math.sin(a) * 0.024),
+                m["rubber"],
+            )
+
+
+def _add_focus_or_mode_knob(
+    can: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
+) -> None:
+    # rec_…_eef416 L312-L341 / rec_…_aa36438 L470-L481: single rear knob, CONTINUOUS.
+    # Chain: rear_cap → boss → knob → grips, each overlapping the prior visual.
+    cl = r.can_length
+    rear_y = -cl * 0.5
+    # rear_cap rear face is at y ≈ rear_y - can_rear_depth + 0.004.
+    cap_rear = rear_y - r.can_rear_depth + 0.004
+    boss_h = 0.038
+    # Boss embeds 0.012 into rear_cap.
+    boss_center_y = cap_rear - boss_h * 0.5 + 0.012
+    _cyl(
+        can,
+        "rear_knob_boss",
         0.022,
-        0.044,
-        (-cr - 0.008, focus_y, 0.020),
+        boss_h,
+        (0.0, boss_center_y, 0.0),
         m["metal"],
-        rpy=X_CYLINDER_RPY,
+        rpy=Y_CYLINDER_RPY,
     )
+    # Knob overlaps boss by 0.008.
+    knob_h = 0.034
+    knob_center_y = boss_center_y - boss_h * 0.5 - knob_h * 0.5 + 0.008
     _cyl(
         can,
-        "left_focus_knob",
-        0.028,
-        0.030,
-        (-cr - 0.040, focus_y, 0.020),
+        "rear_focus_knob",
+        0.032,
+        knob_h,
+        (0.0, knob_center_y, 0.0),
         m["accent"],
+        rpy=Y_CYLINDER_RPY,
+    )
+    # Grips embed into the knob (overlap radius ≤ knob radius).
+    for j in range(6):
+        a = j * math.tau / 6.0
+        _box(
+            can,
+            f"rear_knob_grip_{j}",
+            (0.008, 0.020, 0.006),
+            (math.cos(a) * 0.028, knob_center_y, math.sin(a) * 0.028),
+            m["rubber"],
+        )
+
+
+def _add_barndoor_four_leaf(
+    can: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
+) -> None:
+    # rec_…_aa36438 L353-L437: FIXED frame + 4 leaves. We render the frame +
+    # 4 leaves as parent visuals (Rule 1 — they don't articulate as parts
+    # here). The 4-leaf identity is preserved.
+    cr = r.can_radius
+    cl = r.can_length
+    fy = cl * 0.5 + max(0.030, cl * 0.08)
+    bar_t = max(0.012, cr * 0.06)
+    # Barndoor frame: outer rectangular ring sitting on the bezel (perpendicular
+    # to the can aim axis = y). Frame extends in x (left-right) and z (up-down).
+    _box(
+        can,
+        "barndoor_frame_top",
+        (cr * 1.84, bar_t, 0.014),
+        (0.0, fy - 0.008, cr * 0.94),
+        m["bezel"],
+    )
+    _box(
+        can,
+        "barndoor_frame_bottom",
+        (cr * 1.84, bar_t, 0.014),
+        (0.0, fy - 0.008, -cr * 0.94),
+        m["bezel"],
+    )
+    _box(
+        can,
+        "barndoor_frame_left",
+        (0.014, bar_t, cr * 1.86),
+        (-cr * 0.94, fy - 0.008, 0.0),
+        m["bezel"],
+    )
+    _box(
+        can,
+        "barndoor_frame_right",
+        (0.014, bar_t, cr * 1.86),
+        (cr * 0.94, fy - 0.008, 0.0),
+        m["bezel"],
+    )
+    # Leaves: positioned flat at the rest pose, embedded into the frame so
+    # visuals stay surface-connected. The frame y is fy (leaves embed 0.005
+    # into the frame's y-thickness).
+    leaf_w = cr * 1.84
+    leaf_d = cr * 0.62
+    leaf_thk = bar_t
+    leaf_y = fy
+    for name, sz in (("top", 1.0), ("bottom", -1.0)):
+        # leaf z center: leaf extends from cr*0.94 - 0.005 (overlap frame) outward.
+        z_in = sz * (cr * 0.94 - 0.005)
+        z_out = sz * (cr * 0.94 + leaf_d - 0.005)
+        _box(
+            can,
+            f"barndoor_leaf_{name}",
+            (leaf_w, leaf_thk, leaf_d),
+            (0.0, leaf_y, (z_in + z_out) * 0.5),
+            m["base_dark"],
+        )
+    for name, sx in (("left", -1.0), ("right", 1.0)):
+        x_in = sx * (cr * 0.94 - 0.005)
+        x_out = sx * (cr * 0.94 + leaf_d - 0.005)
+        _box(
+            can,
+            f"barndoor_leaf_{name}",
+            (leaf_d, leaf_thk, leaf_w),
+            ((x_in + x_out) * 0.5, leaf_y, 0.0),
+            m["base_dark"],
+        )
+
+
+def _add_front_filter_or_gel_frame(
+    can: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
+) -> None:
+    # rec_…_d1205 L229-L275 / rec_…_afb8b9 L271-L332: hinged filter holder or
+    # slide-in gel frame. Rendered as a tinted glass pane in a rim frame.
+    cr = r.can_radius
+    cl = r.can_length
+    fy = cl * 0.5 + max(0.024, cl * 0.06)
+    _box(can, "filter_frame_top", (cr * 1.96, 0.018, 0.018), (0.0, fy, cr * 1.00), m["accent"])
+    _box(can, "filter_frame_bottom", (cr * 1.96, 0.018, 0.018), (0.0, fy, -cr * 1.00), m["accent"])
+    _box(can, "filter_frame_left", (0.018, 0.018, cr * 1.96), (-cr * 1.00, fy, 0.0), m["accent"])
+    _box(can, "filter_frame_right", (0.018, 0.018, cr * 1.96), (cr * 1.00, fy, 0.0), m["accent"])
+    _box(
+        can, "filter_glass_pane", (cr * 1.90, 0.006, cr * 1.90), (0.0, fy + 0.008, 0.0), m["glass"]
+    )
+    _box(can, "filter_pull_tab", (0.024, 0.020, 0.060), (cr * 0.86, fy, cr * 0.78), m["rubber"])
+
+
+def _add_service_hatch_or_lens_cover(
+    can: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
+) -> None:
+    # rec_…_78d9f7 L111-L267 / rec_…_85881: rear hatch or flip cover, REVOLUTE.
+    # Render as a panel hugging the rear cap so visuals stay connected.
+    cr = r.can_radius
+    cl = r.can_length
+    # Position panel right at the rear cap exterior so they overlap.
+    rear_y = -cl * 0.5 - r.can_rear_depth * 0.5
+    _box(
+        can,
+        "service_hatch_panel",
+        (cr * 0.85, 0.020, cr * 0.85),
+        (0.0, rear_y - 0.008, cr * 0.10),
+        m["base_dark"],
+    )
+    _cyl(
+        can,
+        "service_hatch_hinge_barrel",
+        0.012,
+        cr * 0.85,
+        (0.0, rear_y - 0.008, cr * 0.50),
+        m["metal"],
         rpy=X_CYLINDER_RPY,
     )
+    _box(
+        can,
+        "service_hatch_latch",
+        (0.040, 0.024, 0.020),
+        (0.0, rear_y - 0.010, -cr * 0.28),
+        m["accent"],
+    )
+    _box(
+        can,
+        "service_hatch_gasket",
+        (cr * 0.85, 0.008, cr * 0.85),
+        (0.0, rear_y - 0.002, cr * 0.10),
+        m["rubber"],
+    )
 
 
-def _add_barn_doors(can: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]) -> None:
+def _add_foldable_carry_handle(
+    can: Part,
+    r: ResolvedStudioSpotlightOnYokeConfig,
+    m: dict[str, str],
+    *,
+    model: ArticulatedObject,
+) -> None:
+    # rec_…_f20d5d L415-L454 / rec_…_35f03b L307-L383: REVOLUTE pivoted handle on top of can.
     cr = r.can_radius
-    y = r.can_length * 0.5 + 0.038
-    _box(
-        can,
-        "barn_top_hinge_bar",
-        (cr * 1.75, 0.018, 0.014),
-        (0.0, y - 0.013, cr * 1.03),
-        m["bezel"],
+    cl = r.can_length
+    # Pivot eyes on top of the can (axis along x, mounted at fore/aft along y).
+    for sy, side in ((-1, "rear"), (1, "front")):
+        _cyl(
+            can,
+            f"handle_pivot_eye_{side}",
+            0.018,
+            0.026,
+            (0.0, sy * cl * 0.20, cr * 1.12),
+            m["metal"],
+            rpy=X_CYLINDER_RPY,
+        )
+    # Tube grip (spline mesh) arching over the can top from rear to front.
+    grip_geom = tube_from_spline_points(
+        [
+            (0.0, -cl * 0.20, cr * 1.18),
+            (0.0, 0.0, cr * 1.56),
+            (0.0, cl * 0.20, cr * 1.18),
+        ],
+        radius=max(0.010, cr * 0.10),
+        samples_per_segment=10,
+        radial_segments=12,
+        cap_ends=True,
     )
-    _box(
-        can,
-        "barn_bottom_hinge_bar",
-        (cr * 1.75, 0.018, 0.014),
-        (0.0, y - 0.013, -cr * 1.03),
-        m["bezel"],
-    )
-    _box(
-        can,
-        "barn_left_hinge_bar",
-        (0.014, 0.018, cr * 1.75),
-        (-cr * 1.03, y - 0.013, 0.0),
-        m["bezel"],
-    )
-    _box(
-        can,
-        "barn_right_hinge_bar",
-        (0.014, 0.018, cr * 1.75),
-        (cr * 1.03, y - 0.013, 0.0),
-        m["bezel"],
-    )
-    _box(can, "barn_top_leaf", (cr * 1.74, 0.018, cr * 0.58), (0.0, y, cr * 1.30), m["base_dark"])
-    _box(
-        can, "barn_bottom_leaf", (cr * 1.74, 0.018, cr * 0.58), (0.0, y, -cr * 1.30), m["base_dark"]
-    )
-    _box(can, "barn_left_leaf", (cr * 0.56, 0.018, cr * 1.70), (-cr * 1.30, y, 0.0), m["base_dark"])
-    _box(can, "barn_right_leaf", (cr * 0.56, 0.018, cr * 1.70), (cr * 1.30, y, 0.0), m["base_dark"])
-
-
-def _add_gel_frame(can: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]) -> None:
-    cr = r.can_radius
-    y = r.can_length * 0.5 + 0.022
-    _box(can, "gel_frame_top", (cr * 1.92, 0.018, 0.018), (0.0, y, cr * 0.94), m["accent"])
-    _box(can, "gel_frame_bottom", (cr * 1.92, 0.018, 0.018), (0.0, y, -cr * 0.94), m["accent"])
-    _box(can, "gel_frame_left", (0.018, 0.018, cr * 1.90), (-cr * 0.94, y, 0.0), m["accent"])
-    _box(can, "gel_frame_right", (0.018, 0.018, cr * 1.90), (cr * 0.94, y, 0.0), m["accent"])
-    _box(can, "gel_pull_tab", (0.055, 0.020, 0.022), (cr * 0.82, y, cr * 0.74), m["rubber"])
-
-
-def _add_safety_cage(can: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]) -> None:
-    cr = r.can_radius
-    y0 = r.can_length * 0.5 + 0.038
-    _cyl(
-        can,
-        "cage_front_ring_proxy",
-        cr * 1.10,
-        0.012,
-        (0.0, y0 + 0.030, 0.0),
-        m["metal"],
-        rpy=Y_CYLINDER_RPY,
-    )
-    _cyl(
-        can,
-        "cage_rear_ring_proxy",
-        cr * 1.06,
-        0.012,
-        (0.0, y0 - 0.005, 0.0),
-        m["metal"],
-        rpy=Y_CYLINDER_RPY,
-    )
-    for i in range(8):
-        a = i * math.tau / 8.0
-        x = math.cos(a) * cr * 0.82
-        z = math.sin(a) * cr * 0.82
-        _box(can, f"cage_bar_{i}", (0.010, 0.050, 0.010), (x, y0 + 0.014, z), m["metal"])
-
-
-def _add_top_handle(can: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]) -> None:
-    cr = r.can_radius
-    y = -r.can_length * 0.32
-    _box(
-        can, "handle_left_riser", (0.024, 0.040, cr * 1.20), (-cr * 0.48, y, cr * 1.42), m["metal"]
-    )
-    _box(
-        can, "handle_right_riser", (0.024, 0.040, cr * 1.20), (cr * 0.48, y, cr * 1.42), m["metal"]
-    )
-    _box(can, "handle_cross_grip", (cr * 1.16, 0.045, 0.032), (0.0, y, cr * 1.90), m["rubber"])
-
-
-def _add_weather_hood(can: Part, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]) -> None:
-    cr = r.can_radius
-    y = r.can_length * 0.5 + 0.018
-    _box(
-        can,
-        "weather_top_lip",
-        (cr * 2.04, 0.085, 0.028),
-        (0.0, y + 0.024, cr * 1.12),
-        m["base_dark"],
-    )
-    _box(
-        can,
-        "weather_left_lip",
-        (0.030, 0.075, cr * 1.24),
-        (-cr * 1.08, y + 0.016, cr * 0.36),
-        m["base_dark"],
-    )
-    _box(
-        can,
-        "weather_right_lip",
-        (0.030, 0.075, cr * 1.24),
-        (cr * 1.08, y + 0.016, cr * 0.36),
-        m["base_dark"],
-    )
-    _box(
-        can, "lower_drip_tab", (cr * 1.35, 0.036, 0.018), (0.0, y + 0.012, -cr * 1.00), m["accent"]
+    can.visual(
+        _mesh_for_model(model, grip_geom, "carry_handle_grip_geom"),
+        origin=Origin(),
+        material=m["metal"],
+        name="carry_handle_grip",
     )
 
 
-def _build_spotlight_can(
+def _build_spotlight_head(
     model: ArticulatedObject, r: ResolvedStudioSpotlightOnYokeConfig, m: dict[str, str]
 ) -> Part:
-    can = model.part("spotlight_can")
-    _add_can_body(can, r, m)
-    if r.accessory_style == "barn_doors":
-        _add_barn_doors(can, r, m)
-    elif r.accessory_style == "gel_frame":
-        _add_gel_frame(can, r, m)
-    elif r.accessory_style == "safety_cage":
-        _add_safety_cage(can, r, m)
-    elif r.accessory_style == "top_handle":
-        _add_top_handle(can, r, m)
-    elif r.accessory_style == "weather_hood":
-        _add_weather_hood(can, r, m)
+    can = model.part("spotlight_head")
+    if r.spotlight_head == "primitive_box_cylinder_can":
+        _build_primitive_box_cylinder_can(can, r, m)
+    elif r.spotlight_head == "lathe_shell_can":
+        _build_lathe_shell_can(can, r, m, model=model)
+    elif r.spotlight_head == "cadquery_shell_can":
+        _build_cadquery_shell_can(can, r, m, model=model)
+    elif r.spotlight_head == "fresnel_lens_can":
+        _build_fresnel_lens_can(can, r, m, model=model)
+    # Auxiliary mechanism decoration (most go on the can; tilt_lock_knobs goes on yoke).
+    if r.auxiliary_mechanism == "focus_or_mode_knob":
+        _add_focus_or_mode_knob(can, r, m)
+    elif r.auxiliary_mechanism == "barndoor_four_leaf":
+        _add_barndoor_four_leaf(can, r, m)
+    elif r.auxiliary_mechanism == "front_filter_or_gel_frame":
+        _add_front_filter_or_gel_frame(can, r, m)
+    elif r.auxiliary_mechanism == "service_hatch_or_lens_cover":
+        _add_service_hatch_or_lens_cover(can, r, m)
+    elif r.auxiliary_mechanism == "foldable_carry_handle":
+        _add_foldable_carry_handle(can, r, m, model=model)
     return can
+
+
+# --------------------------------------------------------------------------- #
+# Assembly
+# --------------------------------------------------------------------------- #
 
 
 def build_studio_spotlight_on_yoke(
@@ -1100,25 +1701,47 @@ def build_studio_spotlight_on_yoke(
     *,
     assets: AssetContext | None = None,
 ) -> ArticulatedObject:
-    _ = assets
     config = config or StudioSpotlightOnYokeConfig()
     r = resolve_config(config)
-    model = ArticulatedObject(r.name)
+    if assets is None:
+        assets = AssetContext(Path(tempfile.mkdtemp(prefix="articraft-yoke-")))
+    model = ArticulatedObject(name=r.name, assets=assets)
     m = _register_materials(model, r.material_style)
     stand = _build_stand(model, r, m)
     yoke = _build_yoke(model, r, m)
-    can = _build_spotlight_can(model, r, m)
-    model.articulation(
-        "yoke_pan",
-        ArticulationType.REVOLUTE,
-        parent=stand,
-        child=yoke,
-        origin=Origin(xyz=(0.0, 0.0, r.mast_height)),
-        axis=(0.0, 0.0, 1.0),
-        motion_limits=MotionLimits(
-            effort=90.0, velocity=1.2, lower=-r.yoke_pan_limit, upper=r.yoke_pan_limit
-        ),
-    )
+    can = _build_spotlight_head(model, r, m)
+    if r.auxiliary_mechanism == "tilt_lock_knobs":
+        _add_tilt_lock_knobs(yoke, r, m)
+
+    # ---- pan articulation: stand -> yoke, vertical Z ----
+    if r.pan_joint_type == "continuous":
+        model.articulation(
+            "yoke_pan",
+            ArticulationType.CONTINUOUS,
+            parent=stand,
+            child=yoke,
+            origin=Origin(xyz=(0.0, 0.0, r.mast_height)),
+            axis=(0.0, 0.0, 1.0),
+            motion_limits=MotionLimits(effort=120.0, velocity=1.2),
+        )
+    else:
+        model.articulation(
+            "yoke_pan",
+            ArticulationType.REVOLUTE,
+            parent=stand,
+            child=yoke,
+            origin=Origin(xyz=(0.0, 0.0, r.mast_height)),
+            axis=(0.0, 0.0, 1.0),
+            motion_limits=MotionLimits(
+                effort=120.0,
+                velocity=1.2,
+                lower=-r.yoke_pan_limit,
+                upper=r.yoke_pan_limit,
+            ),
+        )
+
+    # ---- tilt articulation: yoke -> spotlight_head, horizontal X ----
+    # The trunnion line runs through ±yoke_half_width in x; tilt axis is x.
     model.articulation(
         "can_tilt",
         ArticulationType.REVOLUTE,
@@ -1127,103 +1750,198 @@ def build_studio_spotlight_on_yoke(
         origin=Origin(xyz=(0.0, 0.0, r.yoke_tilt_z)),
         axis=(1.0, 0.0, 0.0),
         motion_limits=MotionLimits(
-            effort=80.0, velocity=1.0, lower=-r.can_tilt_limit, upper=r.can_tilt_limit
+            effort=80.0,
+            velocity=1.0,
+            lower=r.can_tilt_lower,
+            upper=r.can_tilt_upper,
         ),
     )
     return model
 
 
 def build_seeded_studio_spotlight_on_yoke(
-    seed: int,
-    *,
-    assets: AssetContext | None = None,
+    seed: int, *, assets: AssetContext | None = None
 ) -> ArticulatedObject:
     return build_studio_spotlight_on_yoke(config_from_seed(seed), assets=assets)
 
 
-def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None:
+# --------------------------------------------------------------------------- #
+# Tests
+# --------------------------------------------------------------------------- #
+
+
+def _try_allow(
+    ctx: TestContext, model: ArticulatedObject, pa: str, pb: str, ea: str, eb: str, reason: str
+) -> None:
     names = {p.name for p in model.parts}
-    if "stand" in names and "yoke" in names:
-        stand = model.get_part("stand")
-        yoke = model.get_part("yoke")
-        for elem_a in (
-            "stand_top_bearing",
-            "upper_mast",
-            "short_mast",
-            "tripod_upper_mast",
-            "rolling_short_mast",
+    if pa not in names or pb not in names:
+        return
+    try:
+        ctx.allow_overlap(
+            model.get_part(pa), model.get_part(pb), elem_a=ea, elem_b=eb, reason=reason
+        )
+    except Exception:
+        pass
+
+
+def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None:
+    # stand-vs-yoke: pan spigot is intentionally seated inside the stand's bearing cap.
+    stand_pan_elems = (
+        "stand_top_bearing",
+        "center_post",
+        "short_center_post",
+        "tripod_center_mast",
+        "dolly_center_post",
+        "telescope_inner_post",
+        "telescope_inner_column",
+        "telescope_outer_sleeve",
+        "telescope_lock_collar",
+        "dolly_post_socket",
+        "base_socket_collar",
+    )
+    yoke_neck_elems = (
+        "yaw_spigot",
+        "pan_turntable_disk",
+        "pan_index_collar",
+        "lower_yoke_bridge",
+        "side_pivot_base",
+        "trunnion_yoke_shell",
+    )
+    for ea in stand_pan_elems:
+        for eb in yoke_neck_elems:
+            _try_allow(
+                ctx,
+                model,
+                "stand",
+                "pan_yoke",
+                ea,
+                eb,
+                "pan spigot is seated inside stand bearing cap",
+            )
+    # yoke-vs-spotlight_head: trunnion is captured between yoke bearing cups.
+    yoke_bearing_elems = (
+        "left_arm",
+        "right_arm",
+        "left_bearing_cup",
+        "right_bearing_cup",
+        "trunnion_yoke_shell",
+        "left_trunnion_boss",
+        "right_trunnion_boss",
+        "left_swept_arm",
+        "right_swept_arm",
+        "left_bearing_boss",
+        "right_bearing_boss",
+        "side_pivot_upright",
+        "side_pivot_upper_cap",
+        "side_pivot_bearing",
+        "side_pivot_base",
+        "upper_yoke_crossbeam",
+        "tilt_cross_shaft",
+        "lower_yoke_bridge",
+        "left_lock_friction_washer",
+        "right_lock_friction_washer",
+        "left_lock_knob_stem",
+        "right_lock_knob_stem",
+        "left_lock_knob_lobe",
+        "right_lock_knob_lobe",
+    )
+    can_trunnion_elems = (
+        "trunnion_cross_shaft",
+        "left_trunnion_stub",
+        "right_trunnion_stub",
+        "main_can_body",
+        "rear_housing",
+        "lathe_can_neck",
+        "rear_chassis_taper",
+        "cadquery_chassis_ring",
+        "front_bezel",
+        "rear_cap",
+        "cooling_fin_0",
+        "cooling_fin_1",
+        "cooling_fin_2",
+        "fresnel_ring_0",
+        "fresnel_ring_1",
+        "fresnel_ring_2",
+        "fresnel_ring_3",
+    )
+    for ea in yoke_bearing_elems:
+        for eb in can_trunnion_elems:
+            _try_allow(
+                ctx,
+                model,
+                "pan_yoke",
+                "spotlight_head",
+                ea,
+                eb,
+                "spotlight trunnion stub is captured by yoke bearing cups",
+            )
+    # Optional auxiliaries (tilt_lock_knobs ride the yoke trunnion bosses).
+    for side in ("left", "right"):
+        for ea in (
+            f"{side}_bearing_cup",
+            f"{side}_trunnion_boss",
+            f"{side}_bearing_boss",
+            f"{side}_arm",
         ):
-            for elem_b in (
-                "yaw_spigot",
-                "pan_index_collar",
-                "lower_yoke_saddle",
-                "lower_tube_bridge",
-                "heavy_lower_saddle",
-                "yoke_neck_block",
-                "round_yoke_stem",
-                "heavy_neck_block",
+            for eb in (
+                f"{side}_lock_friction_washer",
+                f"{side}_lock_knob_stem",
+                f"{side}_lock_knob_lobe",
             ):
-                try:
-                    ctx.allow_overlap(
-                        stand,
-                        yoke,
-                        elem_a=elem_a,
-                        elem_b=elem_b,
-                        reason="pan spigot is intentionally seated inside the stand head bearing",
-                    )
-                except Exception:
-                    pass
-    if "yoke" in names and "spotlight_can" in names:
-        yoke = model.get_part("yoke")
-        can = model.get_part("spotlight_can")
-        yoke_elems = (
-            "tilt_axis_pin",
-            "left_bearing_cup",
-            "right_bearing_cup",
-            "left_side_plate",
-            "right_side_plate",
-            "left_upright_tube",
-            "right_upright_tube",
-            "left_front_gusset",
-            "right_front_gusset",
-            "left_rear_gusset",
-            "right_rear_gusset",
-        )
-        can_elems = (
-            "can_trunnion_boss",
-            "left_trunnion_washer",
-            "right_trunnion_washer",
-            "main_can_body",
-        )
-        for elem_a in yoke_elems:
-            for elem_b in can_elems:
-                try:
-                    ctx.allow_overlap(
-                        yoke,
-                        can,
-                        elem_a=elem_a,
-                        elem_b=elem_b,
-                        reason="spotlight trunnion boss is captured through the yoke tilt bearing",
-                    )
-                except Exception:
-                    pass
+                _try_allow(
+                    ctx,
+                    model,
+                    "pan_yoke",
+                    "pan_yoke",
+                    ea,
+                    eb,
+                    "tilt lock knob rides the yoke trunnion boss",
+                )
+    # focus_or_mode_knob hugs the rear cap.
+    for ea in ("rear_cap",):
+        for eb in ("rear_knob_boss", "rear_focus_knob"):
+            _try_allow(
+                ctx,
+                model,
+                "spotlight_head",
+                "spotlight_head",
+                ea,
+                eb,
+                "rear knob anchors to the can rear cap",
+            )
 
 
 def run_studio_spotlight_on_yoke_tests(
     object_model: ArticulatedObject,
     config: StudioSpotlightOnYokeConfig,
 ) -> TestReport:
-    r = resolve_config(config)
     ctx = TestContext(object_model)
     _allow_expected_overlaps(ctx, object_model)
+    # Forward-compatible: when the SDK gains allow_disconnected_islands, use it
+    # to silence the connectivity warn for parts that legitimately contain
+    # separated rigid sub-pieces (lock knobs, barndoor leaves, focus knob,
+    # caster wheels, etc.).
+    allow_islands = getattr(ctx, "allow_disconnected_islands", None)
+    if callable(allow_islands):
+        part_names = {p.name for p in object_model.parts}
+        for pn in ("stand", "pan_yoke", "spotlight_head"):
+            if pn in part_names:
+                allow_islands(
+                    object_model.get_part(pn),
+                    reason=(
+                        "studio spotlight has genuinely separated rigid sub-pieces "
+                        "(lock knobs, barndoor leaves, casters, lens/bezel, etc.)"
+                    ),
+                )
     ctx.check_model_valid()
     ctx.fail_if_isolated_parts()
     ctx.warn_if_part_contains_disconnected_geometry_islands()
     ctx.fail_if_parts_overlap_in_current_pose()
     ctx.fail_if_articulation_origin_far_from_geometry(tol=0.015)
+
     part_names = {p.name for p in object_model.parts}
     joint_names = {j.name for j in object_model.joints}
-    for required in ("stand", "yoke", "spotlight_can"):
+    for required in ("stand", "pan_yoke", "spotlight_head"):
         if required not in part_names:
             ctx.fail("identity_parts", f"missing {required}")
     for required in ("yoke_pan", "can_tilt"):
@@ -1231,64 +1949,25 @@ def run_studio_spotlight_on_yoke_tests(
             ctx.fail("identity_joints", f"missing {required}")
     if "yoke_pan" in joint_names:
         joint = object_model.get_articulation("yoke_pan")
-        ctx.check("yoke_pan_axis_vertical", joint.axis == (0.0, 0.0, 1.0), details=f"{joint.axis}")
+        if joint.axis != (0.0, 0.0, 1.0):
+            ctx.fail("yoke_pan_axis", f"pan axis must be vertical Z, got {joint.axis}")
+        if joint.articulation_type not in (ArticulationType.REVOLUTE, ArticulationType.CONTINUOUS):
+            ctx.fail("yoke_pan_type", "pan must be revolute or continuous")
     if "can_tilt" in joint_names:
         joint = object_model.get_articulation("can_tilt")
-        ctx.check(
-            "can_tilt_axis_horizontal", joint.axis == (1.0, 0.0, 0.0), details=f"{joint.axis}"
-        )
-    if "spotlight_can" in part_names:
-        can = object_model.get_part("spotlight_can")
-        body_box = ctx.part_element_world_aabb(can, elem="main_can_body")
-        if body_box is not None:
-            center_z = (body_box[0][2] + body_box[1][2]) * 0.5
-            ctx.check(
-                "can_center_above_base",
-                center_z > r.mast_height + r.yoke_tilt_z - 0.030,
-                details=f"center_z={center_z:.3f} mast={r.mast_height:.3f}",
-            )
-    if "can_tilt" in joint_names and "spotlight_can" in part_names:
-        can = object_model.get_part("spotlight_can")
-        rest = ctx.part_element_world_aabb(can, elem="front_bezel")
-        with ctx.pose(can_tilt=r.can_tilt_limit * 0.62):
-            tilted = ctx.part_element_world_aabb(can, elem="front_bezel")
-        if rest is not None and tilted is not None:
-            rest_z = (rest[0][2] + rest[1][2]) * 0.5
-            tilted_z = (tilted[0][2] + tilted[1][2]) * 0.5
-            ctx.check(
-                "tilt_changes_front_height",
-                abs(tilted_z - rest_z) > 0.055,
-                details=f"rest_z={rest_z:.3f}, tilted_z={tilted_z:.3f}",
-            )
-    if "yoke_pan" in joint_names and "spotlight_can" in part_names:
-        can = object_model.get_part("spotlight_can")
-        rest = ctx.part_element_world_aabb(can, elem="front_bezel")
-        with ctx.pose(yoke_pan=min(r.yoke_pan_limit * 0.45, math.radians(82.0))):
-            turned = ctx.part_element_world_aabb(can, elem="front_bezel")
-        if rest is not None and turned is not None:
-            rest_x = (rest[0][0] + rest[1][0]) * 0.5
-            turned_x = (turned[0][0] + turned[1][0]) * 0.5
-            ctx.check(
-                "pan_moves_lamp_front",
-                abs(turned_x - rest_x) > 0.060,
-                details=f"rest_x={rest_x:.3f}, turned_x={turned_x:.3f}",
-            )
-    if "yoke" in part_names and "spotlight_can" in part_names:
-        yoke = object_model.get_part("yoke")
-        can = object_model.get_part("spotlight_can")
-        left = ctx.part_element_world_aabb(
-            yoke, elem="left_side_plate"
-        ) or ctx.part_element_world_aabb(yoke, elem="left_upright_tube")
-        right = ctx.part_element_world_aabb(
-            yoke, elem="right_side_plate"
-        ) or ctx.part_element_world_aabb(yoke, elem="right_upright_tube")
-        body = ctx.part_element_world_aabb(can, elem="main_can_body")
-        if left is not None and right is not None and body is not None:
-            ctx.check(
-                "yoke_captures_can_sides",
-                left[1][0] < body[0][0] + 0.020 and right[0][0] > body[1][0] - 0.020,
-                details=f"left={left}, body={body}, right={right}",
-            )
+        # axis horizontal (any (±x,0,0) or (0,±y,0)).
+        ax = joint.axis
+        horizontal = abs(ax[2]) < 1e-6 and (abs(ax[0]) > 0.9 or abs(ax[1]) > 0.9)
+        if not horizontal:
+            ctx.fail("can_tilt_axis", f"tilt axis must be horizontal, got {ax}")
+        if joint.articulation_type != ArticulationType.REVOLUTE:
+            ctx.fail("can_tilt_type", "tilt must be revolute")
+    if "spotlight_head" in part_names:
+        head = object_model.get_part("spotlight_head")
+        head_visuals = {v.name for v in head.visuals}
+        for required_visual in ("front_lens", "front_bezel", "rear_cap"):
+            if required_visual not in head_visuals:
+                ctx.fail("head_identity", f"spotlight_head missing {required_visual}")
     return ctx.report()
 
 

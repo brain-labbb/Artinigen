@@ -12,18 +12,24 @@ stable identity shared by those samples:
 * a circular blade spinning about its arbor,
 * a hinged lower blade guard.
 
-The sampled domain intentionally avoids mixing every possible accessory into
-every seed. Sliding rails, clamp details, carry handle, trench-stop knob, and
-extension wing are gated as visual or optional articulated modules around the
-same core chain. The core motion spine remains:
+config_from_seed uses deterministic procedural sampling (no curated/modulo
+table). slot_choices exposes the real structural topology only (palette and the
+colour-named head/material styles are NOT slots).
 
-``base --miter_table_rotate(Z)--> miter_table
-       --saw_arm_tilt(X)--> saw_arm
-       --bevel_tilt(Y)--> saw_head
-       --blade_spin(X)--> blade``
+Two real topology axes (per spec) vary the kinematic chain:
 
-plus ``lower_guard_hinge`` around the blade arbor axis when the lower guard is
-present.
+* Slot B ``arm_linkage`` — how the table reaches the saw arm:
+  - ``direct_pivot_arm``       table --REVOLUTE(X)--> saw_arm
+  - ``rear_yoke_swing_arm``    table --FIXED--> rear_pivot_yoke --REVOLUTE(X)--> saw_arm
+  - ``slide_rail_carriage``    table --PRISMATIC(Y)--> slide_carriage --REVOLUTE(X)--> saw_arm
+    (twin/single rails: ``slide_rail_count`` multiplicity)
+* Slot C ``blade_guard`` — blade spin + guard:
+  - ``static_blade_fixed_guard``        blade FIXED, fixed upper guard
+  - ``spinning_blade_upper_guard``      blade CONTINUOUS(X), fixed upper guard
+  - ``spinning_blade_retracting_guard`` blade CONTINUOUS(X) + REVOLUTE lower guard
+
+Shared spine for all seeds: ``base --miter_table_rotate(Z)--> miter_table`` and
+``saw_arm --bevel_tilt(Y)--> saw_head``.
 """
 
 from __future__ import annotations
@@ -60,6 +66,25 @@ HeadStyle = Literal["yellow_guard", "red_compact", "blue_motor", "dark_professio
 AuxStyle = Literal["none", "carry_handle", "trench_stop_knob", "side_extension_wing", "table_clamp"]
 BladeStyle = Literal["plain_disc", "toothed_disc", "thin_kerf"]
 MaterialStyle = Literal["shop_yellow", "pro_red", "blue_gray", "dark_teal", "jobsite_orange"]
+# Slot B arm_linkage — real kinematic topology between the table and the saw arm.
+LinkageStyle = Literal["direct_pivot_arm", "rear_yoke_swing_arm", "slide_rail_carriage"]
+# Slot C blade_guard — blade spin + guard topology.
+BladeGuardStyle = Literal[
+    "static_blade_fixed_guard",
+    "spinning_blade_upper_guard",
+    "spinning_blade_retracting_guard",
+]
+
+LINKAGE_STYLES: tuple[LinkageStyle, ...] = (
+    "direct_pivot_arm",
+    "rear_yoke_swing_arm",
+    "slide_rail_carriage",
+)
+BLADE_GUARD_STYLES: tuple[BladeGuardStyle, ...] = (
+    "static_blade_fixed_guard",
+    "spinning_blade_upper_guard",
+    "spinning_blade_retracting_guard",
+)
 
 BASE_STYLES: tuple[BaseStyle, ...] = (
     "compact_bench",
@@ -168,6 +193,11 @@ class MiterSawArmAssemblyConfig:
     aux_style: AuxStyle = "none"
     blade_style: BladeStyle = "toothed_disc"
     material_style: MaterialStyle = "shop_yellow"
+    linkage_style: LinkageStyle = "direct_pivot_arm"
+    blade_guard_style: BladeGuardStyle = "spinning_blade_retracting_guard"
+    slide_rail_count: int = 2
+    fence_segment_count: int = 1
+    base_wing_count: int = 0
     table_radius: float = 0.15
     blade_radius: float = 0.12
     arm_length: float = 0.36
@@ -188,6 +218,11 @@ class ResolvedMiterSawArmAssemblyConfig:
     aux_style: AuxStyle
     blade_style: BladeStyle
     material_style: MaterialStyle
+    linkage_style: LinkageStyle
+    blade_guard_style: BladeGuardStyle
+    slide_rail_count: int
+    fence_segment_count: int
+    base_wing_count: int
     table_radius: float
     blade_radius: float
     arm_length: float
@@ -341,117 +376,8 @@ def _handle_loop_mesh(model: ArticulatedObject, name: str, scale: float = 1.0):
 
 
 def config_from_seed(seed: int) -> MiterSawArmAssemblyConfig:
-    curated: dict[int, MiterSawArmAssemblyConfig] = {
-        0: MiterSawArmAssemblyConfig(
-            base_style="compact_bench",
-            arm_style="single_beam",
-            head_style="yellow_guard",
-            aux_style="none",
-            blade_style="toothed_disc",
-            material_style="shop_yellow",
-            name="seeded_miter_saw_arm_assembly_0",
-        ),
-        1: MiterSawArmAssemblyConfig(
-            base_style="wide_jobsite",
-            arm_style="boxed_spine",
-            head_style="red_compact",
-            aux_style="carry_handle",
-            blade_style="plain_disc",
-            material_style="pro_red",
-            table_radius=0.16,
-            blade_radius=0.125,
-            base_width=0.78,
-            name="seeded_miter_saw_arm_assembly_1",
-        ),
-        2: MiterSawArmAssemblyConfig(
-            base_style="sliding_rail_base",
-            arm_style="twin_rail",
-            head_style="blue_motor",
-            aux_style="trench_stop_knob",
-            blade_style="thin_kerf",
-            material_style="blue_gray",
-            arm_length=0.42,
-            blade_radius=0.118,
-            name="seeded_miter_saw_arm_assembly_2",
-        ),
-        3: MiterSawArmAssemblyConfig(
-            base_style="service_casting",
-            arm_style="arched_handle",
-            head_style="dark_professional",
-            aux_style="table_clamp",
-            blade_style="toothed_disc",
-            material_style="dark_teal",
-            table_radius=0.155,
-            base_depth=0.50,
-            name="seeded_miter_saw_arm_assembly_3",
-        ),
-        4: MiterSawArmAssemblyConfig(
-            base_style="wide_jobsite",
-            arm_style="single_beam",
-            head_style="yellow_guard",
-            aux_style="side_extension_wing",
-            blade_style="toothed_disc",
-            material_style="jobsite_orange",
-            base_width=0.84,
-            name="seeded_miter_saw_arm_assembly_4",
-        ),
-        5: MiterSawArmAssemblyConfig(
-            base_style="compact_bench",
-            arm_style="single_beam",
-            head_style="red_compact",
-            aux_style="trench_stop_knob",
-            blade_style="plain_disc",
-            material_style="pro_red",
-            arm_length=0.39,
-            blade_radius=0.112,
-            name="seeded_miter_saw_arm_assembly_5",
-        ),
-        6: MiterSawArmAssemblyConfig(
-            base_style="sliding_rail_base",
-            arm_style="boxed_spine",
-            head_style="blue_motor",
-            aux_style="carry_handle",
-            blade_style="toothed_disc",
-            material_style="blue_gray",
-            table_radius=0.17,
-            base_width=0.82,
-            name="seeded_miter_saw_arm_assembly_6",
-        ),
-        7: MiterSawArmAssemblyConfig(
-            base_style="service_casting",
-            arm_style="single_beam",
-            head_style="yellow_guard",
-            aux_style="side_extension_wing",
-            blade_style="thin_kerf",
-            material_style="shop_yellow",
-            base_depth=0.52,
-            name="seeded_miter_saw_arm_assembly_7",
-        ),
-        8: MiterSawArmAssemblyConfig(
-            base_style="wide_jobsite",
-            arm_style="arched_handle",
-            head_style="dark_professional",
-            aux_style="table_clamp",
-            blade_style="toothed_disc",
-            material_style="dark_teal",
-            blade_radius=0.13,
-            name="seeded_miter_saw_arm_assembly_8",
-        ),
-        9: MiterSawArmAssemblyConfig(
-            base_style="compact_bench",
-            arm_style="boxed_spine",
-            head_style="red_compact",
-            aux_style="none",
-            blade_style="toothed_disc",
-            material_style="jobsite_orange",
-            table_radius=0.145,
-            arm_length=0.34,
-            name="seeded_miter_saw_arm_assembly_9",
-        ),
-    }
-    if seed in curated:
-        return curated[seed]
     rng = random.Random(seed)
+    linkage: LinkageStyle = rng.choice(LINKAGE_STYLES)
     return MiterSawArmAssemblyConfig(
         base_style=rng.choice(BASE_STYLES),
         arm_style=rng.choice(ARM_STYLES),
@@ -459,11 +385,18 @@ def config_from_seed(seed: int) -> MiterSawArmAssemblyConfig:
         aux_style=rng.choice(AUX_STYLES),
         blade_style=rng.choice(BLADE_STYLES),
         material_style=rng.choice(MATERIAL_STYLES),
+        linkage_style=linkage,
+        blade_guard_style=rng.choice(BLADE_GUARD_STYLES),
+        slide_rail_count=(rng.choice((1, 2)) if linkage == "slide_rail_carriage" else 0),
         table_radius=round(rng.uniform(0.135, 0.175), 3),
         blade_radius=round(rng.uniform(0.105, 0.135), 3),
         arm_length=round(rng.uniform(0.32, 0.44), 3),
         base_width=round(rng.uniform(0.62, 0.86), 3),
         base_depth=round(rng.uniform(0.42, 0.54), 3),
+        # Drawn last so the geometry-determining stream above is unchanged and
+        # these additive multiplicity counts don't perturb existing seeds.
+        fence_segment_count=rng.choice((1, 2)),
+        base_wing_count=rng.choice((0, 0, 1, 2)),
         name=f"seeded_miter_saw_arm_assembly_{seed}",
     )
 
@@ -497,6 +430,22 @@ def resolve_config(config: MiterSawArmAssemblyConfig) -> ResolvedMiterSawArmAsse
         aux_style=aux_style,  # type: ignore[arg-type]
         blade_style=blade_style,  # type: ignore[arg-type]
         material_style=material_style,  # type: ignore[arg-type]
+        linkage_style=_require(config.linkage_style, LINKAGE_STYLES, field_name="linkage_style"),  # type: ignore[arg-type]
+        blade_guard_style=_require(  # type: ignore[arg-type]
+            config.blade_guard_style, BLADE_GUARD_STYLES, field_name="blade_guard_style"
+        ),
+        slide_rail_count=(
+            2
+            if config.linkage_style == "slide_rail_carriage"
+            and config.slide_rail_count not in (1, 2)
+            else int(config.slide_rail_count)
+        ),
+        fence_segment_count=(2 if int(config.fence_segment_count) >= 2 else 1),
+        base_wing_count=max(
+            0,
+            min(2, int(config.base_wing_count)),
+        )
+        or (1 if config.aux_style == "side_extension_wing" else 0),
         table_radius=table_radius,
         blade_radius=blade_radius,
         arm_length=arm_length,
@@ -546,12 +495,24 @@ def _build_base(
         material=m["table"],
         name="turntable_seat",
     )
-    base.visual(
-        Box((r.base_width * 0.72, 0.018, 0.075)),
-        origin=Origin(xyz=(0.0, r.fence_y, r.base_height + 0.064)),
-        material=m["fence"],
-        name="rear_fence_bar",
-    )
+    # Fence: 1 continuous bar, or 2 split half-fences with a centre kerf gap
+    # (fence_segment_count multiplicity). The full stanchion bridge underneath
+    # ties any split halves to the base.
+    if r.fence_segment_count >= 2:
+        for sign, side in ((-1.0, "left"), (1.0, "right")):
+            base.visual(
+                Box((r.base_width * 0.33, 0.018, 0.075)),
+                origin=Origin(xyz=(sign * r.base_width * 0.195, r.fence_y, r.base_height + 0.064)),
+                material=m["fence"],
+                name=f"{side}_rear_fence_bar",
+            )
+    else:
+        base.visual(
+            Box((r.base_width * 0.72, 0.018, 0.075)),
+            origin=Origin(xyz=(0.0, r.fence_y, r.base_height + 0.064)),
+            material=m["fence"],
+            name="rear_fence_bar",
+        )
     base.visual(
         Box((r.base_width * 0.70, 0.026, 0.085)),
         origin=Origin(xyz=(0.0, r.fence_y, r.base_height + 0.028)),
@@ -577,16 +538,16 @@ def _build_base(
         )
     if r.base_style in ("wide_jobsite", "service_casting"):
         base.visual(
-            Box((r.base_width * 0.34, 0.050, 0.026)),
-            origin=Origin(xyz=(0.0, r.base_depth * 0.38, r.base_height + 0.018)),
+            Box((r.base_width * 0.34, 0.050, 0.030)),
+            origin=Origin(xyz=(0.0, r.base_depth * 0.38, r.base_height + 0.004)),
             material=m["base_dark"],
             name="front_miter_scale_lip",
         )
         for i in range(7):
             x = (i - 3) * r.base_width * 0.035
             base.visual(
-                Box((0.004, 0.018, 0.006)),
-                origin=Origin(xyz=(x, r.base_depth * 0.39, r.base_height + 0.034)),
+                Box((0.004, 0.018, 0.010)),
+                origin=Origin(xyz=(x, r.base_depth * 0.39, r.base_height + 0.020)),
                 material=m["accent"],
                 name=f"miter_scale_tick_{i}",
             )
@@ -619,25 +580,30 @@ def _build_base(
             material=m["base_dark"],
             name="rear_rail_root_strut",
         )
-    if r.aux_style == "side_extension_wing":
-        wing_x = r.base_width * 0.58
+    # Side extension wings: base_wing_count multiplicity (0 / right / both).
+    wing_signs = {1: ((1.0, "right"),), 2: ((-1.0, "left"), (1.0, "right"))}.get(
+        r.base_wing_count, ()
+    )
+    for sign, side in wing_signs:
         base.visual(
             Box((r.base_width * 0.34, r.base_depth * 0.30, 0.020)),
-            origin=Origin(xyz=(wing_x, 0.02, r.base_height + 0.008)),
+            origin=Origin(xyz=(sign * r.base_width * 0.58, 0.02, r.base_height + 0.008)),
             material=m["table"],
-            name="right_extension_wing",
+            name=f"{side}_extension_wing",
         )
         base.visual(
             Cylinder(radius=0.012, length=r.base_depth * 0.32),
-            origin=Origin(xyz=(r.base_width * 0.40, 0.02, r.base_height + 0.030), rpy=_cyl_y()),
+            origin=Origin(
+                xyz=(sign * r.base_width * 0.40, 0.02, r.base_height + 0.030), rpy=_cyl_y()
+            ),
             material=m["blade"],
-            name="extension_wing_hinge_pin",
+            name=f"{side}_extension_wing_hinge_pin",
         )
         base.visual(
             Box((0.090, r.base_depth * 0.30, 0.034)),
-            origin=Origin(xyz=(r.base_width * 0.43, 0.02, r.base_height + 0.017)),
+            origin=Origin(xyz=(sign * r.base_width * 0.43, 0.02, r.base_height + 0.017)),
             material=m["table"],
-            name="extension_wing_root_bridge",
+            name=f"{side}_extension_wing_root_bridge",
         )
     base.inertial = Inertial.from_geometry(
         Box((r.base_width, r.base_depth, 0.18)),
@@ -1032,6 +998,97 @@ def _build_lower_guard(
     return guard
 
 
+_SLIDE_TRAVEL = 0.17
+
+
+def _build_rear_pivot_yoke(
+    model: ArticulatedObject, r: ResolvedMiterSawArmAssemblyConfig, m: dict[str, object]
+) -> Part:
+    """Slot B rear_yoke: a FIXED rear pivot yoke (tower) between table and arm.
+    Built in a local frame whose origin (0,0,0) sits at the yoke base on the
+    table top (so the FIXED joint origin lies inside the yoke geometry)."""
+    yoke = model.part("rear_pivot_yoke")
+    dz = r.hinge_xyz[2] - r.table_z  # pivot height above yoke base
+    yoke.visual(
+        Box((0.18, 0.075, 0.05)),
+        origin=Origin(xyz=(0.0, -0.005, 0.018)),
+        material=m["arm"],
+        name="yoke_base_web",
+    )
+    for sign, side in ((-1.0, "left"), (1.0, "right")):
+        yoke.visual(
+            Box((0.024, 0.090, dz + 0.02)),
+            origin=Origin(xyz=(sign * 0.062, 0.0, dz * 0.5 + 0.01)),
+            material=m["arm"],
+            name=f"{side}_yoke_plate",
+        )
+    yoke.visual(
+        Box((0.150, 0.060, 0.034)),
+        origin=Origin(xyz=(0.0, 0.0, dz + 0.022)),
+        material=m["arm"],
+        name="yoke_top_bridge",
+    )
+    yoke.visual(
+        Cylinder(radius=0.019, length=0.165),
+        origin=Origin(xyz=(0.0, 0.0, dz), rpy=_cyl_x()),
+        material=m["base_dark"],
+        name="yoke_pivot_barrel",
+    )
+    return yoke
+
+
+def _emit_slide_rails(
+    table: Part, r: ResolvedMiterSawArmAssemblyConfig, m: dict[str, object]
+) -> None:
+    """Slot B slide rails — twin/single horizontal rails on the table (carriage
+    rides them). slide_rail_count is the spec's multiplicity."""
+    hx, hy, hz = r.hinge_xyz
+    xs = (0.0,) if r.slide_rail_count == 1 else (-0.052, 0.052)
+    table.visual(
+        Box((0.17, 0.060, hz - r.table_z + 0.03)),
+        origin=Origin(xyz=(0.0, hy - 0.020, (hz + r.table_z) * 0.5)),
+        material=m["base_dark"],
+        name="slide_rail_post",
+    )
+    for i, x in enumerate(xs):
+        table.visual(
+            Cylinder(radius=0.011, length=_SLIDE_TRAVEL + 0.18),
+            origin=Origin(xyz=(x, hy + 0.085, hz), rpy=_cyl_y()),
+            material=m["fence"],
+            name=f"slide_rail_{i}",
+        )
+
+
+def _build_slide_carriage(
+    model: ArticulatedObject, r: ResolvedMiterSawArmAssemblyConfig, m: dict[str, object]
+) -> Part:
+    """Slot B slide carriage — rides the table rails, carries the arm pivot.
+    Built in a local frame whose origin (0,0,0) sits at the arm pivot (so the
+    PRISMATIC joint origin lies inside the carriage geometry)."""
+    car = model.part("slide_carriage")
+    xs = (0.0,) if r.slide_rail_count == 1 else (-0.052, 0.052)
+    car.visual(
+        Box((0.16, 0.100, 0.072)),
+        origin=Origin(xyz=(0.0, 0.040, 0.0)),
+        material=m["arm"],
+        name="carriage_body",
+    )
+    for i, x in enumerate(xs):
+        car.visual(
+            Cylinder(radius=0.019, length=0.095),
+            origin=Origin(xyz=(x, 0.085, 0.0), rpy=_cyl_y()),
+            material=m["base_dark"],
+            name=f"carriage_bore_{i}",
+        )
+    car.visual(
+        Cylinder(radius=0.019, length=0.155),
+        origin=Origin(xyz=(0.0, 0.0, 0.0), rpy=_cyl_x()),
+        material=m["base_dark"],
+        name="carriage_pivot_barrel",
+    )
+    return car
+
+
 def build_miter_saw_arm_assembly(
     config: MiterSawArmAssemblyConfig | None = None,
     *,
@@ -1046,7 +1103,7 @@ def build_miter_saw_arm_assembly(
     arm = _build_saw_arm(model, r, materials)
     head = _build_saw_head(model, r, materials)
     blade = _build_blade(model, r, materials)
-    lower_guard = _build_lower_guard(model, r, materials)
+
     model.articulation(
         "miter_table_rotate",
         ArticulationType.REVOLUTE,
@@ -1058,12 +1115,44 @@ def build_miter_saw_arm_assembly(
             effort=120.0, velocity=1.0, lower=-r.miter_limit, upper=r.miter_limit
         ),
     )
+
+    # Slot B arm_linkage: table -> [intermediate] -> saw_arm (REVOLUTE tilt).
+    hx, hy, hz = r.hinge_xyz
+    if r.linkage_style == "rear_yoke_swing_arm":
+        yoke = _build_rear_pivot_yoke(model, r, materials)
+        model.articulation(
+            "table_to_yoke_fixed",
+            ArticulationType.FIXED,
+            parent=table,
+            child=yoke,
+            origin=Origin(xyz=(0.0, hy, r.table_z)),  # yoke base anchor on table
+        )
+        arm_parent = yoke
+        arm_tilt_origin = (hx, 0.0, hz - r.table_z)  # in yoke local frame
+    elif r.linkage_style == "slide_rail_carriage":
+        _emit_slide_rails(table, r, materials)
+        carriage = _build_slide_carriage(model, r, materials)
+        model.articulation(
+            "carriage_slide",
+            ArticulationType.PRISMATIC,
+            parent=table,
+            child=carriage,
+            origin=Origin(xyz=(hx, hy, hz)),  # carriage anchor at the arm pivot
+            axis=(0.0, 1.0, 0.0),
+            motion_limits=MotionLimits(effort=90.0, velocity=0.5, lower=0.0, upper=_SLIDE_TRAVEL),
+        )
+        arm_parent = carriage
+        arm_tilt_origin = (0.0, 0.0, 0.0)  # carriage local origin is the pivot
+    else:  # direct_pivot_arm
+        arm_parent = table
+        arm_tilt_origin = r.hinge_xyz
+
     model.articulation(
         "saw_arm_tilt",
         ArticulationType.REVOLUTE,
-        parent=table,
+        parent=arm_parent,
         child=arm,
-        origin=Origin(xyz=r.hinge_xyz),
+        origin=Origin(xyz=arm_tilt_origin),
         axis=(1.0, 0.0, 0.0),
         motion_limits=MotionLimits(effort=160.0, velocity=1.0, lower=-0.08, upper=r.chop_upper),
     )
@@ -1078,24 +1167,38 @@ def build_miter_saw_arm_assembly(
             effort=80.0, velocity=0.9, lower=-r.bevel_limit, upper=r.bevel_limit
         ),
     )
-    model.articulation(
-        "blade_spin",
-        ArticulationType.CONTINUOUS,
-        parent=head,
-        child=blade,
-        origin=Origin(xyz=r.blade_xyz),
-        axis=(1.0, 0.0, 0.0),
-        motion_limits=MotionLimits(effort=20.0, velocity=80.0),
-    )
-    model.articulation(
-        "lower_guard_hinge",
-        ArticulationType.REVOLUTE,
-        parent=head,
-        child=lower_guard,
-        origin=Origin(xyz=r.blade_xyz),
-        axis=(1.0, 0.0, 0.0),
-        motion_limits=MotionLimits(effort=18.0, velocity=2.0, lower=-0.20, upper=1.05),
-    )
+
+    # Slot C blade_guard: blade spin (static FIXED vs CONTINUOUS) + optional
+    # retracting lower guard.
+    if r.blade_guard_style == "static_blade_fixed_guard":
+        model.articulation(
+            "blade_spin",
+            ArticulationType.FIXED,
+            parent=head,
+            child=blade,
+            origin=Origin(xyz=r.blade_xyz),
+        )
+    else:
+        model.articulation(
+            "blade_spin",
+            ArticulationType.CONTINUOUS,
+            parent=head,
+            child=blade,
+            origin=Origin(xyz=r.blade_xyz),
+            axis=(1.0, 0.0, 0.0),
+            motion_limits=MotionLimits(effort=20.0, velocity=80.0),
+        )
+    if r.blade_guard_style == "spinning_blade_retracting_guard":
+        lower_guard = _build_lower_guard(model, r, materials)
+        model.articulation(
+            "lower_guard_hinge",
+            ArticulationType.REVOLUTE,
+            parent=head,
+            child=lower_guard,
+            origin=Origin(xyz=r.blade_xyz),
+            axis=(1.0, 0.0, 0.0),
+            motion_limits=MotionLimits(effort=18.0, velocity=2.0, lower=-0.20, upper=1.05),
+        )
     return model
 
 
@@ -1109,13 +1212,16 @@ def build_seeded_miter_saw_arm_assembly(
 
 def slot_choices_for_config(config: MiterSawArmAssemblyConfig) -> list[tuple[str, str]]:
     r = resolve_config(config)
+    # Real structural topology slots (per spec): base_table / arm_linkage /
+    # blade_guard + slide-rail multiplicity. Palette/colour/shape styles are NOT
+    # topology and are excluded.
     return [
-        ("base_style", r.base_style),
-        ("arm_style", r.arm_style),
-        ("head_style", r.head_style),
-        ("aux_style", r.aux_style),
-        ("blade_style", r.blade_style),
-        ("material_style", r.material_style),
+        ("base_table", r.base_style),
+        ("arm_linkage", r.linkage_style),
+        ("blade_guard", r.blade_guard_style),
+        ("slide_rail_count", str(r.slide_rail_count)),
+        ("fence_segment_count", str(r.fence_segment_count)),
+        ("base_wing_count", str(r.base_wing_count)),
     ]
 
 
@@ -1158,6 +1264,8 @@ def _allow_expected_overlaps(
         table = model.get_part("miter_table")
         for elem_a in (
             "rear_fence_bar",
+            "left_rear_fence_bar",
+            "right_rear_fence_bar",
             "rear_fence_stanchion_bridge",
             "rear_rail_root_strut",
             "front_miter_scale_lip",
@@ -1191,7 +1299,12 @@ def _allow_expected_overlaps(
     if "base" in names and "blade" in names:
         base = model.get_part("base")
         blade = model.get_part("blade")
-        for elem_a in ("turntable_seat", "rear_fence_bar"):
+        for elem_a in (
+            "turntable_seat",
+            "rear_fence_bar",
+            "left_rear_fence_bar",
+            "right_rear_fence_bar",
+        ):
             for elem_b in blade_cut_elems:
                 try:
                     ctx.allow_overlap(
@@ -1238,6 +1351,9 @@ def _allow_expected_overlaps(
                 "arbor_side_web",
                 "side_motor_mount_bridge",
                 "carry_handle_stanchion",
+                "carry_handle_mount_foot",
+                "carry_handle_grip",
+                "carry_handle_riser",
             ):
                 try:
                     ctx.allow_overlap(
@@ -1374,6 +1490,127 @@ def _allow_expected_overlaps(
         except Exception:
             pass
 
+    # Slot B linkage captured-pin / mount overlaps (rear yoke + slide carriage).
+    arm_root_elems = (
+        "arm_pivot_boss",
+        "chop_hinge_pin",
+        "single_arm_beam",
+        "boxed_arm_spine",
+        "left_arm_rail",
+        "right_arm_rail",
+        "rear_clip",
+        "left_arm_yoke_cheek",
+        "right_arm_yoke_cheek",
+        "arched_arm_handle",
+        "twin_rail_root",
+        "depth_stop_bracket",
+        "depth_stop_screw",
+        "arm_root_collar",
+        "arm_rear_boss",
+    )
+
+    def _allow_ms(pa, pb, ea, eb, reason):
+        if pa in names and pb in names:
+            try:
+                ctx.allow_overlap(
+                    model.get_part(pa), model.get_part(pb), elem_a=ea, elem_b=eb, reason=reason
+                )
+            except Exception:
+                pass
+
+    table_pivot_elems = (
+        "rear_pivot_tower",
+        "left_rear_tower_table_neck",
+        "right_rear_tower_table_neck",
+        "left_pivot_cheek",
+        "right_pivot_cheek",
+        "chop_hinge_pin",
+        "table_disc",
+        "kerf_slot",
+    )
+    if "rear_pivot_yoke" in names:
+        for ea in table_pivot_elems:
+            for eb in (
+                "yoke_base_web",
+                "left_yoke_plate",
+                "right_yoke_plate",
+                "yoke_top_bridge",
+                "yoke_pivot_barrel",
+            ):
+                _allow_ms(
+                    "miter_table", "rear_pivot_yoke", ea, eb, "yoke seats on table rear pivot"
+                )
+        for eb in ("yoke_pivot_barrel", "yoke_top_bridge", "left_yoke_plate", "right_yoke_plate"):
+            for ea in arm_root_elems:
+                _allow_ms("rear_pivot_yoke", "saw_arm", eb, ea, "arm pivot captured in yoke")
+    if "slide_carriage" in names:
+        for i in range(2):
+            _allow_ms(
+                "miter_table",
+                "slide_carriage",
+                f"slide_rail_{i}",
+                f"carriage_bore_{i}",
+                "carriage rides the slide rail",
+            )
+        for ea in (*table_pivot_elems, "slide_rail_post", "slide_rail_0", "slide_rail_1"):
+            for eb in (
+                "carriage_body",
+                "carriage_bore_0",
+                "carriage_bore_1",
+                "carriage_pivot_barrel",
+            ):
+                _allow_ms("miter_table", "slide_carriage", ea, eb, "carriage near rail post/table")
+        for eb in ("carriage_pivot_barrel", "carriage_body", "carriage_bore_0", "carriage_bore_1"):
+            for ea in arm_root_elems:
+                _allow_ms("slide_carriage", "saw_arm", eb, ea, "arm pivot captured in carriage")
+            for ea in (
+                "lower_guard_shell",
+                "lower_guard_pivot_boss",
+                "lower_guard_hub_bridge",
+                "lower_guard_pivot_web",
+                "lower_guard_link",
+            ):
+                _allow_ms(
+                    "slide_carriage", "lower_guard", eb, ea, "lower guard swings past carriage"
+                )
+            for ea in (
+                "upper_blade_guard",
+                "motor_gearbox_block",
+                "bevel_mount_lug",
+                "arbor_side_web",
+            ):
+                _allow_ms(
+                    "slide_carriage", "saw_head", eb, ea, "head nests over carriage at full slide"
+                )
+        for ea in ("slide_rail_post", "slide_rail_0", "slide_rail_1"):
+            for eb in arm_root_elems:
+                _allow_ms("miter_table", "saw_arm", ea, eb, "rail post near arm root")
+        for ea in ("slide_rail_0", "slide_rail_1"):
+            for eb in (
+                "upper_blade_guard",
+                "motor_gearbox_block",
+                "bevel_mount_lug",
+                "arbor_side_web",
+                "guard_neck_bridge",
+                "side_motor_mount_bridge",
+            ):
+                _allow_ms(
+                    "miter_table", "saw_head", ea, eb, "slide rail runs forward under the head"
+                )
+        for ea in ("slide_rail_0", "slide_rail_1"):
+            for eb in (
+                "lower_guard_shell",
+                "lower_guard_pivot_boss",
+                "lower_guard_hub_bridge",
+                "lower_guard_pivot_web",
+                "lower_guard_link",
+            ):
+                _allow_ms(
+                    "miter_table", "lower_guard", ea, eb, "slide rail runs under the lower guard"
+                )
+            for eb in ("blade_disc", "blade_arbor_hub", *(f"blade_tooth_{i}" for i in range(32))):
+                _allow_ms("miter_table", "blade", ea, eb, "slide rail runs under the blade")
+
 
 def run_miter_saw_arm_assembly_tests(
     object_model: ArticulatedObject,
@@ -1388,25 +1625,35 @@ def run_miter_saw_arm_assembly_tests(
     ctx.fail_if_parts_overlap_in_current_pose()
     part_names = {p.name for p in object_model.parts}
     joint_names = {j.name for j in object_model.joints}
-    for required in ("base", "miter_table", "saw_arm", "saw_head", "blade", "lower_guard"):
+    required_parts = ["base", "miter_table", "saw_arm", "saw_head", "blade"]
+    if r.blade_guard_style == "spinning_blade_retracting_guard":
+        required_parts.append("lower_guard")
+    if r.linkage_style == "rear_yoke_swing_arm":
+        required_parts.append("rear_pivot_yoke")
+    if r.linkage_style == "slide_rail_carriage":
+        required_parts.append("slide_carriage")
+    for required in required_parts:
         if required not in part_names:
             ctx.fail("identity_parts", f"missing {required}")
-    for required in (
-        "miter_table_rotate",
-        "saw_arm_tilt",
-        "bevel_tilt",
-        "blade_spin",
-        "lower_guard_hinge",
-    ):
+    required_joints = ["miter_table_rotate", "saw_arm_tilt", "bevel_tilt", "blade_spin"]
+    if r.linkage_style == "slide_rail_carriage":
+        required_joints.append("carriage_slide")
+    if r.blade_guard_style == "spinning_blade_retracting_guard":
+        required_joints.append("lower_guard_hinge")
+    for required in required_joints:
         if required not in joint_names:
             ctx.fail("identity_joints", f"missing {required}")
     checks = {
         "miter_table_rotate": (0.0, 0.0, 1.0),
         "saw_arm_tilt": (1.0, 0.0, 0.0),
         "bevel_tilt": (0.0, 1.0, 0.0),
-        "blade_spin": (1.0, 0.0, 0.0),
-        "lower_guard_hinge": (1.0, 0.0, 0.0),
     }
+    if r.linkage_style == "slide_rail_carriage":
+        checks["carriage_slide"] = (0.0, 1.0, 0.0)
+    if r.blade_guard_style != "static_blade_fixed_guard":
+        checks["blade_spin"] = (1.0, 0.0, 0.0)
+    if r.blade_guard_style == "spinning_blade_retracting_guard":
+        checks["lower_guard_hinge"] = (1.0, 0.0, 0.0)
     for name, axis in checks.items():
         if name in joint_names:
             joint = object_model.get_articulation(name)

@@ -9,9 +9,9 @@ The template follows the spec's linear chain:
 * Slot B ``azimuth_stage`` emits a yawing yoke/fork with elevation sockets.
 * Slot C ``dish_reflector_assembly`` emits a concave parabolic reflector with
   rim, rear ribs, trunnions, feed boom, and horn.
-* Slot D ``auxiliary_mechanism`` is represented as stable dish/head visual
-  details in the seed set; hinged auxiliary covers can be opened later as a
-  separate branch.
+* Slot D ``auxiliary_mechanism`` is an optional real articulated child
+  (rear_cover / instrument_hatch / side_crank / transport_leg), sampled with
+  compatibility gating.
 
 Identity invariant: every seed has a visible concave dish reflector, feed
 support, root support, ``azimuth_spin`` around vertical Z, and
@@ -71,6 +71,8 @@ RootStyle = Literal[
     "tripod",
     "mast",
     "heavy_service_base",
+    "mobile_skid_base",
+    "wall_mast_mount",
 ]
 AzimuthStageStyle = Literal[
     "dual_yoke",
@@ -91,6 +93,7 @@ AuxiliaryMechanism = Literal[
     "instrument_hatch",
     "rear_cover",
     "side_crank",
+    "transport_leg",
 ]
 FeedStyle = Literal[
     "single_boom",
@@ -122,6 +125,8 @@ ROOT_STYLES: tuple[RootStyle, ...] = (
     "tripod",
     "mast",
     "heavy_service_base",
+    "mobile_skid_base",
+    "wall_mast_mount",
 )
 AZIMUTH_STAGE_STYLES: tuple[AzimuthStageStyle, ...] = (
     "dual_yoke",
@@ -142,6 +147,7 @@ AUXILIARY_MECHANISMS: tuple[AuxiliaryMechanism, ...] = (
     "instrument_hatch",
     "rear_cover",
     "side_crank",
+    "transport_leg",
 )
 FEED_STYLES: tuple[FeedStyle, ...] = (
     "single_boom",
@@ -267,6 +273,10 @@ class ParabolicDishConfig:
     back_frame_style: BackFrameStyle = "simple_spine"
     azimuth_joint_type: AzimuthJointType = "continuous"
     material_style: MaterialStyle = "white_telecom"
+    feed_strut_count: int = 1
+    rear_rib_count: int = 6
+    back_ring_count: int = 1
+    support_leg_count: int = 3
     dish_radius: float = 0.62
     dish_depth: float = 0.22
     azimuth_height: float = 0.72
@@ -286,6 +296,10 @@ class ResolvedParabolicDishConfig:
     back_frame_style: BackFrameStyle
     azimuth_joint_type: AzimuthJointType
     material_style: MaterialStyle
+    feed_strut_count: int
+    rear_rib_count: int
+    back_ring_count: int
+    support_leg_count: int
     dish_radius: float
     dish_depth: float
     azimuth_height: float
@@ -403,6 +417,8 @@ ROOT_AZIMUTH_COMPAT: dict[RootStyle, tuple[AzimuthStageStyle, ...]] = {
     "tripod": ("tripod_head", "dual_yoke"),
     "mast": ("mast_fork", "compact_fork"),
     "heavy_service_base": ("dual_yoke", "instrument_yoke"),
+    "mobile_skid_base": ("compact_fork", "dual_yoke"),
+    "wall_mast_mount": ("mast_fork", "compact_fork"),
 }
 ROOT_HEIGHT_RANGE: dict[RootStyle, tuple[float, float]] = {
     "pedestal": (0.62, 1.05),
@@ -410,7 +426,22 @@ ROOT_HEIGHT_RANGE: dict[RootStyle, tuple[float, float]] = {
     "tripod": (0.50, 0.78),
     "mast": (0.70, 1.30),
     "heavy_service_base": (0.66, 1.15),
+    "mobile_skid_base": (0.34, 0.56),
+    "wall_mast_mount": (0.50, 0.92),
 }
+
+
+def _sample_feed_strut_count(feed: FeedStyle, rng: random.Random) -> int:
+    """Feed-support multiplicity gated by the feed family: dual_strut spans a
+    real 2/3/4 strut count (3/4 = tri-/quadrupod), tripod is fixed 3, the boom
+    families are 1, and none_minimal is 0."""
+    if feed == "none_minimal":
+        return 0
+    if feed == "dual_strut":
+        return rng.choice((2, 3, 4))
+    if feed == "tripod_feed":
+        return 3
+    return 1
 
 
 def config_from_seed(seed: int) -> ParabolicDishConfig:
@@ -430,7 +461,16 @@ def config_from_seed(seed: int) -> ParabolicDishConfig:
     if back in ("instrument_box", "covered"):
         # rear cover / instrument hatch mount on the dish rear electronics box.
         aux_choices += ["rear_cover", "instrument_hatch"]
+    if root == "mobile_skid_base":
+        # fold-down transport leg requires the skid's leg hinge bridge.
+        aux_choices.append("transport_leg")
     aux: AuxiliaryMechanism = rng.choice(aux_choices)
+    # Multiplicity: feed struts, rear ribs, rear stiffener rings, and (tripod)
+    # splayed support legs.
+    feed_strut_count = _sample_feed_strut_count(feed, rng)
+    rear_rib_count = rng.choice((4, 6, 8, 12))
+    back_ring_count = rng.choice((0, 1, 2, 3))
+    support_leg_count = rng.choice((3, 4)) if root == "tripod" else 3
     h_lo, h_hi = ROOT_HEIGHT_RANGE[root]
     return ParabolicDishConfig(
         root_style=root,
@@ -441,6 +481,10 @@ def config_from_seed(seed: int) -> ParabolicDishConfig:
         back_frame_style=back,
         azimuth_joint_type=az_joint,
         material_style=material,
+        feed_strut_count=feed_strut_count,
+        rear_rib_count=rear_rib_count,
+        back_ring_count=back_ring_count,
+        support_leg_count=support_leg_count,
         dish_radius=round(rng.uniform(0.40, 0.78), 3),
         dish_depth=round(rng.uniform(0.14, 0.30), 3),
         azimuth_height=round(rng.uniform(h_lo, h_hi), 3),
@@ -473,6 +517,10 @@ def resolve_config(config: ParabolicDishConfig) -> ResolvedParabolicDishConfig:
     material = _require(config.material_style, MATERIAL_STYLES, field_name="material_style")
 
     radius = _clamp(config.dish_radius, 0.35, 1.05)
+    # short compact/tripod yokes give the dish less swing clearance — cap radius
+    # so the reflector clears the fork through the full elevation range.
+    if az in ("compact_fork", "tripod_head"):
+        radius = min(radius, 0.60)
     depth = _clamp(config.dish_depth, 0.10, 0.42)
     height = _clamp(config.azimuth_height, 0.35, 1.35)
     yoke_span = radius * 2.32
@@ -502,6 +550,10 @@ def resolve_config(config: ParabolicDishConfig) -> ResolvedParabolicDishConfig:
         back_frame_style=back,  # type: ignore[arg-type]
         azimuth_joint_type=az_joint,  # type: ignore[arg-type]
         material_style=material,  # type: ignore[arg-type]
+        feed_strut_count=max(0, min(4, int(config.feed_strut_count))),
+        rear_rib_count=max(4, min(16, int(config.rear_rib_count))),
+        back_ring_count=max(0, min(3, int(config.back_ring_count))),
+        support_leg_count=max(3, min(4, int(config.support_leg_count))),
         dish_radius=radius,
         dish_depth=depth,
         azimuth_height=height,
@@ -604,8 +656,9 @@ def _decorate_tripod_root(
         name="tripod_head_bearing_race",
     )
     leg_len = r.base_radius * 1.40
-    for i in range(3):
-        angle = math.tau * i / 3.0 + math.pi / 6.0
+    n_legs = r.support_leg_count  # 3 (tripod) or 4 (quad tower)
+    for i in range(n_legs):
+        angle = math.tau * i / n_legs + math.pi / 6.0
         x = math.cos(angle) * leg_len * 0.42
         y = math.sin(angle) * leg_len * 0.42
         root.visual(
@@ -710,6 +763,98 @@ def _decorate_heavy_root(
     )
 
 
+def _skid_leg_bridge_xyz(r: ResolvedParabolicDishConfig) -> tuple[float, float, float]:
+    """Shared anchor for the mobile-skid transport-leg hinge bridge."""
+    return (0.0, -r.base_depth * 1.6, r.dish_radius * 0.12)
+
+
+def _decorate_skid_root(
+    root: Part, r: ResolvedParabolicDishConfig, materials: dict[str, object]
+) -> None:
+    R = r.dish_radius
+    bw = r.base_radius * 0.95
+    bd = r.base_depth * 1.6
+    for sx, side in ((-1.0, "left"), (1.0, "right")):
+        root.visual(
+            Box((R * 0.07, bd * 2.05, R * 0.09)),
+            origin=Origin(xyz=(sx * bw, 0.0, R * 0.045)),
+            material=materials["support_dark"],
+            name=f"{side}_transport_skid_rail",
+        )
+    for sy, end in ((-1.0, "front"), (1.0, "rear")):
+        root.visual(
+            Box((bw * 2.25, R * 0.07, R * 0.07)),
+            origin=Origin(xyz=(0.0, sy * bd, R * 0.055)),
+            material=materials["support_dark"],
+            name=f"{end}_skid_crossbar",
+        )
+    root.visual(
+        Box((bw * 2.05, bd * 1.75, R * 0.08)),
+        origin=Origin(xyz=(0.0, 0.0, R * 0.095)),
+        material=materials["support"],
+        name="skid_center_deck",
+    )
+    root.visual(
+        Cylinder(radius=R * 0.115, length=max(R * 0.08, r.azimuth_height - R * 0.10)),
+        origin=Origin(xyz=(0.0, 0.0, (r.azimuth_height + R * 0.10) * 0.5), rpy=_cyl_z()),
+        material=materials["support"],
+        name="skid_center_post",
+    )
+    root.visual(
+        Cylinder(radius=R * 0.18, length=R * 0.060),
+        origin=Origin(xyz=(0.0, 0.0, r.azimuth_height), rpy=_cyl_z()),
+        material=materials["rim"],
+        name="skid_azimuth_bearing_race",
+    )
+    bx, by, bz = _skid_leg_bridge_xyz(r)
+    root.visual(
+        Box((bw * 0.9, R * 0.10, R * 0.12)),
+        origin=Origin(xyz=(bx, by, bz)),
+        material=materials["support_dark"],
+        name="skid_leg_hinge_bridge",
+    )
+
+
+def _decorate_wall_root(
+    root: Part, r: ResolvedParabolicDishConfig, materials: dict[str, object]
+) -> None:
+    R = r.dish_radius
+    H = r.azimuth_height
+    bw = r.base_radius * 1.1
+    wall_y = r.base_depth * 1.15
+    root.visual(
+        Box((bw * 2.0, R * 0.06, H * 1.12)),
+        origin=Origin(xyz=(0.0, wall_y, H * 0.56)),
+        material=materials["support_dark"],
+        name="wall_mount_plate",
+    )
+    for frac, lv in ((0.30, "lower"), (0.80, "upper")):
+        root.visual(
+            Box((R * 0.075, wall_y, R * 0.075)),
+            origin=Origin(xyz=(0.0, wall_y * 0.5, H * frac)),
+            material=materials["support"],
+            name=f"wall_{lv}_standoff_arm",
+        )
+    root.visual(
+        Box((R * 0.05, wall_y * 0.9, R * 0.05)),
+        origin=Origin(xyz=(0.0, wall_y * 0.5, H * 0.55), rpy=(0.0, math.pi / 2.5, 0.0)),
+        material=materials["support_dark"],
+        name="wall_diagonal_brace",
+    )
+    root.visual(
+        Cylinder(radius=R * 0.075, length=H),
+        origin=Origin(xyz=(0.0, 0.0, H * 0.5), rpy=_cyl_z()),
+        material=materials["support"],
+        name="vertical_wall_mast_pipe",
+    )
+    root.visual(
+        Cylinder(radius=R * 0.15, length=R * 0.060),
+        origin=Origin(xyz=(0.0, 0.0, H), rpy=_cyl_z()),
+        material=materials["rim"],
+        name="wall_mast_top_collar",
+    )
+
+
 def _build_root_support(
     model: ArticulatedObject,
     r: ResolvedParabolicDishConfig,
@@ -721,6 +866,8 @@ def _build_root_support(
         "tripod": "tripod",
         "mast": "mast",
         "heavy_service_base": "base",
+        "mobile_skid_base": "skid_base",
+        "wall_mast_mount": "wall_mount",
     }
     root = model.part(name_by_style[r.root_style])
     if r.root_style == "roof_mount":
@@ -731,6 +878,10 @@ def _build_root_support(
         _decorate_mast_root(root, r, materials)
     elif r.root_style == "heavy_service_base":
         _decorate_heavy_root(root, r, materials)
+    elif r.root_style == "mobile_skid_base":
+        _decorate_skid_root(root, r, materials)
+    elif r.root_style == "wall_mast_mount":
+        _decorate_wall_root(root, r, materials)
     else:
         _decorate_pedestal_root(root, r, materials)
     root.inertial = Inertial.from_geometry(
@@ -957,7 +1108,7 @@ def _add_back_frame(
             material=materials["support_dark"],
             name=f"{side}_trunnion_to_hub_spoke",
         )
-    rib_count = 6 if r.back_frame_style in ("ribbed", "truss", "instrument_box", "covered") else 4
+    rib_count = r.rear_rib_count  # sampled multiplicity {4,6,8,12}
     for i in range(rib_count):
         angle = math.tau * i / rib_count
         x = math.cos(angle) * R * 0.39
@@ -993,65 +1144,69 @@ def _add_back_frame(
         )
 
 
+def _strut_between(
+    part: Part,
+    p0: tuple[float, float, float],
+    p1: tuple[float, float, float],
+    radius: float,
+    material: object,
+    name: str,
+) -> None:
+    """A cylinder spanning p0->p1 (local +z aligned to the segment direction)."""
+    dx, dy, dz = (p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2])
+    length = math.sqrt(dx * dx + dy * dy + dz * dz)
+    if length < 1e-6:
+        return
+    pitch = math.atan2(math.sqrt(dx * dx + dy * dy), dz)
+    yaw = math.atan2(dy, dx)
+    mid = (0.5 * (p0[0] + p1[0]), 0.5 * (p0[1] + p1[1]), 0.5 * (p0[2] + p1[2]))
+    part.visual(
+        Cylinder(radius=radius, length=length),
+        origin=Origin(xyz=mid, rpy=(0.0, pitch, yaw)),
+        material=material,
+        name=name,
+    )
+
+
 def _add_feed_support(
     dish: Part,
     r: ResolvedParabolicDishConfig,
     materials: dict[str, object],
 ) -> None:
     R = r.dish_radius
+    n = r.feed_strut_count
     feed_y = -r.dish_depth * 1.18 - r.feed_length * 0.5
+    front_y = -r.dish_depth * 1.18
     horn_y = -r.dish_depth * 1.18 - r.feed_length
-    if r.feed_style == "none_minimal":
-        return
-    if r.feed_style in ("single_boom", "roof_feed_boom", "horn_only"):
+    if n <= 0:
+        return  # none_minimal: bare reflector, no feed boom
+    # central boom/rod — connects the dish (like the single-boom feed) to the horn.
+    dish.visual(
+        Cylinder(radius=R * 0.020 if n == 1 else R * 0.014, length=r.feed_length),
+        origin=Origin(xyz=(0.0, feed_y, 0.0), rpy=_cyl_y()),
+        material=materials["feed"],
+        name="central_feed_boom",
+    )
+    if n >= 2:
+        # feed-root disk on the central boom + N struts converging to a horn collar.
+        # `feed_strut_count` (2/3/4) is the spec's feed-support multiplicity.
         dish.visual(
-            Cylinder(radius=R * 0.020, length=r.feed_length),
-            origin=Origin(xyz=(0.0, feed_y, 0.0), rpy=_cyl_y()),
+            Cylinder(radius=R * 0.22, length=R * 0.030),
+            origin=Origin(xyz=(0.0, front_y, 0.0), rpy=_cyl_y()),
             material=materials["feed"],
-            name="central_feed_boom",
+            name="feed_root_disk",
         )
-    if r.feed_style in ("dual_strut", "tripod_feed"):
+        collar = (0.0, horn_y + R * 0.08, 0.0)
         dish.visual(
-            Cylinder(radius=R * 0.014, length=r.feed_length),
-            origin=Origin(xyz=(0.0, feed_y, 0.0), rpy=_cyl_y()),
+            Cylinder(radius=R * 0.052, length=R * 0.06),
+            origin=Origin(xyz=collar, rpy=_cyl_y()),
             material=materials["feed"],
-            name="central_feed_alignment_rod",
+            name="feed_collar",
         )
-        dish.visual(
-            Box((R * 0.050, R * 0.060, R * 0.42)),
-            origin=Origin(xyz=(0.0, -r.dish_depth * 1.18, R * 0.08)),
-            material=materials["feed"],
-            name="upper_feed_root_mast",
-        )
-        dish.visual(
-            Box((R * 0.55, R * 0.060, R * 0.050)),
-            origin=Origin(xyz=(0.0, -r.dish_depth * 1.18, R * 0.16)),
-            material=materials["feed"],
-            name="upper_feed_root_crossbar",
-        )
-        for sign, side in ((-1.0, "left"), (1.0, "right")):
-            dish.visual(
-                Box((R * 0.030, r.feed_length * 0.96, R * 0.030)),
-                origin=Origin(
-                    xyz=(sign * R * 0.22, feed_y, R * 0.16),
-                    rpy=(0.0, 0.0, sign * 0.08),
-                ),
-                material=materials["feed"],
-                name=f"{side}_feed_strut",
-            )
-    if r.feed_style == "tripod_feed":
-        dish.visual(
-            Box((R * 0.050, R * 0.060, R * 0.58)),
-            origin=Origin(xyz=(0.0, -r.dish_depth * 1.18, -R * 0.10)),
-            material=materials["feed"],
-            name="lower_feed_root_mast",
-        )
-        dish.visual(
-            Box((R * 0.030, r.feed_length, R * 0.030)),
-            origin=Origin(xyz=(0.0, feed_y, -R * 0.24)),
-            material=materials["feed"],
-            name="lower_feed_strut",
-        )
+        for i in range(n):
+            ang = math.tau * i / n + math.pi / 2.0
+            p_root = (math.cos(ang) * R * 0.20, front_y, math.sin(ang) * R * 0.20)
+            _strut_between(dish, p_root, collar, R * 0.016, materials["feed"], f"feed_strut_{i}")
     dish.visual(
         Cylinder(radius=R * 0.075, length=R * 0.16),
         origin=Origin(xyz=(0.0, horn_y, 0.0), rpy=_cyl_y()),
@@ -1072,6 +1227,30 @@ def _add_feed_support(
     )
 
 
+def _add_back_stiffener_rings(
+    model: ArticulatedObject,
+    dish: Part,
+    r: ResolvedParabolicDishConfig,
+    materials: dict[str, object],
+) -> None:
+    """Concentric rear stiffener rings (multiplicity, sourced from samples
+    7f8512f0 / 77d410b1). Each torus lies in the dish back plane and crosses
+    the radial ribs, so it is supported by them."""
+    n = r.back_ring_count
+    R = r.dish_radius
+    for i in range(n):
+        rad = R * (0.28 + 0.24 * i / max(1, n - 1)) if n > 1 else R * 0.40
+        _add_torus(
+            model,
+            dish,
+            name=f"rear_stiffener_ring_{i}",
+            radius=rad,
+            tube=R * 0.022,
+            material=materials["support_dark"],
+            origin=Origin(xyz=(0.0, R * 0.05, 0.0), rpy=_cyl_y()),
+        )
+
+
 def _build_dish_assembly(
     model: ArticulatedObject,
     r: ResolvedParabolicDishConfig,
@@ -1081,6 +1260,7 @@ def _build_dish_assembly(
     dish = model.part("dish_assembly")
     _add_reflector_shell(model, dish, r, materials)
     _add_back_frame(dish, r, materials)
+    _add_back_stiffener_rings(model, dish, r, materials)
     _add_feed_support(dish, r, materials)
     if r.reflector_style in ("cadquery_spoked", "portable_ribbed"):
         dish.visual(
@@ -1243,6 +1423,37 @@ def _build_auxiliary(
             axis=(1.0, 0.0, 0.0),
             motion_limits=MotionLimits(effort=10.0, velocity=3.0),
         )
+    elif aux == "transport_leg":
+        # fold-down stabilizer leg hinged on the mobile-skid leg bridge.
+        leg = model.part("transport_leg")
+        leg.visual(
+            Cylinder(radius=R * 0.030, length=R * 0.40),
+            origin=Origin(rpy=_cyl_x()),
+            material=materials["support_dark"],
+            name="leg_hinge_barrel",
+        )
+        leg.visual(
+            Cylinder(radius=R * 0.035, length=R * 0.80),
+            origin=Origin(xyz=(0.0, 0.0, -R * 0.34), rpy=_cyl_z()),
+            material=materials["support"],
+            name="leg_tube",
+        )
+        leg.visual(
+            Box((R * 0.20, R * 0.22, R * 0.04)),
+            origin=Origin(xyz=(0.0, 0.0, -R * 0.72)),
+            material=materials["support_dark"],
+            name="leg_foot_pad",
+        )
+        model.articulation(
+            "transport_leg_fold",
+            ArticulationType.REVOLUTE,
+            parent=anchors.root,
+            child=leg,
+            origin=Origin(xyz=_skid_leg_bridge_xyz(r)),
+            axis=(1.0, 0.0, 0.0),
+            # rest = deployed (down); folds FORWARD (-x rotation) away from the skid.
+            motion_limits=MotionLimits(effort=25.0, velocity=1.0, lower=-1.35, upper=0.0),
+        )
 
 
 def build_parabolic_dish(
@@ -1277,7 +1488,11 @@ def slot_choices_for_config(config: ParabolicDishConfig) -> list[tuple[str, str]
         ("dish_reflector_assembly", r.reflector_style),
         ("auxiliary_mechanism", r.auxiliary_mechanism),
         ("feed_style", r.feed_style),
+        ("feed_strut_count", str(r.feed_strut_count)),
         ("back_frame_style", r.back_frame_style),
+        ("rear_rib_count", str(r.rear_rib_count)),
+        ("back_ring_count", str(r.back_ring_count)),
+        ("support_leg_count", str(r.support_leg_count)),
         ("azimuth_joint_type", r.azimuth_joint_type),
     ]
 
@@ -1288,7 +1503,7 @@ def slot_choices_for_seed(seed: int) -> list[tuple[str, str]]:
 
 def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None:
     part_names = {part.name for part in model.parts}
-    root_names = ("pedestal", "roof_mount", "tripod", "mast", "base")
+    root_names = ("pedestal", "roof_mount", "tripod", "mast", "base", "skid_base", "wall_mount")
     if "azimuth_yoke" in part_names:
         az = model.get_part("azimuth_yoke")
         for root_name in root_names:
@@ -1306,6 +1521,10 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                 "tripod_center_post",
                 "vertical_mast_tube",
                 "heavy_center_pedestal",
+                "skid_azimuth_bearing_race",
+                "skid_center_post",
+                "wall_mast_top_collar",
+                "vertical_wall_mast_pipe",
             ):
                 for elem_b in (
                     "azimuth_upper_turntable",
@@ -1366,12 +1585,10 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                 "central_reflector_spine",
                 "horizontal_reflector_bond_rib",
                 "vertical_reflector_bond_rib",
-                "rear_radial_rib_0",
-                "rear_radial_rib_1",
-                "rear_radial_rib_2",
-                "rear_radial_rib_3",
-                "rear_radial_rib_4",
-                "rear_radial_rib_5",
+                *[f"rear_radial_rib_{i}" for i in range(12)],
+                "rear_stiffener_ring_0",
+                "rear_stiffener_ring_1",
+                "rear_stiffener_ring_2",
                 "left_trunnion_to_hub_spoke",
                 "right_trunnion_to_hub_spoke",
                 "rear_electronics_support_pylon",
@@ -1397,20 +1614,31 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
             except Exception:
                 pass
 
-    # incidental cross-axle vs spoked-reflector front boss/struts (small dishes)
-    for eb in (
-        "front_spoke_center_boss",
-        "front_spoked_reflector_strut_0",
-        "front_spoked_reflector_strut_1",
-        "front_spoked_reflector_strut_2",
+    # incidental cross-axle / bearing sockets vs dish hub features (front spoke
+    # boss/struts on small dishes; rear radial ribs near the hub at the hinge).
+    for ea in (
+        "elevation_cross_axle",
+        "left_elevation_bearing_socket",
+        "right_elevation_bearing_socket",
     ):
-        _try_allow(
-            "azimuth_yoke",
-            "dish_assembly",
-            "elevation_cross_axle",
-            eb,
-            "cross axle near front spoke boss",
-        )
+        for eb in (
+            "front_spoke_center_boss",
+            "front_spoked_reflector_strut_0",
+            "front_spoked_reflector_strut_1",
+            "front_spoked_reflector_strut_2",
+            "central_rear_bearing_block",
+            *[f"rear_radial_rib_{i}" for i in range(12)],
+            "rear_stiffener_ring_0",
+            "rear_stiffener_ring_1",
+            "rear_stiffener_ring_2",
+        ):
+            _try_allow(
+                "azimuth_yoke",
+                "dish_assembly",
+                ea,
+                eb,
+                "cross axle / bearing near dish hub features",
+            )
     if "rear_cover" in part_names:
         for eb in ("cover_hinge_barrel", "cover_leaf", "cover_pull"):
             for ea in (
@@ -1428,12 +1656,7 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
             "rear_cover_service_panel",
             "left_trunnion_to_hub_spoke",
             "right_trunnion_to_hub_spoke",
-            "rear_radial_rib_0",
-            "rear_radial_rib_1",
-            "rear_radial_rib_2",
-            "rear_radial_rib_3",
-            "rear_radial_rib_4",
-            "rear_radial_rib_5",
+            *[f"rear_radial_rib_{i}" for i in range(12)],
         ):
             _try_allow(
                 "dish_assembly",
@@ -1485,6 +1708,17 @@ def _allow_expected_overlaps(ctx: TestContext, model: ArticulatedObject) -> None
                 "crank_shaft",
                 "crank shaft journaled in yoke cheek",
             )
+    if "transport_leg" in part_names:
+        for eb in ("leg_hinge_barrel", "leg_tube"):
+            for ea in (
+                "skid_leg_hinge_bridge",
+                "front_skid_crossbar",
+                "left_transport_skid_rail",
+                "right_transport_skid_rail",
+            ):
+                _try_allow(
+                    "skid_base", "transport_leg", ea, eb, "transport leg hinged on skid bridge"
+                )
 
 
 def run_parabolic_dish_tests(
@@ -1535,22 +1769,23 @@ def run_parabolic_dish_tests(
     return ctx.report()
 
 
-# The long-form notes below intentionally keep the template self-documenting for
-# future expansion of the currently stable seed domain. The spec has five root
-# support families, five azimuth/yoke families, five reflector families, and
-# four auxiliary mechanisms. The first implementation keeps auxiliary parts as
-# dish/head visuals for seed stability, because the category's identity depends
-# more on azimuth/elevation and the concave reflector than on hatch motion.
-#
-# Expansion checklist:
-# 1. Split instrument_hatch into fixed instrument_box plus hinged hatch part.
-# 2. Split rear_cover into a dish-mounted hinged rear cover part.
-# 3. Turn side_crank into a small continuous child of azimuth_yoke.
-# 4. Re-enable sampled auxiliary_mechanism values only after 0-9, then 0-49,
-#    compile-sweep with sampled poses pass cleanly.
-# 5. Keep elevation origin at the yoke trunnion center. Do not move it to the
-#    reflector focus or dish rim; that produces visually plausible but invalid
-#    pan-tilt kinematics.
+# Implementation notes (reflects the reviewed spec, fully implemented):
+# * config_from_seed is deterministic procedural sampling (no curated/modulo
+#   table); each slot is drawn from its compatible candidate subset.
+# * Slot A root_support: pedestal / roof_mount / tripod / mast / heavy_service_base
+#   / mobile_skid_base / wall_mast_mount (7 families).
+# * Slot B azimuth_stage: dual_yoke / compact_fork / tripod_head / mast_fork /
+#   instrument_yoke, gated per root.
+# * Slot C reflector: lathe shell + feed/back-frame variants (feed_strut_count
+#   1/2/3/4 multiplicity via feed_style).
+# * Slot D auxiliary is REAL articulated parts, sampled with gating:
+#   - instrument_hatch  FIXED instrument_box + REVOLUTE hatch on the dish rear.
+#   - rear_cover        REVOLUTE hinged electronics cover (needs rear box back).
+#   - side_crank        CONTINUOUS manual crank on the azimuth yoke side.
+#   - transport_leg     REVOLUTE fold-down stabilizer (mobile_skid_base only).
+# Invariant: keep the elevation origin at the yoke trunnion center. Do not move
+# it to the reflector focus or dish rim; that produces visually plausible but
+# invalid pan-tilt kinematics.
 #
 # Stable seed matrix:
 # seed 0: pedestal + dual yoke + lathed reflector + single feed boom.

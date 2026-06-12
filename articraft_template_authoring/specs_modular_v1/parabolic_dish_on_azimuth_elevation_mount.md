@@ -310,8 +310,22 @@ pattern: mixed
 - joint policy：parent visual，无 joint
 - source/gating：rec_…_0112 L137-L150（8）；rec_…_77d410 L313-L318（16）；rec_…_c601 L181-L202（4）
 
-**(3) tripod_leg_count / skid 数 / yoke_cheek_count — 固定，不采样**
-- tripod legs 固定 3，yoke cheek 固定 2，skid 固定 2；为 module-local fixed helper loop，不暴露 `*_count`。
+**(3) back_ring_count（后框加强环）**
+- count_param：`back_ring_count`，N_range={0,1,2,3}，module-local 采样
+- copied object：concentric rear stiffener torus（TorusGeometry），dish 背面同心环，横跨 radial ribs 受支撑
+- placement：dish 背平面（x-z），半径 R*0.28..R*0.52 等距分布
+- joint policy：parent visual，无 joint
+- source/gating：rec_…_7f8512f0 L202-L209（outer+inner 2 环）；rec_…_77d410b1 L302-L312（3 stiffener rings）
+
+**(4) support_leg_count（三脚架/塔腿）**
+- count_param：`support_leg_count`，N_range={3,4}，仅 root=tripod_base 采样（其余 root 固定）
+- copied object：splayed leg + rubber foot + lower foot tie（等角）
+- placement：等角 tau*i/n 绕中心柱张开
+- joint policy：root 静态支撑，无 joint
+- source/gating：rec_…_f7afffc3 / rec_…_3ebbc287（3 腿三脚架）；rec_…_77d410b1 L132-L143（4 tower legs，4 腿塔）
+
+**(5) yoke_cheek_count / skid 数 — 固定，不采样**
+- yoke cheek 固定 2，skid 固定 2；为 module-local fixed helper loop，不暴露 `*_count`。
 
 **(4) auxiliary 数量**
 - auxiliary 为 0 或 1 个（none / 单个 hatch·cover·crank·leg），非可变 N。
